@@ -1,4 +1,5 @@
-import type { AdminProduct, Catalog, CatalogProduct, Category, ColorKey } from "../../shared/types";
+import type { AdminProduct, Catalog, CatalogProduct, Category } from "../../shared/types";
+import { STOCK_OF_PRODUCT, orderQueries, toOpenOrder, toOrders, type OrderLineRow, type OrderRow } from "./stock";
 
 export type DbProduct = {
   id: string;
@@ -14,18 +15,18 @@ export type DbProduct = {
   reorder_at: number | null;
 };
 
-const PRODUCT_SELECT = `
-  SELECT p.id, p.name, p.price_cents, p.category_id, c.name AS category_name, p.sort, p.active,
-         p.quantity_pad, p.track_stock, p.units_per_box, p.reorder_at
-  FROM products p JOIN categories c ON c.id = p.category_id`;
+const PRODUCT_COLUMNS = `p.id, p.name, p.price_cents, p.category_id, c.name AS category_name, p.sort, p.active,
+         p.quantity_pad, p.track_stock, p.units_per_box, p.reorder_at`;
+const PRODUCT_FROM = "FROM products p JOIN categories c ON c.id = p.category_id";
+const PRODUCT_SELECT = `SELECT ${PRODUCT_COLUMNS} ${PRODUCT_FROM}`;
+const PRODUCT_SELECT_WITH_STOCK = `SELECT ${PRODUCT_COLUMNS}, ${STOCK_OF_PRODUCT} AS stock ${PRODUCT_FROM}`;
+const CATEGORY_SELECT = "SELECT id, name, color, sort FROM categories ORDER BY sort, id";
 
 // The order of the kassa tiles: category by category, then the product's own place.
 const PRODUCT_ORDER = "ORDER BY c.sort, c.id, p.sort, p.id";
 
 export async function listCategories(db: D1Database): Promise<Category[]> {
-  const { results } = await db
-    .prepare("SELECT id, name, color, sort FROM categories ORDER BY sort, id")
-    .all<{ id: string; name: string; color: ColorKey; sort: number }>();
+  const { results } = await db.prepare(CATEGORY_SELECT).all<Category>();
   return results;
 }
 
@@ -48,13 +49,15 @@ export function toAdminProduct(row: DbProduct): AdminProduct {
   };
 }
 
-/** What the kassa shows: the active products. Stock and open orders are filled in by the stock module. */
+/** What the kassa shows: the active products with their stock, and the deliveries that are on their way. */
 export async function getCatalog(db: D1Database, now: Date): Promise<Catalog> {
-  const [categories, rows] = await Promise.all([
-    listCategories(db),
-    db.prepare(`${PRODUCT_SELECT} WHERE p.active = 1 ${PRODUCT_ORDER}`).all<DbProduct>(),
+  // One round trip: the iPad asks for this every minute.
+  const [categories, rows, orders, orderLines] = await db.batch([
+    db.prepare(CATEGORY_SELECT),
+    db.prepare(`${PRODUCT_SELECT_WITH_STOCK} WHERE p.active = 1 ${PRODUCT_ORDER}`),
+    ...orderQueries(db, "open"),
   ]);
-  const products: CatalogProduct[] = rows.results.map((row) => ({
+  const products: CatalogProduct[] = (rows!.results as (DbProduct & { stock: number })[]).map((row) => ({
     id: row.id,
     name: row.name,
     priceCents: row.price_cents,
@@ -62,10 +65,15 @@ export async function getCatalog(db: D1Database, now: Date): Promise<Catalog> {
     sort: row.sort,
     quantityPad: row.quantity_pad === 1,
     trackStock: row.track_stock === 1,
-    stock: null,
+    stock: row.track_stock === 1 ? row.stock : null,
     reorderAt: row.reorder_at,
   }));
-  return { fetchedAt: now.toISOString(), categories, products, openOrders: [] };
+  return {
+    fetchedAt: now.toISOString(),
+    categories: categories!.results as Category[],
+    products,
+    openOrders: toOrders(orders!.results as OrderRow[], orderLines!.results as OrderLineRow[]).map(toOpenOrder),
+  };
 }
 
 /** Everything beheer manages, hidden products included. */

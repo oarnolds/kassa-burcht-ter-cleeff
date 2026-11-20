@@ -23,10 +23,10 @@ it("serves the catalog to a paired device only", async () => {
     sort: 1,
     quantityPad: false,
     trackStock: true,
-    stock: null,
+    stock: 0,
     reorderAt: null,
   });
-  expect(cat.products[21]).toMatchObject({ id: "statiegeld", quantityPad: true, trackStock: false });
+  expect(cat.products[21]).toMatchObject({ id: "statiegeld", quantityPad: true, trackStock: false, stock: null });
   expect(cat.openOrders).toEqual([]);
   expect(Math.abs(Date.now() - Date.parse(cat.fetchedAt))).toBeLessThan(5000);
 });

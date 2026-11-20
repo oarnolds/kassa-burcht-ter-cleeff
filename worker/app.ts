@@ -7,6 +7,7 @@ import { adminCash } from "./routes/admin-cash";
 import { adminDevices } from "./routes/admin-devices";
 import { adminProducts } from "./routes/admin-products";
 import { adminSales } from "./routes/admin-sales";
+import { adminStock } from "./routes/admin-stock";
 import { kassa } from "./routes/kassa";
 import { pair } from "./routes/pair";
 
@@ -27,5 +28,6 @@ app.route("/api/admin", adminDevices);
 app.route("/api/admin", adminProducts);
 app.route("/api/admin", adminCash);
 app.route("/api/admin", adminSales);
+app.route("/api/admin", adminStock);
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));
