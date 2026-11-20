@@ -1,6 +1,7 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it } from "vitest";
+import { businessDate, formatDateNl, localTime } from "../../shared/time";
 import type { CashState, Handover } from "../../shared/types";
 import { calls, mockApi, mockLoggedIn, renderAt, tap } from "../test-utils";
 
@@ -50,6 +51,10 @@ it("asks for an opening amount first", async () => {
   expect(screen.queryByRole("heading", { name: "Afdracht vastleggen" })).not.toBeInTheDocument();
   await userEvent.type(await screen.findByLabelText("Bedrag in het kluisje"), "50");
   await tap("Vastleggen");
+  // Nothing is recorded before the amount has been read back.
+  expect(within(screen.getByRole("dialog", { name: "Beginbedrag vastleggen?" })).getByText("€ 50,00")).toBeInTheDocument();
+  expect(calls("POST")).toHaveLength(0);
+  await tap("Ja, vastleggen");
   await waitFor(() => expect(calls("POST")).toHaveLength(1));
   const body = calls("POST")[0]!.body as { countedAt: string };
   expect(body).toMatchObject({ kind: "opening", receivedCents: 0, leftCents: 5000 });
@@ -62,6 +67,7 @@ it("shows the difference while typing, posts cents, then shows the recorded diff
   expect(screen.getByText("Verschil: € 0,70")).toBeInTheDocument();
   await userEvent.type(screen.getByLabelText("Toelichting"), "blikje gesneuveld");
   await tap("Afdracht vastleggen");
+  await tap("Ja, vastleggen");
   await waitFor(() => expect(calls("POST")).toHaveLength(1));
   const body = calls("POST")[0]!.body as { countedAt: string };
   expect(calls("POST")[0]!.url).toBe("/api/admin/cash/handovers");
@@ -72,6 +78,25 @@ it("shows the difference while typing, posts cents, then shows the recorded diff
   // The form is ready for the next time and the page has asked the server how things stand now.
   expect(screen.getByLabelText("Ontvangen")).toHaveValue("");
   await waitFor(() => expect(calls("GET").filter((c) => c.url === "/api/admin/cash")).toHaveLength(2));
+});
+
+it("reads a handover back before recording it, and records nothing on Terug", async () => {
+  open({ expectedCents: 5470, handovers: [opening] });
+  await fillIn();
+  fireEvent.change(screen.getByLabelText("Kluisje geleegd op"), { target: { value: "2026-07-31T18:00" } });
+  await tap("Afdracht vastleggen");
+  const dialog = within(screen.getByRole("dialog", { name: "Afdracht vastleggen?" }));
+  // The moment as the history will show it (the field is in the clock of whoever is typing).
+  const emptied = new Date("2026-07-31T18:00").toISOString();
+  expect(dialog.getByText(`${formatDateNl(businessDate(emptied))} ${localTime(emptied)}`)).toBeInTheDocument();
+  expect(dialog.getByText("€ 4,00")).toBeInTheDocument();
+  expect(dialog.getByText("€ 50,00")).toBeInTheDocument();
+  expect(dialog.getByText("Een vastgelegde afdracht kan niet meer worden gewijzigd.")).toBeInTheDocument();
+  await userEvent.click(dialog.getByRole("button", { name: "Terug" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(calls("POST")).toHaveLength(0);
+  // What was typed is still there, to be corrected.
+  expect(screen.getByLabelText("Ontvangen")).toHaveValue("4");
 });
 
 it("says whether money is short or left over", async () => {
@@ -88,6 +113,7 @@ it("counts a chosen minute up to its end, so a sale in that minute belongs to th
   await fillIn();
   fireEvent.change(screen.getByLabelText("Kluisje geleegd op"), { target: { value: "2026-07-31T18:00" } });
   await tap("Afdracht vastleggen");
+  await tap("Ja, vastleggen");
   await waitFor(() => expect(calls("POST")).toHaveLength(1));
   expect((calls("POST")[0]!.body as { countedAt: string }).countedAt).toBe(new Date(new Date("2026-07-31T18:00").getTime() + 59_999).toISOString());
 });
@@ -106,6 +132,7 @@ it.each([
   open({ expectedCents: 5470, handovers: [opening] }, [400, { error: code }]);
   await fillIn();
   await tap("Afdracht vastleggen");
+  await tap("Ja, vastleggen");
   expect(await screen.findByText(text)).toBeInTheDocument();
   expect(screen.getByLabelText("Ontvangen")).toHaveValue("4");
 });

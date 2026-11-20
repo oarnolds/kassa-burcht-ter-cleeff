@@ -61,8 +61,9 @@ export async function getCashState(db: D1Database): Promise<CashState> {
 }
 
 /**
- * Records the opening amount or a count of the cash box. A handover closes every cash sale made up to the
- * moment of counting; what is sold after that moment, or arrives later, belongs to the next period.
+ * Records the opening amount or a count of the cash box. Either one closes every cash sale made up to the
+ * moment of counting: that money is in the amount that was counted. What is sold after that moment, or
+ * arrives later, belongs to the next period.
  */
 export async function recordHandover(db: D1Database, input: HandoverInput, now: Date): Promise<Handover> {
   const countedAt = new Date(input.countedAt).toISOString();
@@ -95,7 +96,7 @@ export async function recordHandover(db: D1Database, input: HandoverInput, now: 
   const close = db
     .prepare(
       `UPDATE sales SET handover_id = ?1
-       WHERE ${OPEN_CASH} AND sold_at <= ?2 AND EXISTS (SELECT 1 FROM handovers WHERE id = ?1 AND kind = 'handover')`,
+       WHERE ${OPEN_CASH} AND sold_at <= ?2 AND EXISTS (SELECT 1 FROM handovers WHERE id = ?1)`,
     )
     .bind(id, countedAt);
   const [inserted] = await db.batch([insert, close]);

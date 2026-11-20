@@ -48,6 +48,19 @@ it("records an opening amount once", async () => {
   expect(await again.json()).toEqual({ error: "already_opened" });
 });
 
+it("counts from the opening amount: cash sold before it is already in that amount", async () => {
+  const early = await sell(360, ago(90));
+  // The penningmeester counts the box, earlier sales included, and enters what is in it.
+  await handover({ kind: "opening", countedAt: ago(60), receivedCents: 0, leftCents: 5360, note: null });
+  expect((await state()).expectedCents).toBe(5360);
+  await sell(110, ago(30));
+  expect((await state()).expectedCents).toBe(5470);
+  const res = await handover({ kind: "handover", countedAt: ago(10), receivedCents: 470, leftCents: 5000, note: null });
+  expect(await res.json()).toMatchObject({ expectedCents: 5470, differenceCents: 0 });
+  // Like any counted sale, the early one can no longer be reversed in beheer.
+  expect((await reverse(early.id, "vergissing")).status).toBe(409);
+});
+
 it("computes the difference at a handover and starts a new period", async () => {
   await handover({ kind: "opening", countedAt: ago(120), receivedCents: 0, leftCents: 5000, note: null });
   const a = await sell(110, ago(90));

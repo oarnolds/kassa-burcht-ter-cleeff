@@ -4,6 +4,7 @@ import { businessDate, formatDateNl, localTime } from "../../shared/time";
 import type { CashState, Handover } from "../../shared/types";
 import { EuroInput } from "../ui/EuroInput";
 import { Button } from "../ui/Button";
+import { Dialog } from "../ui/Dialog";
 import { Card, Loaded, PageTitle, Problem, Section, amount, amountHead, cell, field, head, table, tableScroll } from "./parts";
 import { useAdminData, useAdminWrite } from "./useAdmin";
 
@@ -45,15 +46,45 @@ function meaning(differenceCents: number): string {
 
 type FormProps = { onRecorded(handover: Handover): void; onStale(): void };
 
+type ConfirmProps = { open: boolean; title: string; rows: [string, string][]; busy: boolean; onYes(): void; onClose(): void };
+
+/** What is about to be recorded, read back once: a handover stays as it is. */
+function Confirm({ open, title, rows, busy, onYes, onClose }: ConfirmProps) {
+  return (
+    <Dialog open={open} onClose={onClose} title={title}>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-lg">
+        {rows.map(([name, value]) => (
+          <div key={name} className="contents">
+            <dt className="text-ink/70">{name}</dt>
+            <dd className="text-right font-bold tabular-nums">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-4 text-ink/70">Een vastgelegde afdracht kan niet meer worden gewijzigd.</p>
+      <div className="mt-6 flex justify-end gap-3">
+        <Button onClick={onClose}>Terug</Button>
+        <Button variant="primary" disabled={busy} onClick={onYes}>
+          Ja, vastleggen
+        </Button>
+      </div>
+    </Dialog>
+  );
+}
+
 /** The very first record: what is in the cash box when the kassa starts. */
 function OpeningForm({ onRecorded, onStale }: FormProps) {
   const [left, setLeft] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
   const write = useAdminWrite();
 
-  const submit = async (event: FormEvent) => {
+  const ask = (event: FormEvent) => {
     event.preventDefault();
+    if (left !== null) setAsking(true);
+  };
+
+  const record = async () => {
     if (left === null) return;
     setBusy(true);
     setError(null);
@@ -65,6 +96,7 @@ function OpeningForm({ onRecorded, onStale }: FormProps) {
       note: null,
     });
     setBusy(false);
+    setAsking(false);
     if (answer.ok) return onRecorded(answer.data);
     setError(explain(answer.status, answer.error));
     if (answer.error === "already_opened") onStale();
@@ -72,7 +104,7 @@ function OpeningForm({ onRecorded, onStale }: FormProps) {
 
   return (
     <Section title="Beginbedrag vastleggen" note="Tel wat er nu in het kluisje zit. Vanaf dit bedrag rekent de kassa verder.">
-      <form onSubmit={(event) => void submit(event)} className="flex max-w-md flex-col gap-4 px-2 sm:px-3">
+      <form onSubmit={ask} className="flex max-w-md flex-col gap-4 px-2 sm:px-3">
         <label className={label}>
           Bedrag in het kluisje
           <EuroInput valueCents={left} onChange={setLeft} />
@@ -82,6 +114,14 @@ function OpeningForm({ onRecorded, onStale }: FormProps) {
           Vastleggen
         </Button>
       </form>
+      <Confirm
+        open={asking}
+        title="Beginbedrag vastleggen?"
+        rows={[["In het kluisje", left === null ? "" : formatEuro(left)]]}
+        busy={busy}
+        onYes={() => void record()}
+        onClose={() => setAsking(false)}
+      />
     </Section>
   );
 }
@@ -94,14 +134,19 @@ function HandoverForm({ expectedCents, onRecorded }: FormProps & { expectedCents
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
   const write = useAdminWrite();
 
   // What the page knows now; the server works it out again for the chosen moment.
   const difference = received !== null && left !== null ? expectedCents - received - left : null;
   const complete = difference !== null && momentOf(counted) !== null;
 
-  const submit = async (event: FormEvent) => {
+  const ask = (event: FormEvent) => {
     event.preventDefault();
+    if (complete) setAsking(true);
+  };
+
+  const record = async () => {
     const countedAt = momentOf(counted);
     if (received === null || left === null || countedAt === null) return;
     setBusy(true);
@@ -114,13 +159,16 @@ function HandoverForm({ expectedCents, onRecorded }: FormProps & { expectedCents
       note: note.trim() || null,
     });
     setBusy(false);
+    setAsking(false);
     if (answer.ok) return onRecorded(answer.data);
     setError(explain(answer.status, answer.error));
   };
 
+  const emptiedAt = momentOf(counted);
+
   return (
     <Section title="Afdracht vastleggen">
-      <form onSubmit={(event) => void submit(event)} className="flex max-w-md flex-col gap-4 px-2 sm:px-3">
+      <form onSubmit={ask} className="flex max-w-md flex-col gap-4 px-2 sm:px-3">
         <label className={label}>
           Kluisje geleegd op
           <input className={field} type="datetime-local" value={counted} onChange={(event) => setCounted(event.target.value)} />
@@ -147,6 +195,18 @@ function HandoverForm({ expectedCents, onRecorded }: FormProps & { expectedCents
           Afdracht vastleggen
         </Button>
       </form>
+      <Confirm
+        open={asking}
+        title="Afdracht vastleggen?"
+        rows={[
+          ["Kluisje geleegd op", emptiedAt === null ? "" : when(emptiedAt)],
+          ["Ontvangen", received === null ? "" : formatEuro(received)],
+          ["Achtergebleven", left === null ? "" : formatEuro(left)],
+        ]}
+        busy={busy}
+        onYes={() => void record()}
+        onClose={() => setAsking(false)}
+      />
     </Section>
   );
 }
