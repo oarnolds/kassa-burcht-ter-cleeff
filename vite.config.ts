@@ -13,7 +13,9 @@ export default defineConfig({
     tailwindcss(),
     cloudflare({ viteEnvironment: { name: "worker" }, ...(state ? { persistState: { path: state } } : {}) }),
     // The kassa as an app on the iPad's home screen, which also starts without a connection.
-    VitePWA({
+    // Only the app in the browser is one: without this the Worker's build gets a copy of the manifest and
+    // of the registration script, and the script is uploaded with the Worker.
+    ...VitePWA({
       registerType: "autoUpdate",
       manifest: {
         name: "Kassa Burcht ter Cleeff",
@@ -36,7 +38,7 @@ export default defineConfig({
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//],
       },
-    }),
+    }).map((plugin) => ({ ...plugin, applyToEnvironment: (environment: { name: string }) => environment.name === "client" })),
   ],
   environments: { worker: { build: { sourcemap: true } } },
 });
