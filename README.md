@@ -4,8 +4,8 @@
 
 De eigen kassa van Speeltuin Burcht ter Cleeff. Hij draait als app op de iPad in de kiosk en heeft een beheerdeel voor de penningmeester. Alles staat bij Cloudflare, op één adres:
 
-- **Kassa:** `https://kassa-burcht-ter-cleeff.<subdomein>.workers.dev` (het adres volgt bij het online zetten)
-- **Beheer:** hetzelfde adres met `/beheer` erachter
+- **Kassa:** https://kassa-burcht-ter-cleeff.kassa-burcht-ter-cleeff.workers.dev
+- **Beheer:** https://kassa-burcht-ter-cleeff.kassa-burcht-ter-cleeff.workers.dev/beheer
 
 Dit is fase 1: aanslaan, contant, statiegeld, overzichten, het kluisje en de voorraad van de ijsjes. Pinnen via Mollie komt in fase 2. Tot die tijd is de knop Pin grijs en blijft iZettle de echte kassa; in deze kassa staan alleen proefverkopen.
 
