@@ -1,0 +1,154 @@
+# Kassa Burcht ter Cleeff
+
+## Wat is dit
+
+De eigen kassa van Speeltuin Burcht ter Cleeff. Hij draait als app op de iPad in de kiosk en heeft een beheerdeel voor de penningmeester. Alles staat bij Cloudflare, op één adres:
+
+- **Kassa:** `https://kassa-burcht-ter-cleeff.<subdomein>.workers.dev` (het adres volgt bij het online zetten)
+- **Beheer:** hetzelfde adres met `/beheer` erachter
+
+Dit is fase 1: aanslaan, contant, statiegeld, overzichten, het kluisje en de voorraad van de ijsjes. Pinnen via Mollie komt in fase 2. Tot die tijd is de knop Pin grijs en blijft iZettle de echte kassa; in deze kassa staan alleen proefverkopen.
+
+## Eerste keer instellen
+
+1. Open `/beheer` op een computer of telefoon. De eerste keer vraagt de kassa om een instelcode en een wachtwoord.
+2. **Instelcode:** de code die de penningmeester bij het online zetten zelf heeft gekozen (`SETUP_TOKEN`).
+3. **Nieuw wachtwoord:** minimaal 10 tekens. Bewaar het in een wachtwoordmanager. Er is één beheerdersaccount.
+4. Log daarna in met dat wachtwoord.
+5. Ga naar **Kluisje** en leg het beginbedrag vast dat nu als wisselgeld in het kluisje ligt.
+6. Ga naar **Producten** en vul bij de ijsjes in hoeveel stuks er in een doos zitten en bij welk aantal je wilt bijbestellen.
+7. Ga naar **Voorraad** en leg met **Tellen** vast wat er nu in de vriezer ligt.
+
+## De iPad koppelen
+
+De volgorde is belangrijk: de app op het beginscherm heeft zijn eigen geheugen, los van Safari. Koppel dus in de app, niet in Safari.
+
+1. In beheer: **Instellingen → Nieuwe koppelcode**. De code is 10 minuten geldig.
+2. Op de iPad: open het adres van de kassa in **Safari**.
+3. Tik op **Deel** (het vierkantje met de pijl) en kies **Zet op beginscherm**.
+4. Sluit Safari en open de app **Kassa** vanaf het beginscherm.
+5. Vul de koppelcode in, geef de kassa een naam (bijvoorbeeld "iPad kiosk") en tik op **Koppelen**.
+6. In de Instellingen van de iPad: **Beeldscherm en helderheid → Automatisch slot → Nooit**, zodat het scherm in de houder aan blijft.
+
+De iPad blijft gekoppeld tot de penningmeester hem in beheer ontkoppelt. De kassa heeft de eerste keer internet nodig; daarna start hij ook zonder.
+
+## Dagelijks gebruik
+
+**Aanslaan.** Tik op een product. Het komt op de bon rechts en de tegel toont het aantal. Nog een tik is nog een stuk.
+
+**Corrigeren.**
+- **−** en **+** op een bonregel: een stuk minder of meer.
+- **Verwijder**: de hele regel weg.
+- **Wis alles**: de bon leeg. Vijf seconden lang kun je dat terughalen met **Ongedaan maken**.
+
+**Contant.** Tik op **Contant**. Betaalt de klant gepast, tik dan op **Gepast** en de verkoop is klaar. Geeft de klant een biljet, tik dan op dat biljet: de kassa toont het wisselgeld. Tik op **Klaar** als je het hebt teruggegeven.
+
+**Statiegeld.** Tik op de tegel **Statiegeld**, typ het aantal ingeleverde stuks en tik op **Toevoegen**. Reken daarna af met **Contant**. Statiegeld telt als inkomst en gaat het kluisje in.
+
+**Verkeerd aangeslagen en al afgerekend.** Onder in beeld staat vijf minuten lang "Laatste verkoop" met de knop **Terugdraaien**. De verkoop blijft zichtbaar voor de penningmeester, met de terugboeking erbij. Later dan vijf minuten: meld het aan de penningmeester, die draait de verkoop terug in beheer.
+
+**Levering van ijsjes.** Staat er boven in beeld een gele balk **Levering onderweg**, dan heeft de penningmeester een bestelling ingevoerd. Staan de dozen in de vriezer? Tik op de balk, kijk of het klopt en tik op **Ontvangen**. De voorraad wordt bijgewerkt. Klopt de levering niet, bevestig dan toch en geef de afwijking door aan de penningmeester.
+
+**Voorraad op de tegel.** "nog 5" betekent dat die smaak bijna op is, "op?" dat hij volgens de kassa op is. De tegel blijft altijd werken: wat in de vriezer ligt is leidend.
+
+**De regel onderaan.** "Online" is goed. "Offline · contant werkt door" betekent dat er geen internet is: je kunt gewoon doorwerken, de verkopen worden verstuurd zodra er weer verbinding is.
+
+## Voor de penningmeester
+
+Alles staat onder `/beheer`. Het werkt op de computer en op de telefoon.
+
+- **Overzicht.** Vandaag en deze maand: omzet, aantal verkopen, en wat er in het kluisje hoort te liggen.
+- **Rapporten.** Kies een maand. Je ziet de omzet per dag, per categorie en per product. Onderaan download je de maand als CSV, in twee vormen: dagtotalen en losse verkopen.
+- **Verkopen.** De losse verkopen van een dag. Een verkoop terugdraaien kan met een reden. De oorspronkelijke verkoop blijft staan en er komt een tegenboeking bij. Een contante verkoop kun je alleen terugdraaien zolang hij na de laatste afdracht valt.
+- **Kluisje.** Bovenaan staat wat er in het kluisje hoort te liggen. Bij een afdracht vul je in wanneer het kluisje is geleegd, wat je hebt ontvangen en wat er als wisselgeld is achtergebleven. De kassa rekent het verschil uit en bewaart het, met je toelichting. Alle eerdere afdrachten blijven zichtbaar.
+- **Voorraad.**
+  - *Bijbestellen*: wat op of onder de bestelgrens staat.
+  - *Stand*: de voorraad per product. Met **Tellen** leg je vast wat er werkelijk ligt.
+  - *Bestelling invoeren*: wat je bij Goodoo hebt besteld, in dozen (losse stuks kan ook). De beheerder ziet dan op de iPad de balk "Levering onderweg".
+  - *Onderweg*: bestellingen die nog niet zijn bevestigd. Je kunt ze zelf als ontvangen markeren of laten vervallen.
+- **Producten.** Naam, prijs, categorie en volgorde van de tegels (de pijltjes). Een product verberg je in plaats van het te verwijderen, omdat oude verkopen ernaar verwijzen. Hier zet je ook aan of een product een cijferblok opent en of de voorraad wordt bijgehouden. Onderaan staan de categorieën met hun kleur. Een wijziging staat binnen een halve minuut op de kassa.
+- **Instellingen.** Een iPad koppelen of ontkoppelen, het wachtwoord wijzigen, alles downloaden als één bestand (reservekopie), en eenmalig de proefgegevens wissen.
+
+**Bij de ingebruikname** (als pin werkt en de kassa echt de kiosk in gaat): **Instellingen → Proefgegevens wissen**. Verkopen, afdrachten, bestellingen en voorraadmutaties verdwijnen; producten, prijzen en de koppeling met de iPad blijven. Leg daarna het beginbedrag van het kluisje en de getelde voorraad opnieuw vast.
+
+## Als er iets misgaat
+
+**Geen internet.** De kassa werkt door met contant. Onderaan staat hoeveel verkopen wachten op verzending. Ze worden vanzelf verstuurd als er weer verbinding is, en komen één keer in het overzicht. De levering bevestigen en een prijswijziging ophalen kunnen pas weer met internet.
+
+**"Verkoop afgekeurd".** Dat hoort niet voor te komen: de kassa kon een verkoop niet inboeken. De verkoop staat nog op de iPad. Noteer tijd en bedrag en meld het aan de penningmeester; de bouwer kan de verkoop uitlezen.
+
+**"Opslaan mislukt. Noteer deze verkoop op papier".** De iPad kon de verkoop niet bewaren (bijvoorbeeld geen opslagruimte). Schrijf de verkoop op en meld het aan de penningmeester.
+
+**"Kassa is ontkoppeld".** De iPad is in beheer ontkoppeld. Verkopen die nog op de iPad wachten blijven bewaard. Maak in beheer een nieuwe koppelcode, tik op de iPad op **Opnieuw koppelen** en vul de code in. De wachtende verkopen worden daarna verstuurd.
+
+**De kassa toont een oude versie.** Sluit de app op de iPad helemaal af (veeg hem weg) en open hem opnieuw. Een nieuwe versie wordt bij het openen opgehaald.
+
+**Wachtwoord kwijt.** Er is geen "wachtwoord vergeten". De bouwer kan het wachtwoord wissen (zie hieronder); daarna stel je het opnieuw in met de instelcode.
+
+**Er is iets verkeerd gewist of gewijzigd.** De database kan worden teruggezet naar een eerder moment, tot 7 dagen terug (D1 Time Travel van Cloudflare). Dat doet de bouwer. Download daarnaast af en toe **Alles downloaden** als eigen reservekopie, in elk geval na elke maandafsluiting.
+
+## Voor de bouwer
+
+Eén Cloudflare Worker (Hono, onder `/api`) met een React-app als statische bestanden, en een D1-database. Ontwerp en plan staan in `docs/superpowers/`.
+
+```bash
+npm install
+```
+
+```bash
+npm run db:migrate:local
+```
+
+```bash
+npm run dev
+```
+
+Lokaal staat de instelcode in `.dev.vars` (zie `.dev.vars.example`).
+
+Testen:
+
+```bash
+npm test
+```
+
+```bash
+npm run e2e
+```
+
+`npm test` draait de tests van de app en van de Worker. `npm run e2e` bouwt de app en loopt de kassa na in WebKit op iPad-formaat (1180×820), met een eigen lege database in `.wrangler/e2e`.
+
+Online zetten (de penningmeester is ingelogd met `npx wrangler login`):
+
+```bash
+npx wrangler d1 migrations apply kassa --remote
+```
+
+```bash
+npm run deploy
+```
+
+De instelcode is een geheim van de Worker en staat niet in de code:
+
+```bash
+npx wrangler secret put SETUP_TOKEN
+```
+
+Database terugzetten naar een eerder moment (tijd in UTC):
+
+```bash
+npx wrangler d1 time-travel restore kassa --timestamp=2026-07-31T16:00:00Z
+```
+
+Wachtwoord van beheer wissen, waarna `/beheer` opnieuw om de instelcode vraagt:
+
+```bash
+npx wrangler d1 execute kassa --remote --command "DELETE FROM sessions; DELETE FROM admin;"
+```
+
+De pictogrammen voor het beginscherm komen uit `public/icon.svg`:
+
+```bash
+npm run icons
+```
+
+Afspraken in de code: bedragen zijn hele centen; een dag is een dag in Amsterdam; een verkoop wordt nooit gewijzigd of verwijderd, terugdraaien is een tegenboeking; de iPad bewaart een verkoop eerst zelf en verstuurt hem daarna, en de server boekt dezelfde verkoop nooit twee keer.
