@@ -122,6 +122,40 @@ it("hides the reversal offer after five minutes", async () => {
   expect(screen.queryByText(/Laatste verkoop/)).not.toBeInTheDocument();
 });
 
+const TOO_LATE = "Terugdraaien kan tot vijf minuten na de verkoop. Meld het aan de penningmeester.";
+
+it("does not reverse a sale of more than five minutes ago, also when the offer is still on screen", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  await paired();
+  mockOffline();
+  renderAt("/");
+  await sellOne();
+  expect(await screen.findByText(/Laatste verkoop/)).toBeInTheDocument();
+  // The iPad slept: the clock went on, the timers did not.
+  vi.setSystemTime(Date.now() + 5 * 60_000 + 1000);
+  await tap("Terugdraaien");
+  await tap("Ja, terugdraaien");
+  // The server would refuse it; saying "teruggedraaid" would leave the books and the cash box apart.
+  expect(await screen.findByText(TOO_LATE)).toBeInTheDocument();
+  expect(screen.queryByText("Verkoop teruggedraaid")).not.toBeInTheDocument();
+  expect(screen.queryByText(/Laatste verkoop/)).not.toBeInTheDocument();
+  expect(await pendingCount()).toBe(1);
+});
+
+it("takes the reversal offer away when the iPad wakes up after five minutes", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  await paired();
+  mockOffline();
+  renderAt("/");
+  await sellOne();
+  expect(await screen.findByText(/Laatste verkoop/)).toBeInTheDocument();
+  vi.setSystemTime(Date.now() + 5 * 60_000 + 1000);
+  act(() => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  expect(screen.queryByText(/Laatste verkoop/)).not.toBeInTheDocument();
+});
+
 it("sends a sale and then has nothing waiting", async () => {
   await paired();
   mockApi({ "/api/kassa/catalog": catalog, "POST /api/kassa/sales": acceptAll });

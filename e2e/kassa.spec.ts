@@ -138,6 +138,22 @@ test("a double tap on a banknote shows the change, and a double tap on Klaar boo
   await expect(page.getByTestId("tile-qty")).toHaveCount(0);
 });
 
+test("a double tap on Ja, terugdraaien takes the sale back once and leaves the next receipt empty", async ({ page, request }) => {
+  const { code, beheer } = await prepare(request);
+  await pair(page, code);
+  await tile(page, /Koffie/).click();
+  await tap(page, "Contant");
+  await tap(page, "Gepast");
+  await expectToday(beheer, { cashCents: 140, saleCount: 1 });
+  await tap(page, "Terugdraaien");
+  await page.getByRole("button", { name: "Ja, terugdraaien", exact: true }).dblclick();
+  await expect(page.getByText("Verkoop teruggedraaid")).toBeVisible();
+  await expectToday(beheer, { cashCents: 0 });
+  // The second tap fell on the screen behind the question: nothing may have been added there.
+  await expect(page.getByTestId("tile-qty")).toHaveCount(0);
+  await expect(receipt(page).getByText("Tik op een product om te beginnen.")).toBeVisible();
+});
+
 test("a double tap on Ontvangen takes the delivery in once", async ({ page, request }) => {
   const { code, beheer } = await prepare(request);
   type Stock = { items: { productId: string; stock: number }[] };

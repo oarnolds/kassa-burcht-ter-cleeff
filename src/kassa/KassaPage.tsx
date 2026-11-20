@@ -15,8 +15,11 @@ import { getMeta } from "./store/db";
 import { enqueue } from "./store/outbox";
 import { startSync, type SyncState } from "./store/sync";
 
-/** How long the last sale can be taken back on the kassa. */
+/** How long the last sale can be taken back on the kassa. The server holds a reversal to the same five minutes. */
 const REVERSE_FOR_MS = 5 * 60_000;
+
+/** Time left to take a sale back, by the clock: a sleeping iPad pauses timers, not the time. */
+const reversibleFor = (sale: CashSaleInput) => Date.parse(sale.soldAt) + REVERSE_FOR_MS - Date.now();
 
 /** The kassa as it runs on the iPad: the screen, wired to the iPad's own storage and to the server. */
 export function KassaPage() {
@@ -58,11 +61,18 @@ export function KassaPage() {
     };
   }, []);
 
-  // The offer to take the last sale back ends by itself.
+  // The offer to take the last sale back ends by itself, also when the iPad slept through the moment.
   useEffect(() => {
     if (!lastSale) return;
-    const timer = setTimeout(() => setLastSale(null), REVERSE_FOR_MS);
-    return () => clearTimeout(timer);
+    const check = () => {
+      if (reversibleFor(lastSale) <= 0) setLastSale(null);
+    };
+    const timer = setTimeout(() => setLastSale(null), Math.max(0, reversibleFor(lastSale)));
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", check);
+    };
   }, [lastSale]);
 
   /** Puts a sale or a reversal in the queue. Storing can fail (no space left, storage switched off); then paper is the only record. */
@@ -99,6 +109,11 @@ export function KassaPage() {
 
   const reverse = (sale: CashSaleInput) => {
     setLastSale(null);
+    // The server refuses a reversal of an older sale; saying "teruggedraaid" here would be untrue.
+    if (reversibleFor(sale) < 0) {
+      toast.show("Terugdraaien kan tot vijf minuten na de verkoop. Meld het aan de penningmeester.", { ms: 15_000 });
+      return;
+    }
     const reversal: ReversalInput = { id: crypto.randomUUID(), kind: "reversal", soldAt: new Date().toISOString(), reversesSaleId: sale.id };
     const back = sale.lines.map((line) => ({ productId: line.productId, qty: -line.qty }));
     void store(reversal, back, "terugboeking").then((stored) => {
@@ -139,7 +154,7 @@ export function KassaPage() {
       footer={
         <footer className="flex min-h-14 shrink-0 items-center justify-between gap-4 border-t-2 border-sand bg-white px-4 py-1">
           <StatusBadge state={sync} />
-          {lastSale && <LastSaleBar totalCents={lastSale.totalCents} onReverse={() => reverse(lastSale)} />}
+          <LastSaleBar sale={lastSale} onReverse={() => lastSale && reverse(lastSale)} />
         </footer>
       }
     />

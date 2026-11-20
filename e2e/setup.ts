@@ -63,7 +63,7 @@ export function today(): string {
 type Day = { totals: { cashCents: number; saleCount: number } };
 
 /** What beheer has for today. A sale travels in the background, so ask until it is there (or give up). */
-export async function expectToday(beheer: Beheer, totals: { cashCents: number; saleCount: number }, timeout = 15_000): Promise<void> {
+export async function expectToday(beheer: Beheer, totals: { cashCents: number; saleCount?: number }, timeout = 15_000): Promise<void> {
   await expect
     .poll(async () => (await beheer.get<Day>(`/api/admin/reports/day?date=${today()}`)).totals, { timeout })
     .toMatchObject(totals);
