@@ -1,4 +1,6 @@
 import { Route, Routes } from "react-router";
+import { KassaPage } from "./kassa/KassaPage";
+import { PairPage } from "./kassa/PairPage";
 import { Logo } from "./ui/Logo";
 
 function Placeholder({ title }: { title: string }) {
@@ -14,8 +16,8 @@ function Placeholder({ title }: { title: string }) {
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<Placeholder title="Kassa" />} />
-      <Route path="/koppelen" element={<Placeholder title="iPad koppelen" />} />
+      <Route path="/" element={<KassaPage />} />
+      <Route path="/koppelen" element={<PairPage />} />
       <Route path="/beheer" element={<Placeholder title="Beheer" />} />
       <Route path="/beheer/login" element={<Placeholder title="Inloggen" />} />
       <Route path="/beheer/instellen" element={<Placeholder title="Beheer instellen" />} />

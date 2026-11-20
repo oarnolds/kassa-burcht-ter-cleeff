@@ -165,10 +165,10 @@ it.each([
   "/beheer/voorraad",
   "/beheer/producten",
   "/beheer/instellingen",
-])("has a page at %s", (path) => {
+])("has a page at %s", async (path) => {
   mockLoggedIn();
   renderAt(path);
-  expect(screen.getAllByRole("heading").length).toBeGreaterThan(0);
+  expect((await screen.findAllByRole("heading")).length).toBeGreaterThan(0);
 });
 
 it("mockApi answers by path, with a method key winning, and records the calls", async () => {

@@ -1,6 +1,6 @@
 // Helpers for the client tests: a fake server, rendering inside the app's providers, and a few shortcuts.
 
-import { render as rtlRender, screen, within, type RenderResult } from "@testing-library/react";
+import { cleanup, render as rtlRender, screen, within, type RenderResult } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 import { MemoryRouter } from "react-router";
@@ -87,9 +87,9 @@ export function user(): UserEvent {
   return userEvent.setup(vi.isFakeTimers() ? { advanceTimers: vi.advanceTimersByTime } : {});
 }
 
-/** Clicks the one button with this accessible name. */
+/** Clicks the one button with this accessible name, waiting a moment for it to appear. */
 export async function tap(name: string | RegExp): Promise<void> {
-  await user().click(screen.getByRole("button", { name }));
+  await user().click(await screen.findByRole("button", { name }));
 }
 
 /** Queries inside the table row whose name contains `row`, in the region named `section`. */
@@ -118,20 +118,31 @@ export const catalog: Catalog = {
   openOrders: [],
 };
 
-function deleteKassaDatabase(): Promise<void> {
+/** Removes the kassa's database on this "iPad". */
+export function deleteKassaDatabase(): Promise<void> {
   return new Promise((resolve) => {
     const request = indexedDB.deleteDatabase("kassa");
     request.onsuccess = request.onerror = request.onblocked = () => resolve();
   });
 }
 
-// Every test starts from nothing: no routes, no recorded calls, real timers, an empty database.
+async function kassaDatabaseExists(): Promise<boolean> {
+  return (await indexedDB.databases()).some((database) => database.name === "kassa");
+}
+
+// Every test starts from nothing: no page, no routes, no recorded calls, real timers, an empty database.
 afterEach(async () => {
+  // Take the page down first, so its background work stops before the ground under it is cleared.
+  cleanup();
+  vi.useRealTimers();
+  if (await kassaDatabaseExists()) {
+    // Storage work that was under way gets a moment to finish before the database goes.
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await deleteKassaDatabase();
+  }
   routes = {};
   seen = [];
   offline = false;
-  vi.useRealTimers();
   vi.unstubAllGlobals();
   localStorage.clear();
-  await deleteKassaDatabase();
 });
