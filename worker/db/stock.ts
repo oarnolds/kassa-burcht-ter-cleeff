@@ -26,21 +26,11 @@ export type OrderLineRow = { order_id: string; product_id: string; name: string;
 
 const MAX_ORDERS = 50;
 
-/** The stock of a product is the sum of its movements. Usable as a column in a query over `products p`. */
-export const STOCK_OF_PRODUCT = "COALESCE((SELECT SUM(m.delta) FROM stock_movements m WHERE m.product_id = p.id), 0)";
-
-export async function stockLevels(db: D1Database): Promise<Map<string, number>> {
-  const { results } = await db
-    .prepare("SELECT product_id, SUM(delta) AS stock FROM stock_movements GROUP BY product_id")
-    .all<{ product_id: string; stock: number }>();
-  return new Map(results.map((row) => [row.product_id, row.stock]));
-}
-
 /** Every product whose stock is tracked, in the order of the kassa. */
 export async function listStock(db: D1Database): Promise<StockItem[]> {
   const { results } = await db
     .prepare(
-      `SELECT p.id, p.name, c.name AS category_name, p.units_per_box, p.reorder_at, ${STOCK_OF_PRODUCT} AS stock
+      `SELECT p.id, p.name, c.name AS category_name, p.units_per_box, p.reorder_at, p.stock
        FROM products p JOIN categories c ON c.id = p.category_id
        WHERE p.track_stock = 1
        ORDER BY c.sort, c.id, p.sort, p.id`,
@@ -178,7 +168,7 @@ export async function recordCount(db: D1Database, input: CountInput, now: Date):
   const booked = await db
     .prepare(
       `INSERT INTO stock_movements (product_id, delta, kind, note, created_at)
-       SELECT ?1, ?2 - COALESCE(SUM(delta), 0), 'count', ?3, ?4 FROM stock_movements WHERE product_id = ?1
+       SELECT id, ?2 - stock, 'count', ?3, ?4 FROM products WHERE id = ?1
        RETURNING delta`,
     )
     .bind(input.productId, input.counted, input.note, now.toISOString())

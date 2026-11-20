@@ -1,5 +1,5 @@
 import type { AdminProduct, Catalog, CatalogProduct, Category } from "../../shared/types";
-import { STOCK_OF_PRODUCT, orderQueries, toOpenOrder, toOrders, type OrderLineRow, type OrderRow } from "./stock";
+import { orderQueries, toOpenOrder, toOrders, type OrderLineRow, type OrderRow } from "./stock";
 
 export type DbProduct = {
   id: string;
@@ -19,7 +19,8 @@ const PRODUCT_COLUMNS = `p.id, p.name, p.price_cents, p.category_id, c.name AS c
          p.quantity_pad, p.track_stock, p.units_per_box, p.reorder_at`;
 const PRODUCT_FROM = "FROM products p JOIN categories c ON c.id = p.category_id";
 const PRODUCT_SELECT = `SELECT ${PRODUCT_COLUMNS} ${PRODUCT_FROM}`;
-const PRODUCT_SELECT_WITH_STOCK = `SELECT ${PRODUCT_COLUMNS}, ${STOCK_OF_PRODUCT} AS stock ${PRODUCT_FROM}`;
+// The stock is kept on the product (migration 0003): the sum of its movements, without adding them up here.
+const PRODUCT_SELECT_WITH_STOCK = `SELECT ${PRODUCT_COLUMNS}, p.stock ${PRODUCT_FROM}`;
 const CATEGORY_SELECT = "SELECT id, name, color, sort FROM categories ORDER BY sort, id";
 
 // The order of the kassa tiles: category by category, then the product's own place.
@@ -51,7 +52,7 @@ export function toAdminProduct(row: DbProduct): AdminProduct {
 
 /** What the kassa shows: the active products with their stock, and the deliveries that are on their way. */
 export async function getCatalog(db: D1Database, now: Date): Promise<Catalog> {
-  // One round trip: the iPad asks for this every minute.
+  // One round trip that reads a fixed number of rows: the iPad asks for this twice a minute.
   const [categories, rows, orders, orderLines] = await db.batch([
     db.prepare(CATEGORY_SELECT),
     db.prepare(`${PRODUCT_SELECT_WITH_STOCK} WHERE p.active = 1 ${PRODUCT_ORDER}`),

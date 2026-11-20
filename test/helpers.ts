@@ -96,3 +96,62 @@ export async function postSales(token: string, items: unknown[]): Promise<ItemRe
   if (res.status !== 200) throw new Error(`sales answered ${res.status}`);
   return (await res.json<{ results: ItemResult[] }>()).results;
 }
+
+/**
+ * A database that keeps count of its round trips and of the rows it reads, to hold the daily work against
+ * the free plan's limits (50 calls per request, 5 million rows read a day).
+ */
+export function meteredDb(db: D1Database): { db: D1Database; calls: () => number; rowsRead: () => number } {
+  let calls = 0;
+  let rowsRead = 0;
+  const originals = new WeakMap<object, D1PreparedStatement>();
+  const note = <T extends { meta: { rows_read?: number } }>(result: T): T => {
+    rowsRead += result.meta.rows_read ?? 0;
+    return result;
+  };
+  const wrap = (statement: D1PreparedStatement): D1PreparedStatement => {
+    const proxy = new Proxy(statement, {
+      get(target, prop) {
+        if (prop === "bind") return (...values: unknown[]) => wrap(target.bind(...values));
+        if (prop === "all" || prop === "run") {
+          return async () => {
+            calls++;
+            return note(await target[prop]());
+          };
+        }
+        // `first` gives no figures: ask for all rows and hand back the first, which is what it does itself.
+        if (prop === "first") {
+          return async (column?: string) => {
+            calls++;
+            const row = note(await target.all<Record<string, unknown>>()).results[0] ?? null;
+            return row !== null && column !== undefined ? row[column] : row;
+          };
+        }
+        if (prop === "raw") {
+          return (...args: unknown[]) => {
+            calls++;
+            return (target.raw as (...a: unknown[]) => unknown)(...args);
+          };
+        }
+        return Reflect.get(target, prop);
+      },
+    });
+    originals.set(proxy, statement);
+    return proxy;
+  };
+  const metered = new Proxy(db, {
+    get(target, prop) {
+      if (prop === "prepare") return (sql: string) => wrap(target.prepare(sql));
+      if (prop === "batch") {
+        return async (statements: D1PreparedStatement[]) => {
+          calls++;
+          const results = await target.batch(statements.map((statement) => originals.get(statement) ?? statement));
+          results.forEach(note);
+          return results;
+        };
+      }
+      return Reflect.get(target, prop);
+    },
+  });
+  return { db: metered, calls: () => calls, rowsRead: () => rowsRead };
+}

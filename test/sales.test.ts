@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, expect, it } from "vitest";
 import { ingestItems } from "../worker/db/sales";
-import { api, asAdmin, asDevice, cashSale, postSales, resetData } from "./helpers";
+import { api, asAdmin, asDevice, cashSale, meteredDb, postSales, resetData } from "./helpers";
 
 let token: string;
 let deviceId: string;
@@ -19,41 +19,6 @@ const reversalOf = (reversesSaleId: string, soldAt: string) => ({
   soldAt,
   reversesSaleId,
 });
-
-/** A database that counts its round trips, to check a request against the free plan's limit. */
-function countingDb(db: D1Database): { db: D1Database; calls: () => number } {
-  let calls = 0;
-  const originals = new WeakMap<object, D1PreparedStatement>();
-  const wrap = (statement: D1PreparedStatement): D1PreparedStatement => {
-    const proxy = new Proxy(statement, {
-      get(target, prop) {
-        if (prop === "bind") return (...values: unknown[]) => wrap(target.bind(...values));
-        if (prop === "first" || prop === "all" || prop === "run" || prop === "raw") {
-          return (...args: unknown[]) => {
-            calls++;
-            return (target[prop] as (...a: unknown[]) => unknown)(...args);
-          };
-        }
-        return Reflect.get(target, prop);
-      },
-    });
-    originals.set(proxy, statement);
-    return proxy;
-  };
-  const counted = new Proxy(db, {
-    get(target, prop) {
-      if (prop === "prepare") return (sql: string) => wrap(target.prepare(sql));
-      if (prop === "batch") {
-        return (statements: D1PreparedStatement[]) => {
-          calls++;
-          return target.batch(statements.map((statement) => originals.get(statement) ?? statement));
-        };
-      }
-      return Reflect.get(target, prop);
-    },
-  });
-  return { db: counted, calls: () => calls };
-}
 
 it("accepts a cash sale", async () => {
   const sale = cashSale({ soldAt: "2026-07-30T10:00:00.000Z", cashGivenCents: 200 });
@@ -264,7 +229,7 @@ it("reverses a sale once when two reversals arrive at the same moment", async ()
 it("writes a full request of fifty sales within the free plan's database budget", async () => {
   const sales = Array.from({ length: 49 }, () => cashSale({ soldAt: "2026-07-30T10:00:00.000Z" }));
   const undo = reversalOf(sales[0]!.id, "2026-07-30T10:01:00.000Z");
-  const counted = countingDb(env.DB);
+  const counted = meteredDb(env.DB);
   const results = await ingestItems(counted.db, deviceId, [...sales, undo], new Date());
   expect(results.every((result) => result.status === "accepted")).toBe(true);
   expect(await count("SELECT COUNT(*) n FROM sales")).toBe(50);
