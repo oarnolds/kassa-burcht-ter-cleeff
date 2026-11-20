@@ -65,3 +65,13 @@ export async function asAdmin(): Promise<{ cookie: string }> {
   if (login.status !== 200 || !header) throw new Error(`login failed with ${login.status}`);
   return { cookie: header.split(";")[0]! };
 }
+
+/** Pairs a kassa the way an iPad does: a code from beheer, traded for a token. */
+export async function asDevice(name = "iPad"): Promise<{ token: string; deviceId: string }> {
+  const { cookie } = await asAdmin();
+  const created = await api("/api/admin/pairing-codes", { method: "POST", cookie });
+  const { code } = await created.json<{ code: string }>();
+  const paired = await api("/api/pair", { method: "POST", json: { code, name } });
+  if (paired.status !== 201) throw new Error(`pairing failed with ${paired.status}`);
+  return paired.json();
+}
