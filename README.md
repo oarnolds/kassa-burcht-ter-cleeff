@@ -51,7 +51,7 @@ De iPad blijft gekoppeld tot de penningmeester hem in beheer ontkoppelt. De kass
 
 **Voorraad op de tegel.** "nog 5" betekent dat die smaak bijna op is, "op?" dat hij volgens de kassa op is. De tegel blijft altijd werken: wat in de vriezer ligt is leidend.
 
-**De regel onderaan.** "Online" is goed. "Offline · contant werkt door" betekent dat er geen internet is: je kunt gewoon doorwerken, de verkopen worden verstuurd zodra er weer verbinding is.
+**De regel onderaan.** "Online" betekent dat de kassa verbinding heeft. "Offline · contant werkt door" betekent dat er geen internet is: je kunt gewoon doorwerken, de verkopen worden verstuurd zodra er weer verbinding is. Staat er "… wacht op verzending", dan zijn die verkopen nog niet bij de penningmeester aangekomen. Dat lost zichzelf op. Blijft het langer dan een paar minuten staan terwijl er "Online" staat, meld het dan aan de penningmeester.
 
 ## Voor de penningmeester
 
@@ -75,7 +75,7 @@ Alles staat onder `/beheer`. Het werkt op de computer en op de telefoon.
 
 **Geen internet.** De kassa werkt door met contant. Onderaan staat hoeveel verkopen wachten op verzending. Ze worden vanzelf verstuurd als er weer verbinding is, en komen één keer in het overzicht. De levering bevestigen en een prijswijziging ophalen kunnen pas weer met internet.
 
-**"Verkoop afgekeurd".** Dat hoort niet voor te komen: de kassa kon een verkoop niet inboeken. De verkoop staat nog op de iPad. Noteer tijd en bedrag en meld het aan de penningmeester; de bouwer kan de verkoop uitlezen.
+**"Verkoop afgekeurd".** Dat hoort niet voor te komen: de server heeft een verkoop of een terugboeking niet geboekt. Tik op de rode knop **… afgekeurd · bekijken**. Je ziet per regel de tijd, het bedrag, wat er is verkocht en waarom het is afgekeurd. Geef dat door aan de penningmeester (een foto van het scherm is genoeg) en tik daarna op **Doorgegeven**; daarmee verdwijnt de regel van de iPad. Een afgekeurde verkoop staat niet in de boeken terwijl het geld wel in het kluisje zit: de penningmeester ziet dat bedrag bij de volgende afdracht als "meer dan verwacht" en zet het in de toelichting. Een afgekeurde terugboeking draait de penningmeester zelf terug onder **Verkopen**.
 
 **"Opslaan mislukt. Noteer deze verkoop op papier".** De iPad kon de verkoop niet bewaren (bijvoorbeeld geen opslagruimte). Schrijf de verkoop op en meld het aan de penningmeester.
 

@@ -25,6 +25,20 @@ export async function rejectedCount(): Promise<number> {
   return (await getDb()).count("rejected");
 }
 
+/** A sale or reversal the server refused: kept on the iPad until someone has passed it on. */
+export type Rejected = { id: string; item: OutboxItem; reason: string; at: string };
+
+/** What the server refused, in the order it was rung up. */
+export async function listRejected(): Promise<Rejected[]> {
+  const rows = (await (await getDb()).getAll("rejected")) as Rejected[];
+  return rows.sort((a, b) => a.item.soldAt.localeCompare(b.item.soldAt));
+}
+
+/** Forgets a refused item: its details have been passed on to the penningmeester. */
+export async function dismissRejected(id: string): Promise<void> {
+  await (await getDb()).delete("rejected", id);
+}
+
 let running: Promise<FlushOutcome> | null = null;
 
 /**

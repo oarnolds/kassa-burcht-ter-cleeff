@@ -135,7 +135,7 @@ export function KassaPage() {
       <main className="flex h-full flex-col items-center justify-center gap-6 p-8 text-center">
         <Logo />
         {!sync.paired ? (
-          <StatusBadge state={sync} />
+          <StatusBadge state={sync} onRejectedChange={() => kick.current()} />
         ) : sync.online ? (
           <p className="text-xl">De kassa wordt gestart…</p>
         ) : (
@@ -153,7 +153,7 @@ export function KassaPage() {
       header={<DeliveryBar orders={catalog.openOrders} online={sync.online && sync.paired} onReceive={receive} />}
       footer={
         <footer className="flex min-h-14 shrink-0 items-center justify-between gap-4 border-t-2 border-sand bg-white px-4 py-1">
-          <StatusBadge state={sync} />
+          <StatusBadge state={sync} onRejectedChange={() => kick.current()} />
           <LastSaleBar sale={lastSale} onReverse={() => lastSale && reverse(lastSale)} />
         </footer>
       }

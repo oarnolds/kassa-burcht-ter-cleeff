@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
-import { calls, catalog, mockApi, mockOffline, renderAt, tap } from "../test-utils";
+import { calls, catalog, mockApi, mockOffline, renderAt, tap, user } from "../test-utils";
 import { loadCatalog, saveCatalog, soldSinceFetch } from "./store/catalog";
 import { getDb, setMeta } from "./store/db";
 import { pendingCount, rejectedCount } from "./store/outbox";
@@ -194,9 +194,33 @@ it("reports a sale the server refused, without holding up the rest", async () =>
   });
   renderAt("/");
   await sellOne();
-  expect(await screen.findByText("1 verkoop afgekeurd, meld dit aan de penningmeester")).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "1 verkoop afgekeurd · bekijken" })).toBeInTheDocument();
   expect(await rejectedCount()).toBe(1);
   expect(await pendingCount()).toBe(0);
+});
+
+it("shows what the server refused, and forgets it once it has been passed on", async () => {
+  await paired();
+  mockApi({
+    "/api/kassa/catalog": catalog,
+    "POST /api/kassa/sales": (req: { body: { items: { id: string }[] } }) => ({
+      results: req.body.items.map((i) => ({ id: i.id, status: "rejected", reason: "total_mismatch" })),
+    }),
+  });
+  renderAt("/");
+  await tap(/Aardbeitje/);
+  await sellOne();
+  await tap("1 verkoop afgekeurd · bekijken");
+  const dialog = within(await screen.findByRole("dialog", { name: "Afgekeurde verkopen" }));
+  // Enough to pass on: when, how much, what, and why.
+  expect(await dialog.findByText(/^Verkoop van \d\d-\d\d-\d{4} \d\d:\d\d · € 2,20 contant$/)).toBeInTheDocument();
+  expect(dialog.getByText("2× Aardbeitje")).toBeInTheDocument();
+  expect(dialog.getByText("Het totaal klopte niet met de regels.")).toBeInTheDocument();
+  expect(dialog.getByText("Niet geboekt. Het geld zit wel in het kluisje.")).toBeInTheDocument();
+  await user().click(dialog.getByRole("button", { name: "Doorgegeven" }));
+  await waitFor(() => expect(screen.queryByText(/afgekeurd/)).not.toBeInTheDocument());
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(await rejectedCount()).toBe(0);
 });
 
 it("shows a changed price within thirty seconds", async () => {
