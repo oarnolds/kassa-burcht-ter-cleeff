@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import { calls, catalog, mockApi, mockOffline, renderAt, tap } from "../test-utils";
 import { loadCatalog, saveCatalog, soldSinceFetch } from "./store/catalog";
@@ -235,4 +235,91 @@ it("says so when a sale could not be stored on the iPad", async () => {
     add.mockRestore();
   }
   expect(await pendingCount()).toBe(0);
+});
+
+const lowStock = { ...catalog, products: catalog.products.map((p) => (p.id === "aardbeitje" ? { ...p, stock: 3, reorderAt: 12 } : p)) };
+const tile = async (name: RegExp) => within(await screen.findByRole("button", { name }));
+
+it("shows what is left on a tile and counts down with every sale, also offline", async () => {
+  await setMeta("deviceToken", "tok");
+  await saveCatalog(lowStock);
+  mockOffline();
+  renderAt("/");
+  expect((await tile(/Aardbeitje/)).getByText("nog 3")).toBeInTheDocument();
+  expect((await tile(/Koffie/)).queryByText(/nog|op\?/)).not.toBeInTheDocument();
+  await sellOne();
+  expect(await screen.findByText("nog 2")).toBeInTheDocument();
+  await tap("Terugdraaien");
+  await tap("Ja, terugdraaien");
+  expect(await screen.findByText("nog 3")).toBeInTheDocument();
+});
+
+it("remembers what was sold since the last catalog when the kassa is opened again", async () => {
+  await setMeta("deviceToken", "tok");
+  await saveCatalog(lowStock);
+  mockOffline();
+  const first = renderAt("/");
+  await sellOne();
+  expect(await screen.findByText("nog 2")).toBeInTheDocument();
+  first.unmount();
+  renderAt("/");
+  expect((await tile(/Aardbeitje/)).getByText("nog 2")).toBeInTheDocument();
+});
+
+const delivery = {
+  id: "o1",
+  createdAt: "2026-07-30T08:00:00.000Z",
+  note: null,
+  lines: [{ productId: "aardbeitje", name: "Aardbeitje", boxes: 2, looseUnits: 0, units: 48 }],
+};
+
+it("confirms a delivery on the kassa and shows the new stock", async () => {
+  const before = { ...lowStock, openOrders: [delivery] };
+  const after = { ...catalog, products: catalog.products.map((p) => (p.id === "aardbeitje" ? { ...p, stock: 51, reorderAt: 12 } : p)) };
+  let received = false;
+  await setMeta("deviceToken", "tok");
+  await saveCatalog(before);
+  mockApi({
+    "/api/kassa/catalog": () => (received ? after : before),
+    "POST /api/kassa/orders/o1/receive": () => {
+      received = true;
+      return { ok: true };
+    },
+  });
+  renderAt("/");
+  expect((await tile(/Aardbeitje/)).getByText("nog 3")).toBeInTheDocument();
+  await tap("Levering onderweg");
+  expect(screen.getByText("2 dozen Aardbeitje (48 stuks)")).toBeInTheDocument();
+  await tap("Ontvangen");
+  expect(await screen.findByText("Levering ontvangen, voorraad bijgewerkt")).toBeInTheDocument();
+  expect(calls("POST").map((call) => call.url)).toEqual(["/api/kassa/orders/o1/receive"]);
+  await waitFor(() => expect(screen.queryByText("nog 3")).not.toBeInTheDocument());
+  await waitFor(async () => expect((await loadCatalog())?.openOrders).toEqual([]));
+  expect(screen.queryByRole("button", { name: "Levering onderweg" })).not.toBeInTheDocument();
+});
+
+it("treats a delivery someone else already confirmed as received", async () => {
+  await setMeta("deviceToken", "tok");
+  await saveCatalog({ ...catalog, openOrders: [delivery] });
+  mockApi({ "/api/kassa/catalog": { ...catalog, openOrders: [delivery] }, "POST /api/kassa/orders/o1/receive": [409, { error: "not_open" }] });
+  renderAt("/");
+  await tap("Levering onderweg");
+  await tap("Ontvangen");
+  expect(await screen.findByText("Levering ontvangen, voorraad bijgewerkt")).toBeInTheDocument();
+});
+
+it("cannot confirm a delivery without a connection, and says the server refused when it did", async () => {
+  await setMeta("deviceToken", "tok");
+  await saveCatalog({ ...catalog, openOrders: [delivery] });
+  mockApi({ "/api/kassa/catalog": { ...catalog, openOrders: [delivery] }, "POST /api/kassa/orders/o1/receive": [500, { error: "server" }] });
+  renderAt("/");
+  await tap("Levering onderweg");
+  await tap("Ontvangen");
+  expect(await screen.findByText("Dat lukte niet. Probeer het nog eens.")).toBeInTheDocument();
+  mockOffline();
+  act(() => {
+    window.dispatchEvent(new Event("offline"));
+  });
+  expect(await screen.findByText("Bevestigen kan pas als er weer internet is.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Ontvangen" })).toBeDisabled();
 });

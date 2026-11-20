@@ -50,7 +50,7 @@ export function Dialog({ open, onClose, title, children, dismissable = true, wid
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`max-h-full w-full overflow-auto rounded-3xl bg-white p-6 shadow-xl outline-none ${wide ? "max-w-2xl" : "max-w-md"}`}
+        className={`max-h-full w-full overflow-auto rounded-3xl bg-white p-6 text-base font-normal text-ink shadow-xl outline-none ${wide ? "max-w-2xl" : "max-w-md"}`}
       >
         <h2 id={titleId} className={`mb-4 text-2xl font-bold ${centered ? "text-center" : ""}`}>
           {title}

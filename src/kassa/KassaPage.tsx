@@ -1,13 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router";
 import type { CashSaleInput, OutboxItem, ReversalInput } from "../../shared/schemas";
 import type { Catalog } from "../../shared/types";
+import { kassaApi } from "../lib/api";
 import { Logo } from "../ui/Logo";
 import { useToast } from "../ui/Toast";
+import { DeliveryBar } from "./DeliveryBar";
 import { KassaScreen } from "./KassaScreen";
 import { LastSaleBar } from "./LastSaleBar";
 import { StatusBadge } from "./StatusBadge";
-import { loadCatalog, noteSold } from "./store/catalog";
+import { stockLabel } from "./stock-label";
+import { loadCatalog, noteSold, soldSinceFetch } from "./store/catalog";
 import { getMeta } from "./store/db";
 import { enqueue } from "./store/outbox";
 import { startSync, type SyncState } from "./store/sync";
@@ -21,6 +24,8 @@ export function KassaPage() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [sync, setSync] = useState<SyncState>({ online: navigator.onLine, pending: 0, rejected: 0, paired: true });
   const [lastSale, setLastSale] = useState<CashSaleInput | null>(null);
+  // Pieces sold per product since the catalog was fetched: the stock on the tiles is the server's minus these.
+  const [sold, setSold] = useState<Record<string, number>>({});
   const kick = useRef<() => void>(() => {});
   const toast = useToast();
 
@@ -34,10 +39,16 @@ export function KassaPage() {
       if (left) return;
       if (!token) return setBoot("unpaired");
       const cached = await loadCatalog();
+      const soldBefore = await soldSinceFetch();
       if (left) return;
       setCatalog(cached);
+      setSold(soldBefore);
       setBoot("ready");
-      const handle = startSync(setSync, setCatalog);
+      const handle = startSync(setSync, (fresh) => {
+        // A fresh catalog already counts every sale the server has.
+        setCatalog(fresh);
+        setSold({});
+      });
       kick.current = handle.kick;
       stop = handle.stop;
     })();
@@ -55,7 +66,7 @@ export function KassaPage() {
   }, [lastSale]);
 
   /** Puts a sale or a reversal in the queue. Storing can fail (no space left, storage switched off); then paper is the only record. */
-  const store = async (item: OutboxItem, sold: { productId: string; qty: number }[], what: string): Promise<boolean> => {
+  const store = async (item: OutboxItem, pieces: { productId: string; qty: number }[], what: string): Promise<boolean> => {
     try {
       await enqueue(item);
     } catch {
@@ -63,9 +74,22 @@ export function KassaPage() {
       toast.show(`Opslaan mislukt. Noteer deze ${what} op papier en meld het aan de penningmeester.`, { ms: 30_000 });
       return false;
     }
-    await noteSold(sold).catch(() => {}); // only feeds the stock shown on the tiles
+    // The count only feeds the stock shown on the tiles: a failure here must not look like a lost sale.
+    await noteSold(pieces)
+      .then(soldSinceFetch)
+      .then(setSold)
+      .catch(() => {});
     kick.current();
     return true;
+  };
+
+  const receive = async (orderId: string): Promise<"ok" | "offline" | "error"> => {
+    const token = (await getMeta<string>("deviceToken")) ?? "";
+    const answer = await kassaApi<{ ok: true }>(`/api/kassa/orders/${encodeURIComponent(orderId)}/receive`, token, { method: "POST" });
+    // Already received, by this kassa or in beheer: the boxes are in, which is what was asked.
+    const received = answer.ok || (answer.status === 409 && answer.error === "not_open");
+    if (received) kick.current(); // fetch the catalog with the new stock
+    return received ? "ok" : answer.status === 0 ? "offline" : "error";
   };
 
   const onSale = (sale: CashSaleInput) => {
@@ -80,6 +104,12 @@ export function KassaPage() {
     void store(reversal, back, "terugboeking").then((stored) => {
       if (stored) toast.show("Verkoop teruggedraaid");
     });
+  };
+
+  const products = useMemo(() => new Map((catalog?.products ?? []).map((product) => [product.id, product])), [catalog]);
+  const tileNote = (productId: string) => {
+    const product = products.get(productId);
+    return product ? stockLabel(product, sold[productId] ?? 0) : null;
   };
 
   if (boot === "unpaired") return <Navigate to="/koppelen" replace />;
@@ -104,6 +134,8 @@ export function KassaPage() {
     <KassaScreen
       catalog={catalog}
       onSale={onSale}
+      tileNote={tileNote}
+      header={<DeliveryBar orders={catalog.openOrders} online={sync.online && sync.paired} onReceive={receive} />}
       footer={
         <footer className="flex min-h-14 shrink-0 items-center justify-between gap-4 border-t-2 border-sand bg-white px-4 py-1">
           <StatusBadge state={sync} />
