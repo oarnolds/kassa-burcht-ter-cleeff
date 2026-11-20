@@ -179,7 +179,9 @@ function Password() {
 
 /** Starting clean when the trial is over. Guarded by a word that has to be typed. */
 function WipeTrial() {
+  const trial = useAdminData<{ inUseSince: string | null }>("/api/admin/wipe-trial");
   const [word, setWord] = useState("");
+  const [final, setFinal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -191,34 +193,56 @@ function WipeTrial() {
     setBusy(true);
     setError(null);
     setDone(false);
-    const answer = await write("/api/admin/wipe-trial", "POST", { confirm: WIPE_WORD });
+    const answer = await write("/api/admin/wipe-trial", "POST", { confirm: WIPE_WORD, final });
     setBusy(false);
+    // The kassa went into use in the meantime: show that instead of the form.
+    if (!answer.ok && answer.error === "in_use") return trial.reload();
     if (!answer.ok) return setError(offlineOr(answer.status, "Wissen is niet gelukt. Probeer het opnieuw."));
     setWord("");
     setDone(true);
+    if (final) trial.reload();
   };
+
+  const wiped = done && (
+    <p role="status" className="text-lg font-semibold text-green-dark">
+      Proefgegevens gewist.
+    </p>
+  );
 
   return (
     <Section title="Proefgegevens wissen">
-      <form onSubmit={(event) => void submit(event)} className={inside}>
-        <p className="text-lg">
-          Wist alle verkopen, afdrachten, bestellingen en voorraadmutaties. Producten, instellingen en de koppeling met de iPad blijven staan. Dit kan niet
-          ongedaan worden gemaakt.
-        </p>
-        <label className={label}>
-          Typ WISSEN om te bevestigen
-          <input className={field} autoComplete="off" autoCapitalize="characters" spellCheck={false} value={word} onChange={(event) => setWord(event.target.value)} />
-        </label>
-        {error && <Problem>{error}</Problem>}
-        {done && (
-          <p role="status" className="text-lg font-semibold text-green-dark">
-            Proefgegevens gewist.
-          </p>
-        )}
-        <Button type="submit" variant="danger" disabled={busy || word !== WIPE_WORD}>
-          Proefgegevens wissen
-        </Button>
-      </form>
+      <Loaded from={trial}>
+        {({ inUseSince }) =>
+          inUseSince !== null ? (
+            <div className={inside}>
+              {wiped}
+              <p className="text-lg">
+                {`De kassa is in gebruik sinds ${formatDateNl(businessDate(inUseSince))}. Wissen kan niet meer: wat er nu in staat is de echte administratie.`}
+              </p>
+            </div>
+          ) : (
+            <form onSubmit={(event) => void submit(event)} className={inside}>
+              <p className="text-lg">
+                Wist alle verkopen, afdrachten, bestellingen en voorraadmutaties. Producten, instellingen en de koppeling met de iPad blijven staan. Dit kan niet
+                ongedaan worden gemaakt.
+              </p>
+              <label className="flex min-h-11 items-center gap-3 text-lg">
+                <input type="checkbox" className="h-6 w-6 shrink-0 accent-green-dark" checked={final} onChange={(event) => setFinal(event.target.checked)} />
+                Dit is de ingebruikname: hierna kan wissen niet meer
+              </label>
+              <label className={label}>
+                Typ WISSEN om te bevestigen
+                <input className={field} autoComplete="off" autoCapitalize="characters" spellCheck={false} value={word} onChange={(event) => setWord(event.target.value)} />
+              </label>
+              {error && <Problem>{error}</Problem>}
+              {wiped}
+              <Button type="submit" variant="danger" disabled={busy || word !== WIPE_WORD}>
+                Proefgegevens wissen
+              </Button>
+            </form>
+          )
+        }
+      </Loaded>
     </Section>
   );
 }

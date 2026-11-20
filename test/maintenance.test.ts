@@ -54,6 +54,43 @@ it("wipes trial data and keeps the setup", async () => {
   expect(items.find((i) => i.productId === "aardbeitje")!.stock).toBe(0);
 });
 
+const inUse = async () => (await api("/api/admin/wipe-trial", { cookie })).json<{ inUseSince: string | null }>();
+
+it("can be wiped again as long as the trial lasts", async () => {
+  expect(await inUse()).toEqual({ inUseSince: null });
+  expect((await wipe({ confirm: "WISSEN" })).status).toBe(200);
+  await postSales(token, [cashSale()]);
+  expect((await wipe({ confirm: "WISSEN", final: false })).status).toBe(200);
+  expect(await n("sales")).toBe(0);
+  expect(await inUse()).toEqual({ inUseSince: null });
+});
+
+it("locks wiping for good at the ingebruikname", async () => {
+  const res = await wipe({ confirm: "WISSEN", final: true });
+  expect(res.status).toBe(200);
+  expect(await n("sales")).toBe(0);
+  const { inUseSince } = await inUse();
+  expect(Math.abs(Date.parse(inUseSince!) - Date.now())).toBeLessThan(60_000);
+  // From here on the kassa holds real money.
+  await postSales(token, [cashSale()]);
+  for (const body of [{ confirm: "WISSEN" }, { confirm: "WISSEN", final: true }]) {
+    const again = await wipe(body);
+    expect(again.status).toBe(409);
+    expect(await again.json()).toEqual({ error: "in_use", inUseSince });
+  }
+  expect(await n("sales")).toBe(1);
+  expect(await n("sale_lines")).toBe(1);
+  expect(await inUse()).toEqual({ inUseSince });
+});
+
+it("refuses a final flag that is not yes or no, and wipes nothing", async () => {
+  const res = await wipe({ confirm: "WISSEN", final: "ja" });
+  expect(res.status).toBe(400);
+  expect(await res.json()).toEqual({ error: "invalid" });
+  expect(await n("sales")).toBe(1);
+  expect(await inUse()).toEqual({ inUseSince: null });
+});
+
 it("downloads everything except secrets", async () => {
   const res = await api("/api/admin/export.json", { cookie });
   expect(res.status).toBe(200);
@@ -89,6 +126,7 @@ it("downloads everything except secrets", async () => {
 it("keeps wiping and downloading behind the beheer login", async () => {
   expect((await api("/api/admin/wipe-trial", { method: "POST", json: { confirm: "WISSEN" } })).status).toBe(401);
   expect((await api("/api/admin/wipe-trial", { method: "POST", token, json: { confirm: "WISSEN" } })).status).toBe(401);
+  expect((await api("/api/admin/wipe-trial")).status).toBe(401);
   expect((await api("/api/admin/export.json")).status).toBe(401);
   expect((await api("/api/admin/export.json", { token })).status).toBe(401);
   expect(await n("sales")).toBe(1);

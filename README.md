@@ -67,9 +67,17 @@ Alles staat onder `/beheer`. Het werkt op de computer en op de telefoon.
   - *Bestelling invoeren*: wat je bij Goodoo hebt besteld, in dozen (losse stuks kan ook). De beheerder ziet dan op de iPad de balk "Levering onderweg".
   - *Onderweg*: bestellingen die nog niet zijn bevestigd. Je kunt ze zelf als ontvangen markeren of laten vervallen.
 - **Producten.** Naam, prijs, categorie en volgorde van de tegels (de pijltjes). Een product verberg je in plaats van het te verwijderen, omdat oude verkopen ernaar verwijzen. Hier zet je ook aan of een product een cijferblok opent en of de voorraad wordt bijgehouden. Onderaan staan de categorieën met hun kleur. Een wijziging staat binnen een halve minuut op de kassa.
-- **Instellingen.** Een iPad koppelen of ontkoppelen, het wachtwoord wijzigen, alles downloaden als één bestand (reservekopie), en eenmalig de proefgegevens wissen.
+- **Instellingen.** Een iPad koppelen of ontkoppelen, het wachtwoord wijzigen, alles downloaden als één bestand (reservekopie), en de proefgegevens wissen zolang de kassa nog niet in gebruik is.
 
-**Bij de ingebruikname** (als pin werkt en de kassa echt de kiosk in gaat): **Instellingen → Proefgegevens wissen**. Verkopen, afdrachten, bestellingen en voorraadmutaties verdwijnen; producten, prijzen en de koppeling met de iPad blijven. Leg daarna het beginbedrag van het kluisje en de getelde voorraad opnieuw vast.
+**Tijdens de proef** kun je de proefgegevens zo vaak wissen als je wilt: **Instellingen → Proefgegevens wissen**. Verkopen, afdrachten, bestellingen en voorraadmutaties verdwijnen; producten, prijzen en de koppeling met de iPad blijven.
+
+**Bij de ingebruikname** (als pin werkt en de kassa echt de kiosk in gaat):
+
+1. Kijk op de iPad of er onderaan niets meer "wacht op verzending" en niets "afgekeurd" staat. Een proefverkoop die nog op de iPad wacht, komt anders na het wissen alsnog in de echte administratie.
+2. **Instellingen → Proefgegevens wissen**, en vink aan: **Dit is de ingebruikname: hierna kan wissen niet meer**.
+3. Leg daarna het beginbedrag van het kluisje en de getelde voorraad opnieuw vast.
+
+Vanaf dat moment staat bij Instellingen sinds wanneer de kassa in gebruik is en is de wisknop weg. Zo kan de echte administratie niet per ongeluk worden gewist.
 
 ## Als er iets misgaat
 
@@ -143,6 +151,12 @@ Wachtwoord van beheer wissen, waarna `/beheer` opnieuw om de instelcode vraagt:
 
 ```bash
 npx wrangler d1 execute kassa --remote --command "DELETE FROM sessions; DELETE FROM admin;"
+```
+
+De vergrendeling van "Proefgegevens wissen" opheffen (alleen als de ingebruikname per vergissing is aangevinkt):
+
+```bash
+npx wrangler d1 execute kassa --remote --command "DELETE FROM settings WHERE key = 'in_use_since';"
 ```
 
 De pictogrammen voor het beginscherm komen uit `public/icon.svg`:

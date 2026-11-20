@@ -7,9 +7,11 @@ import { calls, mockApi, mockLoggedIn, renderAt, tap, user } from "../test-utils
 const device: Device = { id: "d1", name: "iPad kiosk", createdAt: "2026-07-01T08:00:00.000Z", lastSeenAt: "2026-07-30T10:00:00.000Z", revoked: false };
 const open = async (extra: Record<string, unknown> = {}) => {
   mockLoggedIn();
-  mockApi({ "/api/admin/devices": { devices: [device] }, ...extra });
+  mockApi({ "/api/admin/devices": { devices: [device] }, "/api/admin/wipe-trial": { inUseSince: null }, ...extra });
   renderAt("/beheer/instellingen");
   await screen.findByText("iPad kiosk");
+  await screen.findByRole("heading", { name: "Proefgegevens wissen" });
+  await waitFor(() => expect(screen.queryByText("Laden…")).not.toBeInTheDocument());
 };
 const code = { "POST /api/admin/pairing-codes": [201, { code: "482913", expiresAt: "2026-07-30T10:10:00.000Z" }] };
 
@@ -79,10 +81,48 @@ it("wipes trial data only after the word is typed", async () => {
   await userEvent.clear(field);
   await userEvent.type(field, "WISSEN");
   await userEvent.click(button);
-  await waitFor(() => expect(calls("POST")[0]).toMatchObject({ url: "/api/admin/wipe-trial", body: { confirm: "WISSEN" } }));
+  await waitFor(() => expect(calls("POST")[0]).toMatchObject({ url: "/api/admin/wipe-trial", body: { confirm: "WISSEN", final: false } }));
   expect(await screen.findByText("Proefgegevens gewist.")).toBeInTheDocument();
   expect(field).toHaveValue(""); // a second wipe needs the word again
   expect(button).toBeDisabled();
+});
+
+const IN_USE = "De kassa is in gebruik sinds 01-08-2026. Wissen kan niet meer: wat er nu in staat is de echte administratie.";
+
+it("locks wiping when this is the ingebruikname", async () => {
+  await open({
+    "POST /api/admin/wipe-trial": () => {
+      mockApi({ "/api/admin/wipe-trial": { inUseSince: "2026-08-01T07:00:00.000Z" } });
+      return { ok: true };
+    },
+  });
+  await userEvent.click(screen.getByRole("checkbox", { name: "Dit is de ingebruikname: hierna kan wissen niet meer" }));
+  await userEvent.type(screen.getByLabelText("Typ WISSEN om te bevestigen"), "WISSEN");
+  await tap("Proefgegevens wissen");
+  await waitFor(() => expect(calls("POST")[0]).toMatchObject({ url: "/api/admin/wipe-trial", body: { confirm: "WISSEN", final: true } }));
+  expect(await screen.findByText(IN_USE)).toBeInTheDocument();
+  expect(screen.getByText("Proefgegevens gewist.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Proefgegevens wissen" })).not.toBeInTheDocument();
+});
+
+it("offers no wipe once the kassa is in use", async () => {
+  await open({ "/api/admin/wipe-trial": { inUseSince: "2026-08-01T07:00:00.000Z" } });
+  expect(screen.getByText(IN_USE)).toBeInTheDocument();
+  expect(screen.queryByLabelText("Typ WISSEN om te bevestigen")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Proefgegevens wissen" })).not.toBeInTheDocument();
+});
+
+it("says so when the server refuses a wipe because the kassa went into use meanwhile", async () => {
+  await open({
+    "POST /api/admin/wipe-trial": () => {
+      mockApi({ "/api/admin/wipe-trial": { inUseSince: "2026-08-01T07:00:00.000Z" } });
+      return [409, { error: "in_use", inUseSince: "2026-08-01T07:00:00.000Z" }];
+    },
+  });
+  await userEvent.type(screen.getByLabelText("Typ WISSEN om te bevestigen"), "WISSEN");
+  await tap("Proefgegevens wissen");
+  expect(await screen.findByText(IN_USE)).toBeInTheDocument();
+  expect(screen.queryByText("Proefgegevens gewist.")).not.toBeInTheDocument();
 });
 
 it("changes the password", async () => {
