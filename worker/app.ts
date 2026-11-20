@@ -5,6 +5,7 @@ import { requireDevice } from "./middleware/device";
 import { adminAuth, adminAuthPublic } from "./routes/admin-auth";
 import { adminCash } from "./routes/admin-cash";
 import { adminDevices } from "./routes/admin-devices";
+import { adminMaintenance } from "./routes/admin-maintenance";
 import { adminProducts } from "./routes/admin-products";
 import { adminReports } from "./routes/admin-reports";
 import { adminSales } from "./routes/admin-sales";
@@ -31,5 +32,6 @@ app.route("/api/admin", adminCash);
 app.route("/api/admin", adminSales);
 app.route("/api/admin", adminStock);
 app.route("/api/admin", adminReports);
+app.route("/api/admin", adminMaintenance);
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));
