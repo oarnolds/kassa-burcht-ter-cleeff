@@ -1,4 +1,6 @@
 import { env } from "cloudflare:workers";
+import type { CashSaleInput } from "../shared/schemas";
+import type { ItemResult } from "../shared/types";
 import { app } from "../worker/app";
 
 export const TEST_PASSWORD = "test-wachtwoord-123";
@@ -74,4 +76,23 @@ export async function asDevice(name = "iPad"): Promise<{ token: string; deviceId
   const paired = await api("/api/pair", { method: "POST", json: { code, name } });
   if (paired.status !== 201) throw new Error(`pairing failed with ${paired.status}`);
   return paired.json();
+}
+
+/** A cash sale as the kassa sends it: one Aardbeitje, sold now, unless overridden. */
+export function cashSale(overrides: Partial<CashSaleInput> = {}): CashSaleInput {
+  return {
+    id: crypto.randomUUID(),
+    kind: "sale",
+    soldAt: new Date().toISOString(),
+    totalCents: 110,
+    cashGivenCents: null,
+    lines: [{ productId: "aardbeitje", name: "Aardbeitje", unitPriceCents: 110, qty: 1 }],
+    ...overrides,
+  };
+}
+
+export async function postSales(token: string, items: unknown[]): Promise<ItemResult[]> {
+  const res = await api("/api/kassa/sales", { method: "POST", token, json: { items } });
+  if (res.status !== 200) throw new Error(`sales answered ${res.status}`);
+  return (await res.json<{ results: ItemResult[] }>()).results;
 }
