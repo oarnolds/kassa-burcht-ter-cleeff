@@ -3,8 +3,10 @@ import type { AppEnv } from "./env";
 import { requireAdmin } from "./middleware/admin";
 import { requireDevice } from "./middleware/device";
 import { adminAuth, adminAuthPublic } from "./routes/admin-auth";
+import { adminCash } from "./routes/admin-cash";
 import { adminDevices } from "./routes/admin-devices";
 import { adminProducts } from "./routes/admin-products";
+import { adminSales } from "./routes/admin-sales";
 import { kassa } from "./routes/kassa";
 import { pair } from "./routes/pair";
 
@@ -23,5 +25,7 @@ app.use("/api/admin/*", requireAdmin);
 app.route("/api/admin", adminAuth);
 app.route("/api/admin", adminDevices);
 app.route("/api/admin", adminProducts);
+app.route("/api/admin", adminCash);
+app.route("/api/admin", adminSales);
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));
