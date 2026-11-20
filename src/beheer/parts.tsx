@@ -1,6 +1,6 @@
 // Small building blocks the beheer pages share.
 
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { formatEuro } from "../../shared/money";
 import { businessDate } from "../../shared/time";
 import type { Totals } from "../../shared/types";
@@ -74,3 +74,25 @@ export function TotalsBlock({ totals }: { totals: Totals }) {
     </>
   );
 }
+
+/** A titled block that is a region of that name, so a page can be read and tested by its sections. */
+export function Section({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
+  const id = useId();
+  return (
+    <section aria-labelledby={id} className="mt-6 rounded-2xl bg-white p-3 shadow-sm sm:p-5">
+      <h2 id={id} className="px-2 text-lg font-bold sm:px-3">
+        {title}
+      </h2>
+      {note && <p className="px-2 text-ink/70 sm:px-3">{note}</p>}
+      <div className="mt-2">{children}</div>
+    </section>
+  );
+}
+
+// Tables: smaller on a phone, and a table that is still too wide scrolls sideways inside its section.
+export const tableScroll = "overflow-x-auto";
+export const table = "w-full border-collapse text-sm sm:text-base";
+export const head = "px-1.5 py-2 text-left text-sm font-semibold text-ink/70 sm:px-3";
+export const cell = "px-1.5 py-2 sm:px-3";
+export const amount = `${cell} text-right whitespace-nowrap tabular-nums`;
+export const amountHead = `${head} text-right`;

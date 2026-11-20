@@ -1,11 +1,13 @@
 import { Route, Routes } from "react-router";
 import { BeheerLayout } from "./beheer/BeheerLayout";
+import { CashPage } from "./beheer/CashPage";
 import { DashboardPage } from "./beheer/DashboardPage";
 import { LoginPage } from "./beheer/LoginPage";
 import { PageTitle } from "./beheer/parts";
 import { ReportsPage } from "./beheer/ReportsPage";
 import { SalesPage } from "./beheer/SalesPage";
 import { SetupPage } from "./beheer/SetupPage";
+import { StockPage } from "./beheer/StockPage";
 import { KassaPage } from "./kassa/KassaPage";
 import { PairPage } from "./kassa/PairPage";
 import { Logo } from "./ui/Logo";
@@ -31,8 +33,8 @@ export function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="rapporten" element={<ReportsPage />} />
         <Route path="verkopen" element={<SalesPage />} />
-        <Route path="kluisje" element={<PageTitle>Kluisje</PageTitle>} />
-        <Route path="voorraad" element={<PageTitle>Voorraad</PageTitle>} />
+        <Route path="kluisje" element={<CashPage />} />
+        <Route path="voorraad" element={<StockPage />} />
         <Route path="producten" element={<PageTitle>Producten</PageTitle>} />
         <Route path="instellingen" element={<PageTitle>Instellingen</PageTitle>} />
       </Route>

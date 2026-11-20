@@ -1,10 +1,9 @@
-import { useId } from "react";
 import { Link, useSearchParams } from "react-router";
 import { formatEuro } from "../../shared/money";
 import { formatDateNl, monthOf } from "../../shared/time";
 import type { DayReport, MonthReport } from "../../shared/types";
 import { Button } from "../ui/Button";
-import { Card, Loaded, PageTitle, TotalsBlock, field, pillLink, textLink, today } from "./parts";
+import { Card, Loaded, PageTitle, Section, TotalsBlock, amount, amountHead, cell, field, head, pillLink, table, tableScroll, textLink, today } from "./parts";
 import { useAdminData } from "./useAdmin";
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -17,27 +16,16 @@ function shiftMonth(month: string, by: number): string {
   return new Date(Date.UTC(year!, number! - 1 + by, 1)).toISOString().slice(0, 7);
 }
 
-const table = "w-full border-collapse text-sm sm:text-base";
-const head = "px-1.5 py-2 text-left text-sm font-semibold text-ink/70 sm:px-3";
-const cell = "px-1.5 py-2 sm:px-3";
 // On a phone five columns do not fit: the number of sales per day gives way.
 const wideOnly = "hidden sm:table-cell";
-const amount = `${cell} text-right whitespace-nowrap tabular-nums`;
-const amountHead = `${head} text-right`;
 
 type Row = { key: string; name: string; qty: number; cashCents: number; pinCents: number; totalCents: number };
 
-/** A titled table, wide enough tables scroll sideways on a phone. */
 function TableSection({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
-  const id = useId();
   return (
-    <section aria-labelledby={id} className="mt-6 rounded-2xl bg-white p-3 shadow-sm sm:p-5">
-      <h2 id={id} className="px-2 text-lg font-bold sm:px-3">
-        {title}
-      </h2>
-      {note && <p className="px-2 text-ink/70 sm:px-3">{note}</p>}
-      <div className="mt-2 overflow-x-auto">{children}</div>
-    </section>
+    <Section title={title} note={note}>
+      <div className={tableScroll}>{children}</div>
+    </Section>
   );
 }
 
