@@ -3,9 +3,10 @@ import { BeheerLayout } from "./beheer/BeheerLayout";
 import { CashPage } from "./beheer/CashPage";
 import { DashboardPage } from "./beheer/DashboardPage";
 import { LoginPage } from "./beheer/LoginPage";
-import { PageTitle } from "./beheer/parts";
+import { ProductsPage } from "./beheer/ProductsPage";
 import { ReportsPage } from "./beheer/ReportsPage";
 import { SalesPage } from "./beheer/SalesPage";
+import { SettingsPage } from "./beheer/SettingsPage";
 import { SetupPage } from "./beheer/SetupPage";
 import { StockPage } from "./beheer/StockPage";
 import { KassaPage } from "./kassa/KassaPage";
@@ -35,8 +36,8 @@ export function AppRoutes() {
         <Route path="verkopen" element={<SalesPage />} />
         <Route path="kluisje" element={<CashPage />} />
         <Route path="voorraad" element={<StockPage />} />
-        <Route path="producten" element={<PageTitle>Producten</PageTitle>} />
-        <Route path="instellingen" element={<PageTitle>Instellingen</PageTitle>} />
+        <Route path="producten" element={<ProductsPage />} />
+        <Route path="instellingen" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Placeholder title="Pagina niet gevonden" />} />
     </Routes>
