@@ -76,6 +76,29 @@ it("Dialog shows nothing while it is closed", () => {
     </Dialog>,
   );
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("dialog-shield")).not.toBeInTheDocument();
+});
+
+it("Dialog leaves a shield behind when it closes, so the second tap of a double tap lands on nothing", () => {
+  const { rerender } = render(
+    <Dialog open title="Test" onClose={() => {}}>
+      x
+    </Dialog>,
+  );
+  expect(screen.queryByTestId("dialog-shield")).not.toBeInTheDocument();
+  rerender(
+    <Dialog open={false} title="Test" onClose={() => {}}>
+      x
+    </Dialog>,
+  );
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.getByTestId("dialog-shield")).toHaveClass("tap-shield");
+  rerender(
+    <Dialog open title="Test" onClose={() => {}}>
+      x
+    </Dialog>,
+  );
+  expect(screen.queryByTestId("dialog-shield")).not.toBeInTheDocument();
 });
 
 it("a toast with an action disappears after its time", () => {

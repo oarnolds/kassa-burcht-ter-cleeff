@@ -30,6 +30,21 @@ body {
   overscroll-behavior: none;
 }
 
+/* What a dialog leaves behind when it closes: an invisible sheet over the page that takes the taps of the
+   next 300 ms and then steps aside. It catches the second tap of an accidental double tap. */
+@keyframes tap-shield {
+  to {
+    visibility: hidden;
+  }
+}
+
+.tap-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  animation: tap-shield 0s linear 300ms forwards;
+}
+
 button {
   cursor: pointer;
 }

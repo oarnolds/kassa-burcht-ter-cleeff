@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 type Props = {
   open: boolean;
@@ -9,12 +9,16 @@ type Props = {
   dismissable?: boolean;
   /** Wider, for dialogs with a number pad or a form. */
   wide?: boolean;
+  /** Centres the title, for the kassa's dialogs with one big amount. */
+  centered?: boolean;
 };
 
 /** A modal dialog over a dimmed page. Escape or a tap beside it closes it, unless it is not dismissable. */
-export function Dialog({ open, onClose, title, children, dismissable = true, wide = false }: Props) {
+export function Dialog({ open, onClose, title, children, dismissable = true, wide = false, centered = false }: Props) {
   const titleId = useId();
   const panel = useRef<HTMLDivElement>(null);
+  const [hasBeenOpen, setHasBeenOpen] = useState(open);
+  if (open && !hasBeenOpen) setHasBeenOpen(true);
 
   useEffect(() => {
     if (!open || !dismissable) return;
@@ -29,7 +33,9 @@ export function Dialog({ open, onClose, title, children, dismissable = true, wid
     if (open) panel.current?.focus();
   }, [open]);
 
-  if (!open) return null;
+  // A closed dialog leaves a shield behind that swallows taps for a moment (see app.css): the second tap of
+  // an accidental double tap on one of its buttons must not land on whatever was underneath.
+  if (!open) return hasBeenOpen ? <div data-testid="dialog-shield" className="tap-shield" /> : null;
   return (
     <div
       data-testid="dialog-backdrop"
@@ -46,7 +52,7 @@ export function Dialog({ open, onClose, title, children, dismissable = true, wid
         tabIndex={-1}
         className={`max-h-full w-full overflow-auto rounded-3xl bg-white p-6 shadow-xl outline-none ${wide ? "max-w-2xl" : "max-w-md"}`}
       >
-        <h2 id={titleId} className="mb-4 text-2xl font-bold">
+        <h2 id={titleId} className={`mb-4 text-2xl font-bold ${centered ? "text-center" : ""}`}>
           {title}
         </h2>
         {children}
