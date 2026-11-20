@@ -153,6 +153,24 @@ it("has a tile colour and a Dutch name for every colour key", () => {
   expect(colorLabels).toEqual({ rose: "Roze", blue: "Blauw", brown: "Bruin", yellow: "Geel", green: "Groen", grey: "Grijs" });
 });
 
+it("Dialog leaves the focus with a field inside that asked for it", () => {
+  render(
+    <Dialog open onClose={() => {}} title="Reden geven">
+      <input aria-label="Reden" autoFocus />
+    </Dialog>,
+  );
+  expect(screen.getByLabelText("Reden")).toHaveFocus();
+});
+
+it("Dialog takes the focus itself when nothing inside asked for it", () => {
+  render(
+    <Dialog open onClose={() => {}} title="Zeker weten?">
+      <button type="button">Ja</button>
+    </Dialog>,
+  );
+  expect(screen.getByRole("dialog")).toHaveFocus();
+});
+
 it.each([
   "/",
   "/koppelen",

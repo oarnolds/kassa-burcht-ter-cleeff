@@ -1,4 +1,11 @@
 import { Route, Routes } from "react-router";
+import { BeheerLayout } from "./beheer/BeheerLayout";
+import { DashboardPage } from "./beheer/DashboardPage";
+import { LoginPage } from "./beheer/LoginPage";
+import { PageTitle } from "./beheer/parts";
+import { ReportsPage } from "./beheer/ReportsPage";
+import { SalesPage } from "./beheer/SalesPage";
+import { SetupPage } from "./beheer/SetupPage";
 import { KassaPage } from "./kassa/KassaPage";
 import { PairPage } from "./kassa/PairPage";
 import { Logo } from "./ui/Logo";
@@ -18,15 +25,17 @@ export function AppRoutes() {
     <Routes>
       <Route path="/" element={<KassaPage />} />
       <Route path="/koppelen" element={<PairPage />} />
-      <Route path="/beheer" element={<Placeholder title="Beheer" />} />
-      <Route path="/beheer/login" element={<Placeholder title="Inloggen" />} />
-      <Route path="/beheer/instellen" element={<Placeholder title="Beheer instellen" />} />
-      <Route path="/beheer/rapporten" element={<Placeholder title="Rapporten" />} />
-      <Route path="/beheer/verkopen" element={<Placeholder title="Verkopen" />} />
-      <Route path="/beheer/kluisje" element={<Placeholder title="Kluisje" />} />
-      <Route path="/beheer/voorraad" element={<Placeholder title="Voorraad" />} />
-      <Route path="/beheer/producten" element={<Placeholder title="Producten" />} />
-      <Route path="/beheer/instellingen" element={<Placeholder title="Instellingen" />} />
+      <Route path="/beheer/login" element={<LoginPage />} />
+      <Route path="/beheer/instellen" element={<SetupPage />} />
+      <Route path="/beheer" element={<BeheerLayout />}>
+        <Route index element={<DashboardPage />} />
+        <Route path="rapporten" element={<ReportsPage />} />
+        <Route path="verkopen" element={<SalesPage />} />
+        <Route path="kluisje" element={<PageTitle>Kluisje</PageTitle>} />
+        <Route path="voorraad" element={<PageTitle>Voorraad</PageTitle>} />
+        <Route path="producten" element={<PageTitle>Producten</PageTitle>} />
+        <Route path="instellingen" element={<PageTitle>Instellingen</PageTitle>} />
+      </Route>
       <Route path="*" element={<Placeholder title="Pagina niet gevonden" />} />
     </Routes>
   );

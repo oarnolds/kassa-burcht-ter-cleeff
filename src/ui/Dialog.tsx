@@ -29,8 +29,9 @@ export function Dialog({ open, onClose, title, children, dismissable = true, wid
     return () => document.removeEventListener("keydown", onKey);
   }, [open, dismissable, onClose]);
 
+  // The dialog takes the focus, unless a field inside it has already asked for it.
   useEffect(() => {
-    if (open) panel.current?.focus();
+    if (open && !panel.current?.contains(document.activeElement)) panel.current?.focus();
   }, [open]);
 
   // A closed dialog leaves a shield behind that swallows taps for a moment (see app.css): the second tap of
