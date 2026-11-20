@@ -10,5 +10,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["vite.config.ts", "vitest.client.config.ts", "vitest.worker.config.ts", "playwright.config.ts"]
+  "include": ["vite.config.ts", "vitest.client.config.ts", "vitest.worker.config.ts", "playwright.config.ts", "pwa-assets.config.ts"]
 }

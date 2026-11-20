@@ -57,7 +57,8 @@ export function KassaScreen({ catalog, onSale, tileNote, header, footer }: Props
   };
 
   return (
-    <div className="flex h-full flex-col">
+    // A wall-mounted touch screen: a double tap must not zoom, a long press must not select text.
+    <div className="flex h-full touch-manipulation flex-col select-none">
       {header}
       <div className="flex min-h-0 flex-1">
         <main className="flex min-w-0 flex-1 flex-col p-2">

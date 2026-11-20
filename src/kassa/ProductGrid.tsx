@@ -25,6 +25,7 @@ export function ProductGrid({ catalog, cart, onTap, tileNote }: Props) {
           <button
             key={product.id}
             type="button"
+            data-product-tile
             onClick={() => onTap(product)}
             style={{ backgroundColor: colors.bg, color: colors.text, borderColor: qty > 0 ? INK : colors.border }}
             className={`relative flex flex-col items-center justify-center gap-0.5 rounded-2xl border-2 px-1.5 py-1 text-center select-none active:scale-95 ${qty > 0 ? "shadow-[inset_0_0_0_2px_#252628]" : ""}`}
