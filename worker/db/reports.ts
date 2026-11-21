@@ -5,6 +5,7 @@ import type {
   AdminSale,
   CategoryRow,
   DayReport,
+  KassaPayments,
   MonthReport,
   PinAttention,
   ProductRow,
@@ -248,6 +249,7 @@ export async function listPinAttempts(db: D1Database, date: string): Promise<Adm
   const lineRows = lines!.results as LineRow[];
   return (attempts!.results as SaleRow[]).map((sale) => ({
     id: sale.id,
+    soldAt: sale.sold_at,
     soldAtLocal: localTime(sale.sold_at),
     totalCents: sale.total_cents,
     // A failed sale always has an outcome, and never "paid".
@@ -255,6 +257,12 @@ export async function listPinAttempts(db: D1Database, date: string): Promise<Adm
     reason: sale.pin_reason,
     lines: linesOf(lineRows, sale.id),
   }));
+}
+
+/** Every payment of one day: the sales, and the pin payments that did not go through or still wait. Asks Mollie nothing. */
+export async function kassaPayments(db: D1Database, date: string): Promise<KassaPayments> {
+  const [sales, pinAttempts] = await Promise.all([listSales(db, date), listPinAttempts(db, date)]);
+  return { sales, pinAttempts };
 }
 
 /** One row per day with a column per category, and a totals row: the month as the bookkeeping wants it. */

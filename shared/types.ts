@@ -141,12 +141,16 @@ export type AdminSale = {
 /** A pin payment that did not go through (`outcome`), or is still waiting for Mollie (`outcome` null). */
 export type AdminPinAttempt = {
   id: string;
+  soldAt: string;
   soldAtLocal: string;
   totalCents: number;
   outcome: Exclude<PinOutcome, "paid"> | null;
   reason: string | null;
   lines: AdminSale["lines"];
 };
+
+/** The payments of one day: what beheer lists under Verkopen, and the kassa under Betalingen. */
+export type KassaPayments = { sales: AdminSale[]; pinAttempts: AdminPinAttempt[] };
 
 export type Device = { id: string; name: string; createdAt: string; lastSeenAt: string | null; revoked: boolean };
 

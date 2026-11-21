@@ -2,26 +2,32 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router";
 import { formatEuro } from "../../shared/money";
 import type { CashSaleInput } from "../../shared/schemas";
-import type { Catalog } from "../../shared/types";
+import { businessDate, localTime } from "../../shared/time";
+import type { Catalog, KassaPayments } from "../../shared/types";
 import { kassaApi } from "../lib/api";
 import { Logo } from "../ui/Logo";
 import { useToast } from "../ui/Toast";
 import { cashSaleFor } from "./cash";
 import { DeliveryBar } from "./DeliveryBar";
 import { KassaScreen } from "./KassaScreen";
-import { ParkedPins } from "./ParkedPins";
+import { footerButton, Payments } from "./Payments";
 import { RevenuePanel } from "./RevenuePanel";
 import { prepareReceiptShare } from "./share-receipt";
 import { StatusBadge } from "./StatusBadge";
 import { stockLabel } from "./stock-label";
 import { loadCatalog, noteSold, soldSinceFetch } from "./store/catalog";
-import { getMeta } from "./store/db";
-import { enqueue } from "./store/outbox";
-import { dismissFailed, listParked, markCashTaken, parkLeftovers, resolveParked, runPin, type Parked, type PinProgress, type PinReceipt, type PinRun } from "./store/pin";
+import { getMeta, setMeta } from "./store/db";
+import { enqueue, listUnsentSales } from "./store/outbox";
+import { listParked, markCashTaken, parkLeftovers, resolveParked, runPin, type Parked, type PinProgress, type PinReceipt, type PinRun } from "./store/pin";
 import { startSync, type SyncState } from "./store/sync";
 import { TestBar } from "./TestBar";
 
 const PARKED_EVERY_MS = 5000;
+
+/** The last payment that went through on this iPad, shown in the footer for the rest of its day. */
+type LastPayment = { totalCents: number; method: "cash" | "pin"; soldAt: string };
+
+const today = () => businessDate(new Date().toISOString());
 
 /** Why pin cannot be used right now, in the beheerder's words; null when it can. */
 function pinBlocked(sync: SyncState, catalog: Catalog): string | null {
@@ -41,12 +47,22 @@ export function KassaPage() {
   const [sold, setSold] = useState<Record<string, number>>({});
   // Omzet: "never" until it has been opened once. A closed panel leaves the tap shield behind, as a Dialog does.
   const [revenue, setRevenue] = useState<"never" | "open" | "closed">("never");
-  // The pin payments the kassa is not done with: outcome unknown, or not gone through and not seen yet.
+  // The pin payments whose outcome is not known yet.
   const [parked, setParked] = useState<Parked[]>([]);
+  const [last, setLast] = useState<LastPayment | null>(null);
+  const lastRef = useRef<LastPayment | null>(null);
   const kick = useRef<() => void>(() => {});
   const settling = useRef(false);
   const settleAgain = useRef(false);
   const toast = useToast();
+
+  /** Notes a payment that went through, unless a later one already did: a parked one can settle after the next customer. */
+  const noteLast = (payment: LastPayment) => {
+    if (lastRef.current && payment.soldAt < lastRef.current.soldAt) return;
+    lastRef.current = payment;
+    setLast(payment);
+    void setMeta("lastPayment", payment).catch(() => {});
+  };
 
   const readParked = () =>
     listParked()
@@ -76,7 +92,12 @@ export function KassaPage() {
       const waiting = await parkLeftovers()
         .then(listParked)
         .catch(() => []);
+      const lastBefore = await getMeta<LastPayment>("lastPayment").catch(() => undefined);
       if (left) return;
+      if (lastBefore) {
+        lastRef.current = lastBefore;
+        setLast(lastBefore);
+      }
       setCatalog(cached);
       setSold(soldBefore);
       setParked(waiting);
@@ -106,6 +127,7 @@ export function KassaPage() {
       toast.show("Opslaan mislukt. Noteer deze verkoop op papier en meld het aan de penningmeester.", { ms: 30_000 });
       return;
     }
+    noteLast({ totalCents: sale.totalCents, method: "cash", soldAt: sale.soldAt });
     // Cash for a receipt whose pin payment has no outcome yet: should that payment fail, there is nothing to tell.
     if (sale.insteadOfSaleId) {
       await markCashTaken(sale.insteadOfSaleId)
@@ -140,13 +162,16 @@ export function KassaPage() {
     try {
       do {
         settleAgain.current = false;
-        const { paid } = await resolveParked();
+        const { paid, failed } = await resolveParked();
         await readParked();
-        if (paid.length > 0) {
-          const text = paid.length === 1 ? `Pinbetaling van ${formatEuro(paid[0]!.totalCents)} is gelukt` : `${paid.length} pinbetalingen zijn gelukt`;
-          toast.show(text, { ms: 3000 });
-          await countSold(paid);
-        }
+        for (const receipt of paid) noteLast({ totalCents: receipt.totalCents, method: "pin", soldAt: receipt.soldAt });
+        // One message: the toast shows one at a time. A payment that did not go through is said once; Betalingen keeps it.
+        const told = [
+          paid.length === 0 ? "" : paid.length === 1 ? `Pinbetaling van ${formatEuro(paid[0]!.totalCents)} is gelukt` : `${paid.length} pinbetalingen zijn gelukt`,
+          failed.length === 0 ? "" : failed.length === 1 ? `Pinbetaling van ${formatEuro(failed[0]!.totalCents)} is niet gelukt` : `${failed.length} pinbetalingen zijn niet gelukt`,
+        ].filter(Boolean);
+        if (told.length > 0) toast.show(told.join(". "), { ms: failed.length > 0 ? 5000 : 3000 });
+        if (paid.length > 0) await countSold(paid);
       } while (settleAgain.current);
     } catch {
       // Storage went away under us. The next round tries again.
@@ -176,6 +201,13 @@ export function KassaPage() {
     const received = answer.ok || (answer.status === 409 && answer.error === "not_open");
     if (received) kick.current(); // fetch the catalog with the new stock
     return received ? "ok" : answer.status === 0 ? "offline" : "error";
+  };
+
+  /** Betalingen: the server's list of today, and what this iPad has not sent yet. */
+  const loadPayments = async () => {
+    const token = (await getMeta<string>("deviceToken")) ?? "";
+    const [answer, unsent] = await Promise.all([kassaApi<KassaPayments>(`/api/kassa/payments?date=${today()}`, token), listUnsentSales().catch(() => [])]);
+    return { server: answer.ok ? answer.data : null, unsent };
   };
 
   const products = useMemo(() => new Map((catalog?.products ?? []).map((product) => [product.id, product])), [catalog]);
@@ -208,7 +240,10 @@ export function KassaPage() {
       onSale={(sale) => void store(sale)}
       tileNote={tileNote}
       pin={{ blocked: pinBlocked(sync, catalog), start: startPin }}
-      onPinPaid={(receipt) => void countSold([receipt])}
+      onPinPaid={(receipt) => {
+        noteLast({ totalCents: receipt.totalCents, method: "pin", soldAt: receipt.soldAt });
+        void countSold([receipt]);
+      }}
       shareReceipt={(sale) => prepareReceiptShare(sale)}
       header={
         <>
@@ -217,25 +252,24 @@ export function KassaPage() {
         </>
       }
       footer={
-        <footer className="flex min-h-14 shrink-0 items-center justify-between gap-4 border-t-2 border-sand bg-white px-4 py-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
-            <StatusBadge state={sync} onRejectedChange={() => kick.current()} />
-            <ParkedPins
-              receipts={parked}
+        <footer className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t-2 border-sand bg-white px-4 py-1">
+          <StatusBadge state={sync} onRejectedChange={() => kick.current()} />
+          {last && businessDate(last.soldAt) === today() && (
+            <p className="min-w-0 font-semibold text-ink/80">{`Laatste betaling: ${formatEuro(last.totalCents)} ${last.method === "pin" ? "pin" : "contant"} · ${localTime(last.soldAt)}`}</p>
+          )}
+          <div className="ml-auto flex shrink-0 items-center gap-3">
+            <Payments
+              waiting={parked}
+              load={loadPayments}
               onCash={(receipt, cashGivenCents) => {
                 toast.show("Contant ontvangen", { ms: 1000 });
                 void store(cashSaleFor(receipt, cashGivenCents, receipt.id));
               }}
-              onSeen={(id) => void dismissFailed(id).then(readParked, () => {})}
             />
+            <button type="button" className={footerButton} onClick={() => setRevenue("open")}>
+              Omzet
+            </button>
           </div>
-          <button
-            type="button"
-            className="min-h-11 shrink-0 rounded-full border-2 border-green bg-white px-5 font-bold text-green-dark active:bg-sand"
-            onClick={() => setRevenue("open")}
-          >
-            Omzet
-          </button>
           {revenue === "open" && <RevenuePanel pending={sync.pending} onClose={() => setRevenue("closed")} />}
           {/* Sluiten sits right above "Wis alles": the shield takes the second tap of a double tap (see app.css). */}
           {revenue === "closed" && <div className="tap-shield" />}

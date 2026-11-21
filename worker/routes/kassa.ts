@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { getCatalog } from "../db/products";
-import { dayReport, weekReport } from "../db/reports";
+import { dayReport, kassaPayments, weekReport } from "../db/reports";
 import { ingestItems } from "../db/sales";
 import { StockError, receiveOrder } from "../db/stock";
 import type { AppEnv } from "../env";
@@ -47,4 +47,12 @@ kassa.get("/reports/week", async (c) => {
   const date = parseDate(c.req.query("date"));
   if (!date) return c.json({ error: "invalid" }, 400);
   return c.json(await weekReport(c.env.DB, date));
+});
+
+// "Betalingen" on the iPad: every payment of the day, to look at only. Mollie is not asked: the iPad
+// follows its own waiting payments, and beheer settles the rest when the penningmeester opens the day.
+kassa.get("/payments", async (c) => {
+  const date = parseDate(c.req.query("date"));
+  if (!date) return c.json({ error: "invalid" }, 400);
+  return c.json(await kassaPayments(c.env.DB, date));
 });

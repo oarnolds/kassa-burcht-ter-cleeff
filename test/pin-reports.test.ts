@@ -172,8 +172,8 @@ it("lists what did not go through or is still open apart from the sales", async 
   const answer = await sales(today);
   expect(answer.sales).toHaveLength(1);
   expect(answer.pinAttempts).toEqual([
-    { id: open.id, soldAtLocal: expect.stringMatching(/^\d\d:\d\d$/), totalCents: 110, outcome: null, reason: null, lines: [{ name: "Aardbeitje", categoryName: "IJs", unitPriceCents: 110, qty: 1 }] },
-    { id: busy.id, soldAtLocal: expect.stringMatching(/^\d\d:\d\d$/), totalCents: 110, outcome: "declined", reason: "terminal_busy", lines: [{ name: "Aardbeitje", categoryName: "IJs", unitPriceCents: 110, qty: 1 }] },
+    { id: open.id, soldAt: open.soldAt, soldAtLocal: expect.stringMatching(/^\d\d:\d\d$/), totalCents: 110, outcome: null, reason: null, lines: [{ name: "Aardbeitje", categoryName: "IJs", unitPriceCents: 110, qty: 1 }] },
+    { id: busy.id, soldAt: busy.soldAt, soldAtLocal: expect.stringMatching(/^\d\d:\d\d$/), totalCents: 110, outcome: "declined", reason: "terminal_busy", lines: [{ name: "Aardbeitje", categoryName: "IJs", unitPriceCents: 110, qty: 1 }] },
   ]);
   // Another day shows neither.
   expect(await sales("2026-01-02")).toEqual({ sales: [], pinAttempts: [] });

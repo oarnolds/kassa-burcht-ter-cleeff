@@ -12,7 +12,15 @@ const pinDialog = (page: Page, name: string) => page.getByRole("dialog", { name 
 
 const HOLD = "Houd pas of telefoon tegen de betaalterminal";
 const NOTHING = { pinCents: 0, cashCents: 0, saleCount: 0 };
-const WAITING = "1 pinbetaling wacht op bevestiging";
+
+/** Opens Betalingen and finds the row of the coffee, newest of its kind. */
+async function paymentsList(page: Page) {
+  await tap(page, "Betalingen");
+  const list = page.getByRole("dialog", { name: "Betalingen vandaag" });
+  await expect(list.getByText(/^Betalingen worden opgehaald/)).toBeHidden();
+  return list;
+}
+const coffeeRow = (list: ReturnType<Page["getByRole"]>) => list.getByRole("listitem").filter({ hasText: "1× Koffie" });
 
 /** A paired kassa with the test terminal chosen, and beheer to look at what was booked. */
 async function open(page: Page, request: APIRequestContext): Promise<Beheer> {
@@ -177,8 +185,12 @@ test("the connection drops while paying: the receipt is parked, the kassa goes o
   await pinACoffee(page);
   await loseTheConnection(page);
   await tap(page, "Volgende klant");
-  await expect(page.getByRole("button", { name: WAITING })).toBeVisible();
   await expect(receipt(page).getByText("Tik op een product om te beginnen.")).toBeVisible();
+  // No button in the footer: Betalingen lists it, from what the iPad knows.
+  const list = await paymentsList(page);
+  await expect(list.getByText("Geen verbinding. Je ziet alleen wat op deze iPad staat.")).toBeVisible();
+  await expect(coffeeRow(list).getByText("wacht", { exact: true })).toBeVisible();
+  await tap(page, "Sluiten");
   // The next customer: pin is off and says why, cash goes on.
   await tile(page, /Thee/).click();
   await expect(pinButton(page)).toBeDisabled();
@@ -189,7 +201,6 @@ test("the connection drops while paying: the receipt is parked, the kassa goes o
   await atTerminal(request, "paid"); // meanwhile the customer did pay
   await context.setOffline(false);
   await expect(page.getByText(/Pinbetaling van €\s1,40 is gelukt/)).toBeVisible({ timeout: 40_000 });
-  await expect(page.getByText(/wacht op bevestiging/)).toBeHidden({ timeout: 40_000 });
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expectToday(beheer, { pinCents: 140, cashCents: 140, saleCount: 2 }, 40_000);
   const day = await dayOf(beheer);
@@ -203,20 +214,15 @@ test("a parked payment that failed is reported with its amount", async ({ page, 
   await tap(page, "Volgende klant");
   await atTerminal(request, "failed", "insufficient_funds");
   await context.setOffline(false);
-  const failed = page.getByRole("button", { name: /^Pinbetaling van €\s1,40 niet gelukt$/ });
-  await expect(failed).toBeVisible({ timeout: 40_000 });
+  await expect(page.getByText(/^Pinbetaling van €\s1,40 is niet gelukt$/)).toBeVisible({ timeout: 40_000 });
   // Nothing opened by itself, and the kassa is not held up.
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.getByText(/wacht op bevestiging/)).toBeHidden();
   await tile(page, /Thee/).click();
   await expect(receipt(page).getByText("Thee")).toBeVisible();
-  await failed.click();
-  const list = page.getByRole("dialog", { name: "Pinbetalingen" });
-  await expect(list.getByText(/^Niet gelukt · Pin van \d\d:\d\d · €\s1,40$/)).toBeVisible();
-  await expect(list.getByText("1× Koffie")).toBeVisible();
-  await list.getByRole("button", { name: "Gezien", exact: true }).click();
+  const list = await paymentsList(page);
+  await expect(coffeeRow(list).getByText("niet gelukt", { exact: true })).toBeVisible();
+  await tap(page, "Sluiten");
   await expect(list).toBeHidden();
-  await expect(failed).toBeHidden();
   await expect(receipt(page).getByText("Thee")).toBeVisible();
   await expectToday(beheer, NOTHING, 2000);
   expect((await dayOf(beheer)).pinAttempts.map((attempt) => attempt.outcome)).toEqual(["declined"]);
@@ -227,16 +233,14 @@ test("cash for a parked receipt and a pin payment that went through after all: b
   await pinACoffee(page);
   await loseTheConnection(page);
   await tap(page, "Volgende klant");
-  await tap(page, WAITING);
-  const list = page.getByRole("dialog", { name: "Pinbetalingen" });
-  await expect(list.getByText(/^Wacht op bevestiging · Pin van \d\d:\d\d · €\s1,40$/)).toBeVisible();
-  await list.getByRole("button", { name: "Toch contant", exact: true }).click();
+  const list = await paymentsList(page);
+  await coffeeRow(list).getByRole("button", { name: "Toch contant", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Contant, te betalen" })).toBeVisible();
   await tap(page, "Gepast");
   await expect(page.getByText("1 verkoop wacht op verzending")).toBeVisible();
   await atTerminal(request, "paid");
   await context.setOffline(false);
-  await expect(page.getByText(/wacht op bevestiging/)).toBeHidden({ timeout: 40_000 });
+  await expect(page.getByText(/Pinbetaling van €\s1,40 is gelukt/)).toBeVisible({ timeout: 40_000 });
   await expectToday(beheer, { pinCents: 140, cashCents: 140, saleCount: 2 }, 40_000);
   const day = await dayOf(beheer);
   expect(day.sales.map((sale) => sale.possiblyDouble)).toEqual([true, true]);
@@ -247,10 +251,13 @@ test("a kassa that is reloaded while paying finds its receipt parked (Review Foc
   const beheer = await open(page, request);
   await pinACoffee(page);
   await page.reload();
-  await expect(page.getByRole("button", { name: WAITING })).toBeVisible();
+  const list = await paymentsList(page);
+  await expect(coffeeRow(list).getByText("wacht", { exact: true })).toBeVisible();
+  await tap(page, "Sluiten");
   await expectToday(beheer, NOTHING, 2000);
   await atTerminal(request, "paid");
-  await expect(page.getByText(/wacht op bevestiging/)).toBeHidden({ timeout: 40_000 });
+  await expect(page.getByText(/Pinbetaling van €\s1,40 is gelukt/)).toBeVisible({ timeout: 40_000 });
+  await expect(page.getByText(/^Laatste betaling: €\s1,40 pin · \d\d:\d\d$/)).toBeVisible();
   await expectToday(beheer, { pinCents: 140, cashCents: 0, saleCount: 1 });
 });
 

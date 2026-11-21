@@ -144,9 +144,13 @@ export function KassaScreen({ catalog, onSale, tileNote, header, footer, pin, on
     <div className="flex h-full touch-manipulation flex-col select-none">
       {header}
       <div className="flex min-h-0 flex-1">
-        <main className="flex min-w-0 flex-1 flex-col p-2">
-          <ProductGrid catalog={catalog} cart={cart} onTap={tapProduct} tileNote={tileNote} />
-        </main>
+        {/* The footer runs under the products only: the receipt goes down to the bottom of the screen. */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <main className="flex min-h-0 flex-1 flex-col p-2">
+            <ProductGrid catalog={catalog} cart={cart} onTap={tapProduct} tileNote={tileNote} />
+          </main>
+          {footer}
+        </div>
         <Receipt
           cart={cart}
           onInc={(productId) => dispatch({ type: "inc", productId })}
@@ -181,7 +185,6 @@ export function KassaScreen({ catalog, onSale, tileNote, header, footer, pin, on
           )}
         </Receipt>
       </div>
-      {footer}
       <CashDialog open={cashFor !== null} totalCents={cashFor?.totalCents ?? total} onPaid={finish} onClose={() => setCashFor(null)} />
       {/* After the cash dialog: the shield the pin window leaves behind for a moment lies over the cash dialog
           that "Toch contant" opens, so the second tap of a double tap cannot land on "Gepast". */}

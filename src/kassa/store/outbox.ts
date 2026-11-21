@@ -1,6 +1,6 @@
 // Sales wait here until the server has them. Nothing leaves the queue before the server has answered for it.
 
-import type { OutboxItem } from "../../../shared/schemas";
+import type { CashSaleInput, OutboxItem } from "../../../shared/schemas";
 import type { ItemResult } from "../../../shared/types";
 import { getDb } from "./db";
 
@@ -19,6 +19,12 @@ export async function enqueue(item: OutboxItem): Promise<void> {
 
 export async function pendingCount(): Promise<number> {
   return (await getDb()).count("outbox");
+}
+
+/** The cash sales still waiting to be sent, oldest first: "Betalingen" lists them until the server has them. */
+export async function listUnsentSales(): Promise<CashSaleInput[]> {
+  const rows = (await (await getDb()).getAll("outbox")) as Row[];
+  return rows.flatMap((row) => (row.item.kind === "sale" ? [row.item] : []));
 }
 
 export async function rejectedCount(): Promise<number> {

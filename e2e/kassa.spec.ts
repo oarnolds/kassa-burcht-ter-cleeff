@@ -124,38 +124,30 @@ test("all 22 products and the pay buttons fit on the iPad without scrolling", as
   await expectKassaFits(page);
 });
 
-test("the footer still fits with a sale waiting, a pin payment waiting and one that failed", async ({ page, context, request }) => {
+test("the footer fits with a sale waiting and the last payment, and the receipt runs down to the bottom", async ({ page, context, request }) => {
   const { code } = await prepare(request);
   await pair(page, code);
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
   });
-  // Offline, so that the kassa cannot ask how the waiting payment ended and the footer stays this full.
+  // Offline, so that the sale stays waiting and the footer is at its fullest.
   await context.setOffline(true);
   await tile(page, /Koffie/).click();
   await tap(page, "Contant");
   await tap(page, "Gepast");
-  await expect(page.getByText("1 verkoop wacht op verzending")).toBeVisible();
-  await page.evaluate(async () => {
-    const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      // The pin receipts' own database, made by the kassa when it started.
-      const opening = indexedDB.open("kassa-pin");
-      opening.onsuccess = () => resolve(opening.result);
-      opening.onerror = () => reject(opening.error);
-    });
-    const tx = db.transaction("pin", "readwrite");
-    const receipt = { soldAt: new Date().toISOString(), totalCents: 1140, lines: [{ productId: "koffie", name: "Koffie", unitPriceCents: 140, qty: 1 }], cashTaken: false };
-    tx.objectStore("pin").put({ ...receipt, id: crypto.randomUUID(), parked: true, failed: false });
-    tx.objectStore("pin").put({ ...receipt, id: crypto.randomUUID(), parked: false, failed: true });
-    await new Promise((resolve) => (tx.oncomplete = resolve));
-    db.close();
-  });
-  await page.reload();
-  await expect(page.getByText("Offline · contant werkt door")).toBeVisible();
-  await expect(page.getByRole("button", { name: "1 pinbetaling wacht op bevestiging" })).toBeInViewport({ ratio: 1 });
-  await expect(page.getByRole("button", { name: /^Pinbetaling van €\s11,40 niet gelukt$/ })).toBeInViewport({ ratio: 1 });
   await expect(page.getByText("1 verkoop wacht op verzending")).toBeInViewport({ ratio: 1 });
+  await expect(page.getByText(/^Laatste betaling: €\s1,40 contant · \d\d:\d\d$/)).toBeInViewport({ ratio: 1 });
+  await expect(page.getByText("Offline · contant werkt door")).toBeInViewport({ ratio: 1 });
+  for (const name of ["Betalingen", "Omzet"]) await expect(page.getByRole("button", { name, exact: true })).toBeInViewport({ ratio: 1 });
   await expectKassaFits(page);
+  // The footer runs under the products only: the pay buttons sit at the bottom of the receipt.
+  const footer = await page.getByRole("contentinfo").boundingBox();
+  const contant = await page.getByRole("button", { name: "Contant", exact: true }).boundingBox();
+  const bon = await receipt(page).boundingBox();
+  expect(footer!.x + footer!.width).toBeLessThanOrEqual(bon!.x + 1);
+  expect(contant!.y + contant!.height).toBeGreaterThan(footer!.y);
+  const viewport = page.viewportSize()!;
+  expect(bon!.y + bon!.height).toBeGreaterThanOrEqual(viewport.height - 1);
 });
 
 test("a customer who asks gets the receipt as a picture from the share sheet", async ({ page, request }) => {

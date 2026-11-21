@@ -18,7 +18,7 @@ export type PinReceipt = PinSaleInput;
 
 /**
  * A receipt the kassa is not done with. `parked`: the outcome of its payment is not known yet.
- * `failed`: the payment did not go through and the beheerder has not seen that yet.
+ * `failed`: only in what an older version kept; forgotten on start.
  * `cashTaken`: the beheerder rang it up as cash in the meantime.
  */
 export type Parked = PinReceipt & { parked: boolean; failed: boolean; cashTaken: boolean };
@@ -148,17 +148,21 @@ export function runPin(receipt: PinReceipt, onProgress: (progress: PinProgress) 
   };
 }
 
-/** The receipts that are parked or failed, oldest first. */
+/** The receipts whose outcome is not known yet, oldest first. */
 export async function listParked(): Promise<Parked[]> {
   const rows = (await (await getPinDb()).getAll(STORE)) as Parked[];
-  return rows.filter((row) => row.parked || row.failed).sort((a, b) => a.soldAt.localeCompare(b.soldAt));
+  return rows.filter((row) => row.parked).sort((a, b) => a.soldAt.localeCompare(b.soldAt));
 }
 
-/** On start: every receipt that is neither parked nor failed belonged to a kassa that was closed while it waited. They are parked. */
+/**
+ * On start: every receipt that is not parked belonged to a kassa that was closed while it waited, and is parked.
+ * A failed one that an older version kept for a button in the footer is forgotten: the server has it.
+ */
 export async function parkLeftovers(): Promise<void> {
   const tx = (await getPinDb()).transaction(STORE, "readwrite");
   for (const row of (await tx.store.getAll()) as Parked[]) {
-    if (!row.parked && !row.failed) await tx.store.put({ ...row, parked: true });
+    if (row.failed) await tx.store.delete(row.id);
+    else if (!row.parked) await tx.store.put({ ...row, parked: true });
   }
   await tx.done;
 }
@@ -167,15 +171,10 @@ export async function markCashTaken(id: string): Promise<void> {
   await change(id, { cashTaken: true });
 }
 
-/** The beheerder has seen that this payment did not go through: the receipt is forgotten. */
-export async function dismissFailed(id: string): Promise<void> {
-  await forget(id);
-}
-
 let resolving: Promise<{ paid: Parked[]; failed: Parked[] }> | null = null;
 
 /**
- * Asks the server about every parked receipt. `paid`: forgotten. `failed`: kept as failed until `dismissFailed`.
+ * Asks the server about every parked receipt. `paid` and `failed` (not counting those rung up as cash) are forgotten.
  * A call made while a round is running joins that round, so that no outcome is reported twice.
  */
 export function resolveParked(): Promise<{ paid: Parked[]; failed: Parked[] }> {
@@ -198,14 +197,10 @@ async function resolve(): Promise<{ paid: Parked[]; failed: Parked[] }> {
       await forget(row.id);
       paid.push(row);
     } else if ((answer.ok && answer.data.outcome !== null) || (!answer.ok && answer.status === 404 && answer.error === "no_pin_sale")) {
-      // It did not go through, or the server never got the start. With cash taken the customer has paid: nothing to tell.
-      if (row.cashTaken) {
-        await forget(row.id);
-      } else {
-        const seen: Parked = { ...row, parked: false, failed: true };
-        await change(row.id, { parked: false, failed: true });
-        failed.push(seen);
-      }
+      // It did not go through, or the server never got the start. The server keeps what it knows (Betalingen
+      // shows it); the kassa says it once. With cash taken the customer has paid: nothing to tell.
+      await forget(row.id);
+      if (!row.cashTaken) failed.push(row);
     }
     // Still running, or no answer: it stays parked and is asked about again.
   }

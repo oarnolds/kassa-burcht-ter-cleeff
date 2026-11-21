@@ -402,7 +402,7 @@ it("books nothing in the outbox for a paid pin sale and counts the stock down on
   await waitFor(() => expect(calls("GET").filter((c) => c.url === "/api/kassa/catalog").length).toBeGreaterThanOrEqual(2));
   expect(await pendingCount()).toBe(0);
   expect(calls("POST").map((c) => c.url)).toEqual(["/api/kassa/pin"]);
-  expect(screen.queryByText(/wacht op bevestiging/i)).not.toBeInTheDocument();
+  expect(await screen.findByText(/^Laatste betaling: € 1,10 pin · \d\d:\d\d$/)).toBeInTheDocument();
 });
 
 it("parks the receipt when the connection drops, takes the next customer, and settles it when the connection is back", async () => {
@@ -418,7 +418,12 @@ it("parks the receipt when the connection drops, takes the next customer, and se
   await act(() => vi.advanceTimersByTimeAsync(12_000));
   expect(await screen.findByRole("dialog", { name: "Uitkomst onbekend" })).toBeInTheDocument();
   await tap("Volgende klant");
-  expect(await screen.findByRole("button", { name: "1 pinbetaling wacht op bevestiging" })).toBeInTheDocument();
+  // No button for it in the footer: Betalingen lists it.
+  await tap("Betalingen");
+  const list = within(await screen.findByRole("dialog", { name: "Betalingen vandaag" }));
+  expect(await list.findByText("wacht")).toBeInTheDocument();
+  expect(list.getByText("Geen verbinding. Je ziet alleen wat op deze iPad staat.")).toBeInTheDocument();
+  await tap("Sluiten");
   await tap(/Koffie/); // the next customer, in cash, offline
   await tap("Contant");
   await tap("Gepast");
@@ -433,8 +438,10 @@ it("parks the receipt when the connection drops, takes the next customer, and se
     window.dispatchEvent(new Event("online"));
   });
   expect(await screen.findByText("Pinbetaling van € 1,10 is gelukt")).toBeInTheDocument();
-  await waitFor(() => expect(screen.queryByText(/wacht op bevestiging/i)).not.toBeInTheDocument());
   expect(await screen.findByText("nog 2")).toBeInTheDocument();
+  // The coffee came later: it stays the last payment.
+  expect(screen.getByText(/^Laatste betaling: € 1,40 contant · \d\d:\d\d$/)).toBeInTheDocument();
+  await waitFor(async () => expect(await (await getPinDb()).getAll("pin")).toEqual([]));
   await waitFor(async () => expect(await pendingCount()).toBe(0));
   expect(await soldSinceFetch()).toMatchObject({ aardbeitje: 1 });
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -446,83 +453,53 @@ it("tells the beheerder with the amount when a parked payment did not go through
   vi.useFakeTimers({ shouldAdvanceTime: true });
   mockApi({ "/api/kassa/catalog": catalog, "/api/kassa/pin/*": (req: PinRequest) => pinStatus(idOf(req), { outcome: "declined", reason: "insufficient_funds" }) });
   renderAt("/");
-  expect(await screen.findByRole("button", { name: "1 pinbetaling wacht op bevestiging" })).toBeInTheDocument();
+  await screen.findByRole("button", { name: /Aardbeitje/ });
   await act(() => vi.advanceTimersByTimeAsync(5000)); // the kassa asks every five seconds
-  const failedButton = `Pinbetaling van €${NBSP}1,10 niet gelukt`;
-  expect(await screen.findByRole("button", { name: failedButton })).toBeInTheDocument();
+  expect(await screen.findByText("Pinbetaling van € 1,10 is niet gelukt")).toBeInTheDocument();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  expect(screen.queryByText(/wacht op bevestiging/i)).not.toBeInTheDocument();
   await tap(/Koffie/); // the kassa is not held up
   expect(screen.getByTestId("total")).toHaveTextContent("€ 1,40");
-  await tap(failedButton);
-  const dialog = within(await screen.findByRole("dialog", { name: "Pinbetalingen" }));
-  expect(dialog.getByText(/^Niet gelukt · Pin van \d\d:\d\d · € 1,10$/)).toBeInTheDocument();
-  expect(dialog.getByText("1× Aardbeitje")).toBeInTheDocument();
-  expect(dialog.getByText("Deze pinbetaling is niet gelukt en is niet geboekt. Staat de klant er nog? Reken dan opnieuw af.")).toBeInTheDocument();
-  await user().click(dialog.getByRole("button", { name: "Gezien" }));
-  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-  await waitFor(() => expect(screen.queryByRole("button", { name: /niet gelukt/ })).not.toBeInTheDocument());
-  expect(screen.getByTestId("total")).toHaveTextContent("€ 1,40"); // the receipt in progress is untouched
-  expect(await (await getPinDb()).getAll("pin")).toEqual([]);
+  // Told once: the server keeps the attempt, Betalingen shows it.
+  await waitFor(async () => expect(await (await getPinDb()).getAll("pin")).toEqual([]));
+  // No button for it in the footer.
+  expect(within(screen.getByRole("contentinfo")).getAllByRole("button").map((button) => button.textContent)).toEqual(["Betalingen", "Omzet"]);
 });
 
-it("still shows a failed payment after the kassa was closed and opened again, until it has been seen", async () => {
+it("forgets a failed payment an older kassa kept for a button in the footer", async () => {
   await paired();
   await kept({ parked: false, failed: true, ...twoIcesAndACoffee });
   mockOffline();
-  const first = renderAt("/");
-  expect(await screen.findByRole("button", { name: `Pinbetaling van €${NBSP}3,60 niet gelukt` })).toBeInTheDocument();
-  first.unmount();
-  await kept({ parked: false, failed: true });
   renderAt("/");
-  expect(await screen.findByRole("button", { name: "2 pinbetalingen niet gelukt" })).toBeInTheDocument();
+  const footer = within(await screen.findByRole("contentinfo"));
+  expect(footer.getAllByRole("button").map((button) => button.textContent)).toEqual(["Betalingen", "Omzet"]);
+  await waitFor(async () => expect(await (await getPinDb()).getAll("pin")).toEqual([]));
 });
 
-it("keeps a payment that was seen in its place, greyed, while the list is open", async () => {
-  await paired();
-  const first = await kept({ parked: false, failed: true, soldAt: "2026-07-30T12:32:00.000Z" });
-  await kept({ parked: false, failed: true, soldAt: "2026-07-30T12:40:00.000Z", ...twoIcesAndACoffee });
-  mockOffline();
-  renderAt("/");
-  await tap("2 pinbetalingen niet gelukt");
-  const dialog = within(await screen.findByRole("dialog", { name: "Pinbetalingen" }));
-  await user().click(dialog.getAllByRole("button", { name: "Gezien" })[0]!);
-  // The second tap of a double tap finds no button where the first one was.
-  await waitFor(() => expect(dialog.getAllByRole("button", { name: "Gezien" })).toHaveLength(1));
-  expect(dialog.getByText("Niet gelukt · Pin van 14:32 · € 1,10")).toBeInTheDocument();
-  expect(dialog.getByText("Niet gelukt · Pin van 14:40 · € 3,60")).toBeInTheDocument();
-  await waitFor(async () => expect((await (await getPinDb()).getAll("pin")).map((row) => row.id)).not.toContain(first.id));
-  expect(await screen.findByRole("button", { name: `Pinbetaling van €${NBSP}3,60 niet gelukt` })).toBeInTheDocument();
-  await user().click(dialog.getByRole("button", { name: "Gezien" }));
-  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-});
-
-it("rings up a parked receipt as cash, and then says nothing when the pin payment fails", async () => {
+it("rings up a parked receipt as cash from Betalingen, and then says nothing when the pin payment fails", async () => {
   await paired();
   const receipt = await kept();
   mockOffline();
   renderAt("/");
-  await tap("1 pinbetaling wacht op bevestiging");
-  const list = within(await screen.findByRole("dialog", { name: "Pinbetalingen" }));
-  expect(list.getByText("Kijk op de betaalterminal of de betaling is gelukt. Zodra er verbinding is, haalt de kassa de uitkomst op.")).toBeInTheDocument();
-  await user().click(list.getByRole("button", { name: "Toch contant" }));
+  await tap("Betalingen");
+  const list = within(await screen.findByRole("dialog", { name: "Betalingen vandaag" }));
+  await user().click(await list.findByRole("button", { name: "Toch contant" }));
   expect(await screen.findByRole("dialog", { name: "Contant, te betalen" })).toHaveTextContent("€ 1,10");
   await tap("Gepast");
   await waitFor(async () => expect(await queued()).toMatchObject([{ kind: "sale", totalCents: 110, cashGivenCents: 110, insteadOfSaleId: receipt.id }]));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-  await tap("1 pinbetaling wacht op bevestiging");
-  const again = within(await screen.findByRole("dialog", { name: "Pinbetalingen" }));
-  expect(await again.findByText("Contant afgerekend")).toBeInTheDocument();
+  await tap("Betalingen");
+  const again = within(await screen.findByRole("dialog", { name: "Betalingen vandaag" }));
+  expect(await again.findByText("contant afgerekend")).toBeInTheDocument();
+  expect(again.getByText("nog niet verstuurd")).toBeInTheDocument();
   expect(again.queryByRole("button", { name: "Toch contant" })).not.toBeInTheDocument();
+  await tap("Sluiten");
   mockApi({ "/api/kassa/catalog": catalog, "POST /api/kassa/sales": acceptAll, "/api/kassa/pin/*": (req: PinRequest) => pinStatus(idOf(req), { outcome: "declined" }) });
   act(() => {
     window.dispatchEvent(new Event("online"));
   });
-  await waitFor(() => expect(screen.queryByText(/wacht op bevestiging/i)).not.toBeInTheDocument());
-  expect(screen.queryByRole("button", { name: /niet gelukt/ })).not.toBeInTheDocument();
-  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  await waitFor(async () => expect(await (await getPinDb()).getAll("pin")).toEqual([]));
+  expect(screen.queryByText(/niet gelukt/)).not.toBeInTheDocument();
   expect(screen.queryByText(/is gelukt/)).not.toBeInTheDocument();
-  expect(await (await getPinDb()).getAll("pin")).toEqual([]);
 });
 
 it("confirms a parked payment that went through after cash was taken", async () => {
@@ -530,7 +507,7 @@ it("confirms a parked payment that went through after cash was taken", async () 
   await kept();
   mockOffline();
   renderAt("/");
-  await tap("1 pinbetaling wacht op bevestiging");
+  await tap("Betalingen");
   await tap("Toch contant");
   await tap("Gepast");
   await waitFor(async () => expect(await pendingCount()).toBe(1));
@@ -540,27 +517,38 @@ it("confirms a parked payment that went through after cash was taken", async () 
   });
   // Both sales stand; beheer marks them for the penningmeester.
   expect(await screen.findByText("Pinbetaling van € 1,10 is gelukt")).toBeInTheDocument();
-  await waitFor(() => expect(screen.queryByText(/wacht op bevestiging/i)).not.toBeInTheDocument());
-  expect(screen.queryByRole("button", { name: /niet gelukt/ })).not.toBeInTheDocument();
+  await waitFor(async () => expect(await (await getPinDb()).getAll("pin")).toEqual([]));
 });
 
-it("keeps Omzet where it was, with the pin buttons beside the status", async () => {
+it("shows the last payment, then Betalingen and Omzet side by side, in the footer", async () => {
   await paired();
-  await kept();
-  await kept({ parked: false, failed: true, ...twoIcesAndACoffee });
-  mockApi({ "/api/kassa/catalog": catalog, "/api/kassa/pin/*": (req: PinRequest) => pinStatus(idOf(req)) });
-  renderAt("/");
+  mockApi({ "/api/kassa/catalog": catalog, "POST /api/kassa/sales": acceptAll });
+  const first = renderAt("/");
   const footer = within(await screen.findByRole("contentinfo"));
-  await footer.findByRole("button", { name: "1 pinbetaling wacht op bevestiging" });
-  expect(footer.getAllByRole("button").map((button) => button.textContent)).toEqual([
-    "1 pinbetaling wacht op bevestiging",
-    `Pinbetaling van €${NBSP}3,60 niet gelukt`,
-    "Omzet",
-  ]);
+  expect(footer.getAllByRole("button").map((button) => button.textContent)).toEqual(["Betalingen", "Omzet"]);
+  expect(footer.queryByText(/Laatste betaling/)).not.toBeInTheDocument();
+  await tap(/Koffie/);
+  await tap("Contant");
+  await tap("Gepast");
+  const last = await footer.findByText(/^Laatste betaling: € 1,40 contant · \d\d:\d\d$/);
   const online = await footer.findByText("Online");
-  expect(online.compareDocumentPosition(footer.getAllByRole("button")[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(online.compareDocumentPosition(last) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(last.compareDocumentPosition(footer.getByRole("button", { name: "Betalingen" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   await tap("Omzet");
   expect(await screen.findByRole("dialog", { name: "Omzet" })).toBeInTheDocument();
+  first.unmount();
+  // It is still there after the kassa is opened again.
+  renderAt("/");
+  expect(await screen.findByText(/^Laatste betaling: € 1,40 contant · \d\d:\d\d$/)).toBeInTheDocument();
+});
+
+it("does not show the last payment of an earlier day", async () => {
+  await paired();
+  await setMeta("lastPayment", { totalCents: 140, method: "cash", soldAt: "2026-07-30T12:32:00.000Z" });
+  mockOffline();
+  renderAt("/");
+  await screen.findByRole("button", { name: /Aardbeitje/ });
+  expect(screen.queryByText(/Laatste betaling/)).not.toBeInTheDocument();
 });
 
 it("brings back a receipt that was waiting when the kassa was closed (Review Focus 3)", async () => {
@@ -568,22 +556,34 @@ it("brings back a receipt that was waiting when the kassa was closed (Review Foc
   await kept({ parked: false, failed: false, ...twoIcesAndACoffee });
   mockOffline();
   renderAt("/");
-  await tap("1 pinbetaling wacht op bevestiging");
-  const dialog = within(await screen.findByRole("dialog", { name: "Pinbetalingen" }));
-  expect(dialog.getByText("Wacht op bevestiging · Pin van 14:32 · € 3,60")).toBeInTheDocument();
-  expect(dialog.getByText("2× Aardbeitje, 1× Koffie")).toBeInTheDocument();
+  await tap("Betalingen");
+  const dialog = within(await screen.findByRole("dialog", { name: "Betalingen vandaag" }));
+  const row = within((await dialog.findByText("2× Aardbeitje, 1× Koffie")).closest("li")!);
+  expect(row.getByText("14:32")).toBeInTheDocument();
+  expect(row.getByText("Pin")).toBeInTheDocument();
+  expect(row.getByText("wacht")).toBeInTheDocument();
+  expect(row.getByText("€ 3,60")).toBeInTheDocument();
 });
 
-it("lists the payments that did not go through before the ones that are waiting", async () => {
+it("lists the day's payments from the server and from this iPad, newest first", async () => {
   await paired();
-  await kept({ soldAt: "2026-07-30T12:10:00.000Z" });
-  await kept({ parked: false, failed: true, soldAt: "2026-07-30T12:32:00.000Z", ...twoIcesAndACoffee });
-  mockOffline();
+  await kept({ soldAt: "2026-07-30T12:32:00.000Z" }); // the server never heard of this start
+  const day = {
+    sales: [
+      { id: "s1", method: "cash", totalCents: 140, soldAt: "2026-07-30T12:10:00.000Z", soldAtLocal: "14:10", businessDate: "2026-07-30", late: false, reversed: false, reversesSaleId: null, reversalReason: null, possiblyDouble: false, lines: [{ name: "Koffie", categoryName: "Drinken", unitPriceCents: 140, qty: 1 }] },
+    ],
+    pinAttempts: [{ id: "a1", soldAt: "2026-07-30T12:20:00.000Z", soldAtLocal: "14:20", totalCents: 60, outcome: "declined", reason: null, lines: [{ name: "Entreegeld", categoryName: "Entree", unitPriceCents: 60, qty: 1 }] }],
+  };
+  mockApi({ "/api/kassa/catalog": catalog, "/api/kassa/payments": day, "/api/kassa/pin/*": (req: PinRequest) => pinStatus(idOf(req)) });
   renderAt("/");
-  await tap("1 pinbetaling wacht op bevestiging");
-  const dialog = within(await screen.findByRole("dialog", { name: "Pinbetalingen" }));
-  expect(dialog.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent?.replaceAll(NBSP, " "))).toEqual([
-    "Niet gelukt · Pin van 14:32 · € 3,60",
-    "Wacht op bevestiging · Pin van 14:10 · € 1,10",
+  await tap("Betalingen");
+  const dialog = within(await screen.findByRole("dialog", { name: "Betalingen vandaag" }));
+  await dialog.findByText("betaald");
+  expect(dialog.getAllByRole("listitem").map((item) => item.textContent?.replaceAll(NBSP, " "))).toEqual([
+    "14:32Pin1× Aardbeitjewacht€ 1,10Toch contant",
+    "14:20Pin1× Entreegeldniet gelukt€ 0,60",
+    "14:10Contant1× Koffiebetaald€ 1,40",
   ]);
+  expect(dialog.queryByText(/Geen verbinding/)).not.toBeInTheDocument();
+  expect(calls("GET").some((call) => call.url.startsWith("/api/kassa/payments?date="))).toBe(true);
 });

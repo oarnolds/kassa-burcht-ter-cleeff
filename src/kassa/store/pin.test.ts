@@ -8,7 +8,6 @@ import {
   POLL_MS,
   UNSENT_MS,
   WAIT_LIMIT_MS,
-  dismissFailed,
   listParked,
   markCashTaken,
   parkLeftovers,
@@ -276,12 +275,13 @@ it("settles parked receipts when the server knows their outcome", async () => {
     [statusUrl(unknown)]: [404, { error: "no_pin_sale" }],
     [statusUrl(running)]: status(running),
   });
-  expect(await resolveParked()).toEqual({ paid: [paid], failed: [{ ...declined, parked: false, failed: true }, { ...unknown, parked: false, failed: true }] });
-  expect(await listParked()).toEqual([{ ...declined, parked: false, failed: true }, { ...unknown, parked: false, failed: true }, running]);
+  // Settled either way, the receipt is done with: the server keeps the payment, and the kassa says it once.
+  expect(await resolveParked()).toEqual({ paid: [paid], failed: [declined, unknown] });
+  expect(await listParked()).toEqual([running]);
   // Without a connection nothing is learned, and nothing changes.
   mockOffline();
   expect(await resolveParked()).toEqual({ paid: [], failed: [] });
-  expect(await listParked()).toHaveLength(3);
+  expect(await listParked()).toEqual([running]);
 });
 
 it("keeps a receipt parked when the server does not know pin at all (final review)", async () => {
@@ -292,18 +292,19 @@ it("keeps a receipt parked when the server does not know pin at all (final revie
   expect(await listParked()).toEqual([parked]);
 });
 
-it("keeps a payment that did not go through until the beheerder has seen it, also over a restart", async () => {
+it("forgets a payment that did not go through, also one an older kassa kept to be seen (Betalingen)", async () => {
   const [declined, running] = [await park(1), await park(2)];
+  // An older version of the kassa kept a failed receipt for a red button in the footer.
+  const older = await park(3, { parked: false, failed: true });
   mockApi({ [statusUrl(declined)]: status(declined, { outcome: "expired" }), [statusUrl(running)]: status(running) });
-  await resolveParked();
+  expect(await resolveParked()).toEqual({ paid: [], failed: [declined] });
   const before = calls("GET").length;
-  // The next round asks only about the one that is still running: a failed one is final.
+  // The next round asks only about the one that is still running.
   expect(await resolveParked()).toEqual({ paid: [], failed: [] });
   expect(calls("GET").slice(before).map((call) => call.url)).toEqual([statusUrl(running)]);
   await parkLeftovers(); // the kassa is started again
-  expect(await listParked()).toEqual([{ ...declined, parked: false, failed: true }, running]);
-  await dismissFailed(declined.id);
   expect(await listParked()).toEqual([running]);
+  expect((await stored()).map((row) => row.id)).not.toContain(older.id);
 });
 
 it("leaves a receipt parked when the server cannot say, or this iPad is no longer paired", async () => {
