@@ -1,0 +1,4 @@
+# Alleen voor `npm run e2e`: verzonnen waarden, en een nagebootste Mollie op deze computer (e2e/global-setup.ts).
+SETUP_TOKEN=dev-setup-token
+MOLLIE_API_KEY=test_e2e
+MOLLIE_API_BASE=http://localhost:4174/v2

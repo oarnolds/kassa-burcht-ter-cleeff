@@ -202,14 +202,33 @@ Deze zijn niet met de penningmeester besproken en kunnen worden teruggedraaid:
 - Het bevestigen van een levering vraagt internet. Reden: het is niet tijdkritisch, en zo kan een bestelling nooit twee keer worden ontvangen.
 - Voorraad blokkeert nooit een verkoop.
 
+Toegevoegd bij het bouwen van fase 2 (pin), 21 november 2026:
+
+- Een nieuwe poging is een nieuwe verkoop. Na "Opnieuw proberen" vraagt de kassa Mollie om een nieuwe betaling; de poging die niet is gelukt blijft bewaard en staat in het beheer onder de verkopen van die dag, apart van de omzet ("Pin: niet gelukt of nog open"). Reden: zo is achteraf te zien wat er met een pas is gebeurd, en kan één betaling bij Mollie nooit bij twee verkopen horen.
+- De voorraad gaat omlaag op het moment dat de betaling is goedgekeurd, niet bij het tikken op Pin. Een geweigerde of geannuleerde betaling raakt de voorraad niet.
+- De kassa wacht 10 seconden zonder antwoord van de server, en hoogstens 2 minuten in totaal, voordat een bon wordt geparkeerd ("Uitkomst onbekend"). Een betaling waarvan Mollie de start nooit heeft beantwoord, geeft de server na een kwartier op als "niet gestart".
+- Een geparkeerde betaling die achteraf niet is gelukt, opent geen venster. Hij staat als rode knop met het bedrag onderaan het scherm tot de beheerder "Gezien" tikt. Reden: de penningmeester wil geen meldingen die over een lopende verkoop heen komen. De prijs: de melding kan even onopgemerkt blijven staan.
+- Een geparkeerde betaling die achteraf wel is gelukt, meldt de kassa drie seconden met "Pinbetaling van € … is gelukt". Er hoeft niets op getikt te worden.
+- Is er contant afgerekend voor een bon waarvan de pinbetaling daarna toch is gelukt, dan blijven beide verkopen staan en krijgen ze in het beheer het label "Mogelijk dubbel betaald". De kassa kiest niet zelf welke van de twee vervalt.
+- Elke gekoppelde kassa mag de uitkomst van een pinbetaling opvragen en een wachtende betaling annuleren, niet alleen de kassa die hem startte. Reden: er is één kiosk, en een iPad die wordt vervangen moet een openstaande bon kunnen afhandelen.
+- Een terminal die met de testsleutel is gekozen geldt niet voor de live-sleutel, en omgekeerd. Na het wisselen van sleutel is pin "nog niet ingesteld" tot de penningmeester opnieuw kiest. Reden: Mollie's testterminal bestaat niet voor echte betalingen.
+- De server vraagt Mollie alleen naar een betaling met een sleutel van dezelfde soort (test of echt) als waarmee hij is gestart. Een proefbetaling die bij de overstap naar de live-sleutel nog openstaat, blijft daardoor "Wacht op bevestiging" tot de proefgegevens zijn gewist.
+- De melding van Mollie (webhook) is niet ondertekend. De kassa gebruikt hem alleen als seintje en haalt de betaling daarna zelf bij Mollie op; wat in de melding staat wordt niet geloofd.
+- Terugdraaien van een pinverkoop gaat alleen voor het hele bedrag. Een gedeeltelijke terugbetaling in Mollie kan de kassa niet vastleggen.
+
 ## 15. Wat nog open staat
 
-De penningmeester heeft alle vragen beantwoord. Wat overblijft is pas te beantwoorden door te testen in fase 2. De eerste drie punten gaan over de iPhone en spelen alleen tijdens het testen, omdat er in de kiosk een Mollie-terminal komt:
-- Hoe de iPhone met de Mollie Tap-app aan een `terminalId` komt. Mollie's documentatie noemt de Tap-app als doel voor betalingen via de API, maar beschrijft niet waar het nummer vandaan komt.
-- Of de Tap-app open moet staan om een betaling te ontvangen.
-- Welke passen de iPhone accepteert (Maestro en V PAY zijn niet bevestigd).
-- Of Mollie een goedkeuring vraagt voor het aanzetten van Point of Sale.
-- Of een lopende pinbetaling via de API te annuleren is.
+De penningmeester heeft alle vragen beantwoord. Wat overblijft is pas te beantwoorden door te testen. Hieronder staat per vraag wat Mollie's documentatie zegt (gelezen op 21 november 2026, alleen docs.mollie.com) en wat er nog te testen is. De kassa is zo gebouwd dat hij met beide antwoorden werkt. De eerste drie punten gaan over de iPhone en spelen alleen tijdens het testen, omdat er in de kiosk een Mollie-terminal komt:
+- Hoe de iPhone met de Mollie Tap-app aan een `terminalId` komt. De documentatie noemt bij terminals het merk "Tap" naast "PAX", en beschrijft voor de app een stroom waarbij betalingen via de API op de telefoon binnenkomen. Dat wijst erop dat de iPhone in de lijst van terminals verschijnt, en daar kiest de penningmeester hem in het beheer. Nog te testen: of hij er werkelijk in staat.
+- Of de Tap-app open moet staan om een betaling te ontvangen. De documentatie zegt het niet. Nog te testen met de iPhone.
+- Welke passen de iPhone accepteert (Maestro en V PAY zijn niet bevestigd). De documentatie zegt het niet. Nog te testen.
+- Of Mollie een goedkeuring vraagt voor het aanzetten van Point of Sale. De documentatie zegt alleen dat de betaalmethode op het profiel moet aanstaan en dat er dan in de testmodus vanzelf een testterminal komt. Nog te zien bij het aanzetten.
+- Of een lopende pinbetaling via de API te annuleren is. De documentatie beschrijft annuleren in het algemeen, met een weigering als het niet meer kan, maar zegt niet of het kan zolang de terminal op een pas wacht. De kassa probeert het en meldt "Annuleren lukte niet. Kijk op de betaalterminal." als Mollie weigert. Nog te testen in de testmodus.
+
+Bij het bouwen kwamen er drie vragen bij, ook te beantwoorden in de testmodus:
+- Welke uitkomst Mollie geeft als de klant op de terminal annuleert, als de pas wordt geweigerd en als niemand betaalt, en na hoe lang een onbetaalde betaling verloopt. De documentatie noemt de mogelijke uitkomsten en een wachttijd van ongeveer 40 seconden op de terminal. De kassa gaat af op de einduitkomst en raadt niet.
+- Of Mollie in ontwikkeling een terugkeeradres op `localhost` aanneemt. De documentatie verbiedt `localhost` alleen voor het adres van de melding (webhook), en dat stuurt de kassa lokaal dan ook niet mee.
+- Hoe de testterminal heet, en welke keuzes Mollie's testpagina biedt naast betaald, geannuleerd en mislukt.
 
 ## 16. Aan de bouwer
 

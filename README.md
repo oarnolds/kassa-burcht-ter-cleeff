@@ -7,7 +7,7 @@ De eigen kassa van Speeltuin Burcht ter Cleeff. Hij draait als app op de iPad in
 - **Kassa:** https://kassa-burcht-ter-cleeff.kassa-burcht-ter-cleeff.workers.dev
 - **Beheer:** https://kassa-burcht-ter-cleeff.kassa-burcht-ter-cleeff.workers.dev/beheer
 
-Dit is fase 1: aanslaan, contant, statiegeld, overzichten, het kluisje en de voorraad van de ijsjes. Pinnen via Mollie komt in fase 2. Tot die tijd is de knop Pin grijs en blijft iZettle de echte kassa; in deze kassa staan alleen proefverkopen.
+De kassa kan aanslaan, contant en pin afrekenen, statiegeld innemen, en houdt de overzichten, het kluisje en de voorraad van de ijsjes bij. Pinnen gaat via Mollie. Zolang de kassa op de testsleutel van Mollie draait, staat er bovenaan een gele balk **TEST**: pinbetalingen zijn dan nagespeeld en er wordt geen geld afgeschreven. Tot de ingebruikname blijft iZettle de echte kassa; in deze kassa staan dan alleen proefverkopen.
 
 ## Eerste keer instellen
 
@@ -43,9 +43,23 @@ De iPad blijft gekoppeld tot de penningmeester hem in beheer ontkoppelt. De kass
 
 **Contant.** Tik op **Contant**. Betaalt de klant gepast, tik dan op **Gepast** en de verkoop is klaar. Geeft de klant een biljet, tik dan op dat biljet: de kassa toont het wisselgeld. Tik op **Klaar** als je het hebt teruggegeven.
 
+**Pin.** Tik op **Pin**. De kassa toont het bedrag en "Houd pas of telefoon tegen de betaalterminal". De klant betaalt op de terminal; jij hoeft niets te doen. De bon blijft staan tot de betaling is goedgekeurd. Daarna staat er kort "Pin betaald" en is de bon leeg voor de volgende klant. Een pinbetaling komt in het scherm **Omzet** bij pin te staan, niet bij contant, en telt niet mee voor het kluisje.
+
+Wat er anders kan gebeuren:
+
+- **Betaling geweigerd, geannuleerd of verlopen.** De kassa zegt wat er is gebeurd, soms met de reden (bijvoorbeeld "Onvoldoende saldo."). Er is niets geboekt. Je kiest: **Opnieuw proberen** (de terminal vraagt opnieuw om de pas), **Toch contant** (de klant betaalt contant) of **Terug naar de bon** (om de bon aan te passen of later af te rekenen).
+- **Annuleren.** Bedenkt de klant zich terwijl de terminal wacht, tik dan op **Annuleren**. Staat er daarna "Annuleren lukte niet. Kijk op de betaalterminal.", dan was de klant al aan het betalen: wacht de uitkomst af.
+- **Uitkomst onbekend.** Valt de verbinding weg terwijl de klant betaalt, dan weet de kassa niet of het is gelukt. De bon wordt geparkeerd en je kunt verder met **Volgende klant**. Kijk op de betaalterminal: die laat zien of de betaling is goedgekeurd. Onderaan staat een knop **1 pinbetaling wacht op bevestiging**. Zodra er weer verbinding is, haalt de kassa de uitkomst zelf op. Is het gelukt, dan staat er kort "Pinbetaling van € … is gelukt" en verdwijnt de knop.
+- **Toch contant bij een onbekende uitkomst.** Doe dat alleen als de terminal de betaling niet heeft goedgekeurd. Heeft de klant toch twee keer betaald (contant en later bleek de pin gelukt), dan ziet de penningmeester dat in beheer en betaalt hij één van de twee terug.
+- **De rode knop "Pinbetaling van € … niet gelukt".** Een geparkeerde betaling is achteraf niet gelukt. Er is niets geboekt. Tik op de knop om te zien welke bon het was. Staat de klant er nog, reken dan opnieuw af. Tik daarna op **Gezien**; daarmee verdwijnt de knop. De kassa opent hiervoor nooit zelf een venster: je kunt altijd eerst de klant helpen die voor je staat.
+
+Zonder internet kan er niet gepind worden. De knop Pin is dan grijs en eronder staat waarom. Contant werkt gewoon door.
+
+**De balk TEST.** Staat er bovenaan een gele balk "TEST Pinbetalingen zijn nagespeeld: er wordt geen geld afgeschreven.", dan draait de kassa op de testsleutel van Mollie. Er gaat geen echt geld om; in het pinvenster staat dan ook een link "Test: kies de uitkomst bij Mollie" waarmee de penningmeester een betaling laat slagen of mislukken. Zie je de balk terwijl de kassa echt in gebruik is, meld dat dan meteen aan de penningmeester: klanten betalen dan niet echt.
+
 **Statiegeld.** Tik op de tegel **Statiegeld**, typ het aantal ingeleverde stuks en tik op **Toevoegen**. Reken daarna af met **Contant**. Statiegeld telt als inkomst en gaat het kluisje in.
 
-**Verkeerd aangeslagen en al afgerekend.** Op de kassa kun je een afgerekende verkoop niet terugdraaien: één verkeerde tik zou een goede verkoop ongedaan maken. Geef de klant zo nodig het geld terug, schrijf de tijd en het bedrag op en meld het dezelfde dag aan de penningmeester. Die draait de verkoop terug in beheer onder **Verkopen**. Dat kan alleen vóór de volgende afdracht; daarna blijft het een kasverschil met een toelichting.
+**Verkeerd aangeslagen en al afgerekend.** Op de kassa kun je een afgerekende verkoop niet terugdraaien: één verkeerde tik zou een goede verkoop ongedaan maken. Geef de klant zo nodig het geld terug, schrijf de tijd en het bedrag op en meld het dezelfde dag aan de penningmeester. Die draait de verkoop terug in beheer onder **Verkopen**. Voor een contante verkoop kan dat alleen vóór de volgende afdracht; daarna blijft het een kasverschil met een toelichting. Is er gepind, geef dan geen contant geld terug: de penningmeester betaalt het bedrag terug via Mollie.
 
 **Levering van ijsjes.** Staat er boven in beeld een gele balk **Levering onderweg**, dan heeft de penningmeester een bestelling ingevoerd. Staan de dozen in de vriezer? Tik op de balk, kijk of het klopt en tik op **Ontvangen**. De voorraad wordt bijgewerkt. Klopt de levering niet, bevestig dan toch en geef de afwijking door aan de penningmeester.
 
@@ -59,9 +73,9 @@ De iPad blijft gekoppeld tot de penningmeester hem in beheer ontkoppelt. De kass
 
 Alles staat onder `/beheer`. Het werkt op de computer en op de telefoon.
 
-- **Overzicht.** Vandaag en deze maand: omzet, aantal verkopen, en wat er in het kluisje hoort te liggen.
-- **Rapporten.** Kies een maand. Je ziet de omzet per dag, per categorie en per product. Onderaan download je de maand als CSV, in twee vormen: dagtotalen en losse verkopen.
-- **Verkopen.** De losse verkopen van een dag. Een verkoop terugdraaien kan met een reden. De oorspronkelijke verkoop blijft staan en er komt een tegenboeking bij. Een contante verkoop kun je alleen terugdraaien zolang hij na de laatste afdracht valt.
+- **Overzicht.** Vandaag en deze maand: omzet (contant en pin apart), aantal verkopen, en wat er in het kluisje hoort te liggen. Staat er bovenaan een kaart **Pin: let op**, dan is er een pinbetaling die nog op bevestiging wacht of een bon die mogelijk dubbel is betaald; de regel brengt je naar de verkopen van die dag.
+- **Rapporten.** Kies een maand. Je ziet de omzet per dag, per categorie en per product, met contant en pin in eigen kolommen. Leg de kolom Pin naast de uitbetalingen van Mollie. Onderaan download je de maand als CSV, in twee vormen: dagtotalen en losse verkopen.
+- **Verkopen.** De losse verkopen van een dag, contant en pin. Een verkoop terugdraaien kan met een reden. De oorspronkelijke verkoop blijft staan en er komt een tegenboeking bij. Een contante verkoop kun je alleen terugdraaien zolang hij na de laatste afdracht valt. Over pin staat hieronder meer.
 - **Kluisje.** Bovenaan staat wat er in het kluisje hoort te liggen. Bij een afdracht vul je in wanneer het kluisje is geleegd, wat je hebt ontvangen en wat er als wisselgeld is achtergebleven. De kassa rekent het verschil uit en bewaart het, met je toelichting. Alle eerdere afdrachten blijven zichtbaar.
 - **Voorraad.**
   - *Bijbestellen*: wat op of onder de bestelgrens staat.
@@ -69,8 +83,46 @@ Alles staat onder `/beheer`. Het werkt op de computer en op de telefoon.
   - *Bestelling invoeren*: wat je bij Goodoo hebt besteld, in dozen (losse stuks kan ook). De beheerder ziet dan op de iPad de balk "Levering onderweg".
   - *Onderweg*: bestellingen die nog niet zijn bevestigd. Je kunt ze zelf als ontvangen markeren of laten vervallen.
 - **Producten.** Naam, prijs, categorie en volgorde van de tegels (de pijltjes). Een product verberg je in plaats van het te verwijderen, omdat oude verkopen ernaar verwijzen. Hier zet je ook aan of een product een cijferblok opent en of de voorraad wordt bijgehouden. Onderaan staan de categorieën met hun kleur. Een wijziging staat binnen een halve minuut op de kassa.
-- **Instellingen.** Een iPad koppelen of ontkoppelen, het wachtwoord wijzigen, alles downloaden als één bestand, de reservekopie, en de proefgegevens wissen zolang de kassa nog niet in gebruik is.
+- **Instellingen.** Een iPad koppelen of ontkoppelen, de betaalterminal voor pin kiezen, het wachtwoord wijzigen, alles downloaden als één bestand, de reservekopie, en de proefgegevens wissen zolang de kassa nog niet in gebruik is.
 - **Reservekopie.** Elke maandagnacht bewaart de kassa zelf een kopie van alles bij Cloudflare; de 26 nieuwste blijven staan. Onder **Instellingen** staat wanneer de laatste kopie is gemaakt. Staat daar dat de laatste kopie ouder is dan een week, meld dat dan aan de bouwer. Met **Nu een kopie maken** maak je er zelf een, bijvoorbeeld vlak voor het wissen van de proefgegevens.
+
+### Pin
+
+- **Pin telt nooit mee in het kluisje.** "In het kluisje hoort" en de afdracht gaan alleen over contant geld. Pingeld komt van Mollie op de bankrekening.
+- **Een pinverkoop terugbetalen.** De kassa betaalt zelf niets terug. Betaal eerst het hele bedrag terug in het Mollie-dashboard (open daar de betaling en kies terugbetalen). Ga daarna in beheer naar **Verkopen**, kies de verkoop en tik op **Terugdraaien** met een reden. Terugdraaien kan alleen voor het hele bedrag; een deel terugbetalen kan de kassa niet vastleggen.
+- **Mogelijk dubbel betaald.** Dit rode label staat op twee verkopen van dezelfde bon: er is contant afgerekend terwijl de pinbetaling nog onbekend was, en de pinbetaling is daarna toch gelukt. Zoek uit wat er is gebeurd (de beheerder weet het vaak nog). Heeft de klant echt twee keer betaald, betaal dan de pinbetaling terug in Mollie en draai die pinverkoop terug. Het label verdwijnt zodra één van de twee is teruggedraaid.
+- **Pin: niet gelukt of nog open.** Onder de verkopen van een dag staan de pinbetalingen die geen verkoop zijn geworden: geweigerd, geannuleerd, verlopen, niet gestart, of "Wacht op bevestiging". Ze tellen niet mee in de omzet. Zegt een klant dat hij heeft betaald terwijl de kassa van niet zei, dan zie je hier wat de kassa van Mollie heeft gehoord. Blijft er een betaling lang op "Wacht op bevestiging" staan, kijk dan in het Mollie-dashboard hoe die betaling is afgelopen.
+- **De kassa boekt alleen wat Mollie bevestigt.** Een pinverkoop staat pas in de omzet als de server zelf bij Mollie heeft gelezen dat er is betaald. Wat de iPad of de terminal laat zien, is daarvoor niet genoeg.
+
+### Pin instellen (eenmalig, de penningmeester zelf)
+
+De sleutel van Mollie is een geheim. Typ of plak hem alleen in het venster van de opdracht hieronder; zet hem nooit in een bericht, een mail of de code. Ook de bouwer hoeft hem niet te zien.
+
+1. Log in op het Mollie-dashboard en zet bij het websiteprofiel de betaalmethode **Point of sale** aan.
+2. Kopieer in Mollie de testsleutel: **Developers → API-sleutels**. Hij begint met `test_`.
+3. Open op de computer de Terminal in de map van de kassa en geef de opdracht hieronder. De Terminal vraagt om de waarde; plak daar de sleutel en druk op Enter. De sleutel wordt daarbij niet leesbaar getoond; dat hoort zo.
+4. Ga in beheer naar **Instellingen → Pin via Mollie**. Er staat "Testmodus" en een lijst met de testterminal van Mollie. Kies hem en tik op **Opslaan**.
+5. Op de iPad staat nu binnen een halve minuut de balk TEST en werkt de knop Pin. Doe een paar proefbetalingen: tik op Pin en dan op de link **Test: kies de uitkomst bij Mollie**. Kies daar betaald, geweigerd of geannuleerd en kijk wat de kassa doet.
+
+```bash
+npx wrangler secret put MOLLIE_API_KEY --name kassa-burcht-ter-cleeff
+```
+
+Staat er bij Instellingen "De sleutel van Mollie is nog niet ingesteld", dan is stap 3 niet gelukt. Staat er "Mollie accepteert de sleutel niet", dan is de sleutel niet goed overgenomen: doe stap 2 en 3 opnieuw. Staat er "Mollie geeft geen betaalterminal terug", dan staat Point of sale nog niet aan (stap 1).
+
+### Van test naar echt (de penningmeester zelf)
+
+1. Kijk of er geen proefbetaling meer openstaat: in beheer staat op het **Overzicht** geen kaart "Pin: let op" en op de iPad staat onderaan geen "wacht op bevestiging". Een proefbetaling die bij de overstap nog openstaat, blijft op "Wacht op bevestiging" staan tot de proefgegevens zijn gewist.
+2. Zet de app **Mollie Tap** op de iPhone (iPhone XS of nieuwer) en log in met het account van de speeltuin. De iPhone is dan de betaalterminal tot er een echte terminal in de kiosk staat.
+3. Kopieer in Mollie de live-sleutel (begint met `live_`) en zet hem met dezelfde opdracht als hierboven. De nieuwe sleutel vervangt de testsleutel.
+4. Ga in beheer naar **Instellingen → Pin via Mollie**. Er staat nu "Echte betalingen." Kies de terminal opnieuw en tik op **Opslaan**: de testterminal bestaat niet voor echte betalingen, dus tot je kiest is de knop Pin op de kassa uit.
+5. Kijk op de iPad of de balk TEST weg is. Zolang die er staat, wordt er niet echt afgeschreven.
+6. Doe één echte betaling van € 0,60: sla **Entreegeld** aan, tik op Pin en betaal met je eigen pas of telefoon.
+7. Kijk het na: op de iPad onder **Omzet** (pin € 0,60), in beheer onder **Verkopen**, en in het Mollie-dashboard.
+8. Oefen meteen de weg terug: betaal de € 0,60 terug in het Mollie-dashboard en draai de verkoop terug in beheer.
+9. Doe daarna de ingebruikname hieronder, zodat de echte administratie leeg begint.
+
+Terug naar testen kan altijd: zet de testsleutel opnieuw met dezelfde opdracht en kies de testterminal weer. De balk TEST komt dan terug.
 
 **Tijdens de proef** kun je de proefgegevens zo vaak wissen als je wilt: **Instellingen → Proefgegevens wissen**. Verkopen, afdrachten, bestellingen en voorraadmutaties verdwijnen; producten, prijzen en de koppeling met de iPad blijven.
 
@@ -85,6 +137,14 @@ Vanaf dat moment staat bij Instellingen sinds wanneer de kassa in gebruik is en 
 ## Als er iets misgaat
 
 **Geen internet.** De kassa werkt door met contant. Onderaan staat hoeveel verkopen wachten op verzending. Ze worden vanzelf verstuurd als er weer verbinding is, en komen één keer in het overzicht. De levering bevestigen en een prijswijziging ophalen kunnen pas weer met internet.
+
+**De knop Pin is grijs.** Onder de knop staat waarom. "Geen internet: pin kan nu niet. Contant werkt door." betekent wat er staat: wacht tot er weer "Online" staat of reken contant af. "Kassa is ontkoppeld: pin kan nu niet." betekent dat de iPad opnieuw gekoppeld moet worden (zie verderop). "Pin is nog niet ingesteld." betekent dat de penningmeester in beheer nog geen betaalterminal heeft gekozen, of dat de sleutel van Mollie ontbreekt. Is de bon leeg, dan zijn beide betaalknoppen grijs.
+
+**"Pin starten lukt niet".** De betaling is niet begonnen en er is niets geboekt. Meestal staat de reden erbij. "De betaalterminal is niet bereikbaar": kijk of de terminal aan staat en internet heeft, en tik op **Opnieuw proberen**. "De betaalterminal is nog bezig met een andere betaling": wacht tot de terminal klaar is (of breek de betaling op de terminal af) en probeer opnieuw. Bij "Mollie weigert de betaling te starten" of "Mollie accepteert de sleutel niet": reken contant af en meld het aan de penningmeester.
+
+**De terminal reageert niet.** Tik op **Annuleren** en daarna op **Opnieuw proberen**. Helpt dat niet, reken dan contant af met **Toch contant**. Na ongeveer twee minuten wachten parkeert de kassa de bon vanzelf, zodat je verder kunt.
+
+**Een klant zegt betaald te hebben, de kassa zegt van niet.** De kassa boekt alleen wat Mollie bevestigt. Laat de klant niet opnieuw betalen op goed geluk: schrijf de tijd en het bedrag op en meld het aan de penningmeester. Die kijkt in het Mollie-dashboard of de betaling is binnengekomen, en in beheer onder **Verkopen → Pin: niet gelukt of nog open** wat de kassa ervan weet.
 
 **"Verkoop afgekeurd".** Dat hoort niet voor te komen: de server heeft een verkoop niet geboekt. Tik op de rode knop **… afgekeurd · bekijken**. Je ziet per regel de tijd, het bedrag, wat er is verkocht en waarom het is afgekeurd. Geef dat door aan de penningmeester (een foto van het scherm is genoeg) en tik daarna op **Doorgegeven**; daarmee verdwijnt de regel van de iPad. Een afgekeurde verkoop staat niet in de boeken terwijl het geld wel in het kluisje zit: de penningmeester ziet dat bedrag bij de volgende afdracht als "meer dan verwacht" en zet het in de toelichting.
 
@@ -114,7 +174,7 @@ npm run db:migrate:local
 npm run dev
 ```
 
-Lokaal staat de instelcode in `.dev.vars` (zie `.dev.vars.example`).
+Lokaal staat de instelcode in `.dev.vars` (zie `.dev.vars.example`). Voor pin komt daar `MOLLIE_API_KEY` bij, met de testsleutel van Mollie; de penningmeester vult die zelf in. `.dev.vars` staat niet in git. Lokaal bereikt Mollie de kassa niet (`localhost`), dus er komt geen webhook: de kassa haalt de uitkomst van een betaling zelf op, elke seconde zolang het pinvenster openstaat.
 
 Testen:
 
@@ -126,7 +186,7 @@ npm test
 npm run e2e
 ```
 
-`npm test` draait de tests van de app en van de Worker. `npm run e2e` bouwt de app en loopt de kassa na in WebKit op iPad-formaat (1180×820), met een eigen lege database in `.wrangler/e2e`.
+`npm test` draait de tests van de app en van de Worker. `npm run e2e` bouwt de app en loopt de kassa na in WebKit op iPad-formaat (1180×820), met een eigen lege database in `.wrangler/e2e`. Die run leest `.dev.vars.e2e` (verzonnen waarden, wel in git) in plaats van `.dev.vars`, en praat met een nagebootste Mollie op poort 4174 (`e2e/global-setup.ts`, `test/fake-mollie.ts`). De echte Mollie wordt door geen enkele test aangeroepen.
 
 Online zetten (de penningmeester is ingelogd met `npx wrangler login`):
 
@@ -143,6 +203,8 @@ De instelcode is een geheim van de Worker en staat niet in de code:
 ```bash
 npx wrangler secret put SETUP_TOKEN
 ```
+
+Pin: de sleutel van Mollie is het geheim `MOLLIE_API_KEY` (zie "Pin instellen"); een sleutel die met `test_` begint zet de kassa in testmodus. De kolommen voor pin komen uit migratie `0004_pin.sql`, die vóór de eerste deploy met pin op de echte database moet staan. Online stuurt de kassa bij elke betaling het adres `/api/mollie/webhook` mee; bij Mollie hoeft daarvoor niets ingesteld te worden. De webhook is niet ondertekend en wordt daarom alleen als seintje gebruikt: de Worker haalt de betaling daarna zelf bij Mollie op.
 
 Database terugzetten naar een eerder moment (tijd in UTC):
 
@@ -188,4 +250,4 @@ De pictogrammen voor het beginscherm komen uit `public/icon.svg`:
 npm run icons
 ```
 
-Afspraken in de code: bedragen zijn hele centen; een dag is een dag in Amsterdam; een verkoop wordt nooit gewijzigd of verwijderd, terugdraaien is een tegenboeking; de iPad bewaart een verkoop eerst zelf en verstuurt hem daarna, en de server boekt dezelfde verkoop nooit twee keer.
+Afspraken in de code: bedragen zijn hele centen; een dag is een dag in Amsterdam; een verkoop wordt nooit gewijzigd of verwijderd, terugdraaien is een tegenboeking; de iPad bewaart een verkoop eerst zelf en verstuurt hem daarna, en de server boekt dezelfde verkoop nooit twee keer. Voor pin: een pinverkoop begint als "pending" en wordt alleen "paid" als de Worker in datzelfde verzoek "paid" bij Mollie heeft gelezen; één verkoop is één betaling bij Mollie (het nummer van de verkoop is de `Idempotency-Key`), en opnieuw proberen is een nieuwe verkoop.

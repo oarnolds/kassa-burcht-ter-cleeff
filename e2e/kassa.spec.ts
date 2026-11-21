@@ -93,15 +93,14 @@ test("the kassa starts without a connection after the first visit", async ({ pag
   await expect(page.getByText("1 verkoop wacht op verzending")).toBeVisible();
 });
 
-test("all 22 products and the pay buttons fit on the iPad without scrolling", async ({ page, request }) => {
-  const { code } = await prepare(request);
-  await pair(page, code);
+/** Everything the beheerder needs is on the screen at once: no scrolling, every tile a full finger wide. */
+async function expectKassaFits(page: Page): Promise<void> {
   await expect(page.locator("[data-product-tile]")).toHaveCount(22);
   const fits = await page.evaluate(
     () => document.documentElement.scrollHeight <= window.innerHeight && document.documentElement.scrollWidth <= window.innerWidth,
   );
   expect(fits).toBe(true);
-  for (const name of ["Contant", "Pin"]) await expect(page.getByRole("button", { name, exact: true })).toBeInViewport({ ratio: 1 });
+  for (const name of ["Contant", "Pin", "Omzet"]) await expect(page.getByRole("button", { name, exact: true })).toBeInViewport({ ratio: 1 });
   const tiles = await page.locator("[data-product-tile]").evaluateAll((els) =>
     els.map((el) => {
       const box = el.getBoundingClientRect();
@@ -112,6 +111,50 @@ test("all 22 products and the pay buttons fit on the iPad without scrolling", as
   expect(Math.min(...tiles.map((t) => Math.min(t.width, t.height)))).toBeGreaterThanOrEqual(44);
   // The grid itself must not need scrolling either: every tile is one tap away.
   expect(tiles.filter((t) => !t.inView || t.scrolls)).toEqual([]);
+}
+
+test("all 22 products and the pay buttons fit on the iPad without scrolling", async ({ page, request }) => {
+  const { code, beheer } = await prepare(request);
+  // The fullest screen: the TEST bar on top, and under the pay buttons the line that says why pin is off.
+  await beheer.post("/api/admin/pin/terminal", { terminalId: null });
+  await pair(page, code);
+  await expect(page.getByText("TEST", { exact: true })).toBeInViewport({ ratio: 1 });
+  await tile(page, /Koffie/).click();
+  await expect(page.getByTestId("pin-blocked")).toBeInViewport({ ratio: 1 });
+  await expectKassaFits(page);
+});
+
+test("the footer still fits with a sale waiting, a pin payment waiting and one that failed", async ({ page, context, request }) => {
+  const { code } = await prepare(request);
+  await pair(page, code);
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+  // Offline, so that the kassa cannot ask how the waiting payment ended and the footer stays this full.
+  await context.setOffline(true);
+  await tile(page, /Koffie/).click();
+  await tap(page, "Contant");
+  await tap(page, "Gepast");
+  await expect(page.getByText("1 verkoop wacht op verzending")).toBeVisible();
+  await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const opening = indexedDB.open("kassa");
+      opening.onsuccess = () => resolve(opening.result);
+      opening.onerror = () => reject(opening.error);
+    });
+    const tx = db.transaction("pin", "readwrite");
+    const receipt = { soldAt: new Date().toISOString(), totalCents: 1140, lines: [{ productId: "koffie", name: "Koffie", unitPriceCents: 140, qty: 1 }], cashTaken: false };
+    tx.objectStore("pin").put({ ...receipt, id: crypto.randomUUID(), parked: true, failed: false });
+    tx.objectStore("pin").put({ ...receipt, id: crypto.randomUUID(), parked: false, failed: true });
+    await new Promise((resolve) => (tx.oncomplete = resolve));
+    db.close();
+  });
+  await page.reload();
+  await expect(page.getByText("Offline · contant werkt door")).toBeVisible();
+  await expect(page.getByRole("button", { name: "1 pinbetaling wacht op bevestiging" })).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole("button", { name: /^Pinbetaling van €\s11,40 niet gelukt$/ })).toBeInViewport({ ratio: 1 });
+  await expect(page.getByText("1 verkoop wacht op verzending")).toBeInViewport({ ratio: 1 });
+  await expectKassaFits(page);
 });
 
 test("a tap shows on the receipt within 100 ms", async ({ page, request }) => {

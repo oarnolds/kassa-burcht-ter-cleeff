@@ -1,9 +1,12 @@
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
 import { businessDate } from "../shared/time";
 
-// The setup code of local development (.dev.vars) and a password that exists only in the end-to-end database.
+// The setup code of the end-to-end run (.dev.vars.e2e) and a password that exists only in the end-to-end database.
 const SETUP_TOKEN = "dev-setup-token";
 const PASSWORD = "e2e-wachtwoord-123";
+
+/** The Mollie that is played on this computer for the length of the run (e2e/global-setup.ts). */
+export const MOLLIE = "http://localhost:4174";
 
 const write = { "X-Requested-With": "kassa" };
 
@@ -60,10 +63,32 @@ export function today(): string {
   return businessDate(new Date().toISOString());
 }
 
-type Day = { totals: { cashCents: number; saleCount: number } };
+/** Empties the fake Mollie and chooses its test terminal in beheer. */
+export async function usePin(request: APIRequestContext, beheer: Beheer): Promise<void> {
+  const reset = await request.post(`${MOLLIE}/control/reset`);
+  expect(reset.ok(), "the fake Mollie answers").toBe(true);
+  await beheer.post("/api/admin/pin/terminal", { terminalId: "term_test" });
+}
+
+/** Ends the payment that is waiting on the terminal. */
+export async function atTerminal(request: APIRequestContext, status: "paid" | "failed" | "canceled" | "expired", reason?: string): Promise<void> {
+  // The payment reaches Mollie a moment after the tap: ask until one is waiting.
+  await expect
+    .poll(async () => (await request.post(`${MOLLIE}/control/finish`, { data: { status, reason } })).status(), { timeout: 10_000 })
+    .toBe(200);
+}
+
+export type FakePayment = { id: string; status: string; amount: string };
+
+/** Every payment the fake Mollie was asked for since the last reset. */
+export async function molliePayments(request: APIRequestContext): Promise<FakePayment[]> {
+  return ((await (await request.get(`${MOLLIE}/control/payments`)).json()) as { payments: FakePayment[] }).payments;
+}
+
+type Day = { totals: { cashCents: number; pinCents: number; saleCount: number } };
 
 /** What beheer has for today. A sale travels in the background, so ask until it is there (or give up). */
-export async function expectToday(beheer: Beheer, totals: { cashCents: number; saleCount?: number }, timeout = 15_000): Promise<void> {
+export async function expectToday(beheer: Beheer, totals: { cashCents?: number; pinCents?: number; saleCount?: number }, timeout = 15_000): Promise<void> {
   await expect
     .poll(async () => (await beheer.get<Day>(`/api/admin/reports/day?date=${today()}`)).totals, { timeout })
     .toMatchObject(totals);
