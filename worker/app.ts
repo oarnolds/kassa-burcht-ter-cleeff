@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { isLocalHost } from "../shared/local-host";
 import type { AppEnv } from "./env";
 import { requireAdmin } from "./middleware/admin";
 import { requireDevice } from "./middleware/device";
@@ -14,6 +15,16 @@ import { kassa } from "./routes/kassa";
 import { pair } from "./routes/pair";
 
 export const app = new Hono<AppEnv>();
+
+// Cloudflare serves this address over plain http as well. Nothing is answered there: the pairing code, the
+// kassa's token and the beheer password may only travel encrypted. Over https the browser is told to stay on it.
+app.use("/api/*", async (c, next) => {
+  const url = new URL(c.req.url);
+  if (isLocalHost(url.hostname)) return next();
+  if (url.protocol !== "https:") return c.json({ error: "https_required" }, 400);
+  await next();
+  c.header("Strict-Transport-Security", "max-age=31536000");
+});
 
 app.get("/api/health", (c) => c.json({ ok: true }));
 app.route("/api/pair", pair);
