@@ -158,7 +158,7 @@ Een besluit met **Vervallen**, **Herzien** of **Afgehandeld** is later ingehaald
 89. Eigen iconen met een crèmekleurige achtergrond. *Kost:* alleen het uiterlijk.
 90. Marges voor de ronde hoeken en de thuisbalk van de iPad. *Kost:* een paar pixels marge.
 91. Een nieuwe versie wordt opgehaald als de kassa wordt geopend; er is geen tussentijdse controle. *Kost:* een kassa die nooit wordt gesloten houdt de oude versie. Een bon die in de eerste seconden na het openen wordt getikt, kan bij het verversen verdwijnen.
-92. 10 schermtests in plaats van 5; inmiddels zijn het er 11. *Kost:* meer tests.
+92. 10 schermtests in plaats van 5; inmiddels zijn het er 12. *Kost:* meer tests.
 93. De schermtests hebben een eigen typecontrole en starten altijd een eigen server. *Kost:* niets.
 94. De schermtests draaien alleen in WebKit, de motor van de iPad. *Kost:* niets.
 95. `npm audit` meldt 4 matige waarschuwingen in bouwgereedschap. Ze blijven staan: de aangeboden oplossing breekt iets anders, en niets ervan draait op de iPad of de server. *Kost:* geen tijdens gebruik.
