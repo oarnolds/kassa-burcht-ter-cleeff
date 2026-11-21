@@ -1,8 +1,8 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
-import type { Device } from "../../shared/types";
-import { calls, mockApi, mockLoggedIn, renderAt, tap, user } from "../test-utils";
+import type { Device, PinSettings, PinTerminal } from "../../shared/types";
+import { calls, mockApi, mockLoggedIn, mockOffline, renderAt, tap, user } from "../test-utils";
 
 const device: Device = { id: "d1", name: "iPad kiosk", createdAt: "2026-07-01T08:00:00.000Z", lastSeenAt: "2026-07-30T10:00:00.000Z", revoked: false };
 const open = async (extra: Record<string, unknown> = {}) => {
@@ -11,6 +11,7 @@ const open = async (extra: Record<string, unknown> = {}) => {
     "/api/admin/devices": { devices: [device] },
     "/api/admin/wipe-trial": { inUseSince: null },
     "/api/admin/backups": { available: true, latest: null, count: 0 },
+    "/api/admin/pin": { mode: "test", terminalId: null, terminals: [], problem: null },
     ...extra,
   });
   renderAt("/beheer/instellingen");
@@ -213,4 +214,141 @@ it("says so when the weekly copy is not switched on yet, and offers no button", 
   expect(await backups().findByText("De wekelijkse reservekopie staat nog niet aan: de opslag bij Cloudflare (R2) is nog niet ingeschakeld.")).toBeInTheDocument();
   expect(backups().queryByRole("button", { name: "Nu een kopie maken" })).not.toBeInTheDocument();
   expect(backups().queryByText("Er is nog geen kopie gemaakt.")).not.toBeInTheDocument();
+});
+
+// Pin via Mollie
+
+const terminals: PinTerminal[] = [
+  { id: "term_test", description: "Testterminal", status: "active", brand: "Tap", model: "Tap", serialNumber: null },
+  { id: "term_oud", description: "Oude terminal", status: "inactive", brand: "PAX", model: "A920", serialNumber: "123" },
+];
+const pinSection = async () => within(await screen.findByRole("region", { name: "Pin via Mollie" }));
+const pinWith = (over: Partial<PinSettings>): PinSettings => ({ mode: "test", terminalId: null, terminals, problem: null, ...over });
+type TerminalRequest = { body: { terminalId: string } };
+
+it("lets the penningmeester choose the Mollie terminal from Mollie's own list", async () => {
+  let chosen: string | null = null;
+  await open({
+    "/api/admin/pin": () => pinWith({ terminalId: chosen }),
+    "POST /api/admin/pin/terminal": (req: TerminalRequest) => {
+      chosen = req.body.terminalId;
+      return { ok: true };
+    },
+  });
+  const section = await pinSection();
+  expect(await section.findByText("Testmodus: betalingen zijn nagespeeld, er wordt geen geld afgeschreven.")).toBeInTheDocument();
+  expect(section.getByText("Kies een betaalterminal. Tot die tijd is de knop Pin op de kassa uit.")).toBeInTheDocument();
+  expect(section.getByRole("radiogroup", { name: "Betaalterminal" })).toBeInTheDocument();
+  expect(section.getByRole("radio", { name: /Oude terminal.*niet actief/ })).toBeDisabled();
+  expect(section.getByText("PAX · A920 · 123")).toBeInTheDocument();
+  expect(section.getByText("Tap · Tap")).toBeInTheDocument();
+  expect(section.queryByText("Gekozen")).not.toBeInTheDocument();
+  expect(section.getByRole("button", { name: "Opslaan" })).toBeDisabled();
+  await user().click(section.getByRole("radio", { name: /Testterminal/ }));
+  await user().click(section.getByRole("button", { name: "Opslaan" }));
+  expect(await section.findByText("Betaalterminal opgeslagen.")).toBeInTheDocument();
+  expect(calls("POST").at(-1)).toMatchObject({ url: "/api/admin/pin/terminal", body: { terminalId: "term_test" } });
+  expect(await section.findByText("Gekozen")).toBeInTheDocument();
+  expect(section.getByRole("radio", { name: /Testterminal/ })).toBeChecked();
+  expect(section.getByRole("button", { name: "Opslaan" })).toBeDisabled(); // nothing left to save
+  expect(section.queryByText(/Kies een betaalterminal/)).not.toBeInTheDocument();
+});
+
+it("stands between pairing and the password", async () => {
+  await open();
+  const titles = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
+  expect(titles.slice(0, 3)).toEqual(["Kassa koppelen", "Pin via Mollie", "Wachtwoord wijzigen"]);
+});
+
+it.each([
+  ["no_key", null, "De sleutel van Mollie is nog niet ingesteld. In het handboek staat hoe de penningmeester dat doet."],
+  ["unauthorized", "test", "Mollie accepteert de sleutel niet. Controleer de sleutel."],
+  ["unreachable", "test", "Mollie is niet bereikbaar. Probeer het opnieuw."],
+] as const)("explains %s", async (problem, mode, text) => {
+  await open({ "/api/admin/pin": pinWith({ mode, terminals: [], problem }) });
+  const section = await pinSection();
+  expect(await section.findByText(text)).toBeInTheDocument();
+  expect(section.queryByRole("radiogroup")).not.toBeInTheDocument();
+  expect(section.queryByText(/Mollie geeft geen betaalterminal terug/)).not.toBeInTheDocument();
+  expect(section.queryByRole("button", { name: "Opslaan" })).not.toBeInTheDocument();
+  expect(section.queryAllByRole("button", { name: "Opnieuw proberen" })).toHaveLength(problem === "unreachable" ? 1 : 0);
+});
+
+it("asks Mollie again when it could not be reached", async () => {
+  await open({ "/api/admin/pin": pinWith({ terminals: [], problem: "unreachable" }) });
+  const section = await pinSection();
+  mockApi({ "/api/admin/pin": pinWith({}) });
+  await user().click(await section.findByRole("button", { name: "Opnieuw proberen" }));
+  expect(await section.findByRole("radio", { name: /Testterminal/ })).toBeInTheDocument();
+  expect(section.queryByText("Mollie is niet bereikbaar. Probeer het opnieuw.")).not.toBeInTheDocument();
+});
+
+it("says what to do when Mollie lists no terminal", async () => {
+  await open();
+  const section = await pinSection();
+  expect(
+    await section.findByText(
+      "Mollie geeft geen betaalterminal terug. Zet in het Mollie-dashboard de betaalmethode Point of sale aan; in de testmodus verschijnt hier dan vanzelf een testterminal.",
+    ),
+  ).toBeInTheDocument();
+  expect(section.queryByRole("radiogroup")).not.toBeInTheDocument();
+  expect(section.queryByRole("button", { name: "Opslaan" })).not.toBeInTheDocument();
+});
+
+it("says real payments with a live key, and shows the terminal that was chosen", async () => {
+  await open({ "/api/admin/pin": pinWith({ mode: "live", terminalId: "term_test" }) });
+  const section = await pinSection();
+  expect(await section.findByText("Echte betalingen.")).toBeInTheDocument();
+  expect(section.queryByText(/Testmodus/)).not.toBeInTheDocument();
+  expect(section.getByRole("radio", { name: /Testterminal/ })).toBeChecked();
+  expect(section.getByText("Gekozen")).toBeInTheDocument();
+  expect(section.queryByText(/Kies een betaalterminal/)).not.toBeInTheDocument();
+});
+
+it("names a terminal without a description by its id", async () => {
+  await open({ "/api/admin/pin": pinWith({ terminals: [{ id: "term_naamloos", description: "", status: "active", brand: null, model: null, serialNumber: null }] }) });
+  expect((await pinSection()).getByRole("radio", { name: "term_naamloos" })).toBeEnabled();
+});
+
+it("explains a terminal that is gone from Mollie's list, and fetches the list again", async () => {
+  await open({ "/api/admin/pin": pinWith({}), "POST /api/admin/pin/terminal": [409, { error: "unknown_terminal" }] });
+  const section = await pinSection();
+  const asked = () => calls("GET").filter((c) => c.url === "/api/admin/pin").length;
+  const before = asked();
+  await user().click(section.getByRole("radio", { name: /Testterminal/ }));
+  await user().click(section.getByRole("button", { name: "Opslaan" }));
+  expect(await section.findByText("Deze terminal staat niet meer in de lijst van Mollie.")).toBeInTheDocument();
+  await waitFor(() => expect(asked()).toBe(before + 1));
+  expect(section.queryByText("Betaalterminal opgeslagen.")).not.toBeInTheDocument();
+});
+
+it.each([
+  [[409, { error: "terminal_not_active" }], "Deze terminal is niet actief."],
+  [[503, { error: "unreachable" }], "Mollie is niet bereikbaar. Probeer het opnieuw."],
+  [[503, { error: "unauthorized" }], "Mollie accepteert de sleutel niet. Controleer de sleutel."],
+  [[500, { error: "server" }], "Opslaan is niet gelukt. Probeer het opnieuw."],
+])("explains why the terminal could not be saved: %j", async (answer, text) => {
+  await open({ "/api/admin/pin": pinWith({}), "POST /api/admin/pin/terminal": answer });
+  const section = await pinSection();
+  await user().click(section.getByRole("radio", { name: /Testterminal/ }));
+  await user().click(section.getByRole("button", { name: "Opslaan" }));
+  expect(await section.findByText(text)).toBeInTheDocument();
+  expect(section.getByRole("button", { name: "Opslaan" })).toBeEnabled(); // and it can be tried again
+});
+
+it("says so when the terminal could not be saved without a connection", async () => {
+  await open({ "/api/admin/pin": pinWith({}) });
+  const section = await pinSection();
+  await user().click(section.getByRole("radio", { name: /Testterminal/ }));
+  mockOffline();
+  await user().click(section.getByRole("button", { name: "Opslaan" }));
+  expect(await section.findByText("Geen verbinding. Probeer het opnieuw.")).toBeInTheDocument();
+});
+
+it("says so when the chosen terminal is no longer in Mollie's list", async () => {
+  await open({ "/api/admin/pin": pinWith({ terminalId: "term_weg" }) });
+  const section = await pinSection();
+  expect(await section.findByText("De gekozen terminal staat niet meer in de lijst van Mollie. Kies een andere.")).toBeInTheDocument();
+  expect(section.queryByText("Gekozen")).not.toBeInTheDocument();
+  expect(section.queryByText(/Tot die tijd is de knop Pin op de kassa uit/)).not.toBeInTheDocument();
 });

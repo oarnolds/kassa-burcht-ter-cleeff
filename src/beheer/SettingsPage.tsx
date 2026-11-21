@@ -1,6 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { businessDate, formatDateNl, localTime } from "../../shared/time";
-import type { BackupState, Device } from "../../shared/types";
+import type { BackupState, Device, PinSettings } from "../../shared/types";
 import { adminApi } from "../lib/api";
 import { Button } from "../ui/Button";
 import { Dialog } from "../ui/Dialog";
@@ -115,6 +115,146 @@ function Pairing() {
           </div>
         )}
       </Dialog>
+    </Section>
+  );
+}
+
+const MOLLIE_REFUSES = "Mollie accepteert de sleutel niet. Controleer de sleutel.";
+const MOLLIE_AWAY = "Mollie is niet bereikbaar. Probeer het opnieuw.";
+
+/** Why the terminal could not be saved. */
+function terminalProblem(status: number, error: string): string {
+  if (status === 0) return "Geen verbinding. Probeer het opnieuw.";
+  switch (error) {
+    case "unknown_terminal":
+      return "Deze terminal staat niet meer in de lijst van Mollie.";
+    case "terminal_not_active":
+      return "Deze terminal is niet actief.";
+    case "unauthorized":
+      return MOLLIE_REFUSES;
+    case "unreachable":
+      return MOLLIE_AWAY;
+    default:
+      return "Opslaan is niet gelukt. Probeer het opnieuw.";
+  }
+}
+
+/**
+ * Pin: which of Mollie's terminals the kassa asks to take a payment. The key itself is a secret of the
+ * server; it is neither shown nor set here.
+ */
+function Pin() {
+  const pin = useAdminData<PinSettings>("/api/admin/pin");
+  // The terminal picked on this page and not saved yet.
+  const [picked, setPicked] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const write = useAdminWrite();
+  const groupLabel = useId();
+
+  const save = async (terminalId: string) => {
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    const answer = await write("/api/admin/pin/terminal", "POST", { terminalId });
+    setBusy(false);
+    if (answer.ok) {
+      setSaved(true);
+      setPicked(null);
+      return pin.reload();
+    }
+    setError(terminalProblem(answer.status, answer.error));
+    // The list on screen is behind Mollie's.
+    if (answer.error === "unknown_terminal") {
+      setPicked(null);
+      pin.reload();
+    }
+  };
+
+  return (
+    <Section title="Pin via Mollie">
+      <Loaded from={pin}>
+        {({ mode, terminalId, terminals, problem }) => {
+          const selected = picked ?? terminalId;
+          const chosenListed = terminals.some((terminal) => terminal.id === terminalId);
+          return (
+            <div className="flex max-w-xl flex-col gap-4 px-2 sm:px-3">
+              {mode === "test" && <p className="rounded-xl bg-[#F5E7BF] p-3 text-lg font-semibold text-[#5E4500]">Testmodus: betalingen zijn nagespeeld, er wordt geen geld afgeschreven.</p>}
+              {mode === "live" && <p className="text-lg font-semibold">Echte betalingen.</p>}
+              {problem === "no_key" && <p className="text-lg">De sleutel van Mollie is nog niet ingesteld. In het handboek staat hoe de penningmeester dat doet.</p>}
+              {problem === "unauthorized" && <Problem>{MOLLIE_REFUSES}</Problem>}
+              {problem === "unreachable" && (
+                <>
+                  <Problem>{MOLLIE_AWAY}</Problem>
+                  <div>
+                    <Button onClick={pin.reload} disabled={pin.loading}>
+                      Opnieuw proberen
+                    </Button>
+                  </div>
+                </>
+              )}
+              {problem === null && terminals.length === 0 && (
+                <p className="text-lg">
+                  Mollie geeft geen betaalterminal terug. Zet in het Mollie-dashboard de betaalmethode Point of sale aan; in de testmodus verschijnt hier dan vanzelf
+                  een testterminal.
+                </p>
+              )}
+              {terminals.length > 0 && (
+                <>
+                  {terminalId === null && <p className="text-lg">Kies een betaalterminal. Tot die tijd is de knop Pin op de kassa uit.</p>}
+                  {terminalId !== null && !chosenListed && <Problem>De gekozen terminal staat niet meer in de lijst van Mollie. Kies een andere.</Problem>}
+                  <div>
+                    <p id={groupLabel} className="text-lg font-semibold">
+                      Betaalterminal
+                    </p>
+                    <div role="radiogroup" aria-labelledby={groupLabel} className="mt-1 flex flex-col">
+                      {terminals.map((terminal) => {
+                        const active = terminal.status === "active";
+                        const details = [terminal.brand, terminal.model, terminal.serialNumber].filter(Boolean).join(" · ");
+                        return (
+                          <label key={terminal.id} className={`flex min-h-11 items-start gap-3 border-t border-sand py-3 text-lg ${active ? "" : "text-ink/60"}`}>
+                            <input
+                              type="radio"
+                              name="terminal"
+                              className="mt-0.5 h-6 w-6 shrink-0 accent-green-dark"
+                              checked={selected === terminal.id}
+                              disabled={!active || busy}
+                              onChange={() => {
+                                setPicked(terminal.id);
+                                setSaved(false);
+                                setError(null);
+                              }}
+                            />
+                            <span className="flex min-w-0 flex-col">
+                              <span className="flex flex-wrap items-center gap-x-3 gap-y-1 font-semibold">
+                                <span>{`${terminal.description || terminal.id}${active ? "" : " (niet actief)"}`}</span>
+                                {terminal.id === terminalId && <span className={`${badge} bg-[#E1EACB] text-[#3F5512]`}>Gekozen</span>}
+                              </span>
+                              {details && <span className="text-base text-ink/70">{details}</span>}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {error && <Problem>{error}</Problem>}
+                  {saved && (
+                    <p role="status" className="text-lg font-semibold text-green-dark">
+                      Betaalterminal opgeslagen.
+                    </p>
+                  )}
+                  <div>
+                    <Button disabled={busy || picked === null || picked === terminalId} onClick={() => picked !== null && void save(picked)}>
+                      Opslaan
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        }}
+      </Loaded>
     </Section>
   );
 }
@@ -307,12 +447,13 @@ function Backups() {
   );
 }
 
-/** The switches around the kassa: paired iPads, the password, a full download, the weekly copies, wiping the trial. */
+/** The switches around the kassa: paired iPads, the pin terminal, the password, a full download, the weekly copies, wiping the trial. */
 export function SettingsPage() {
   return (
     <>
       <PageTitle>Instellingen</PageTitle>
       <Pairing />
+      <Pin />
       <Password />
       <Section title="Gegevens" note="Eén bestand met alles wat de kassa weet: producten, verkopen, afdrachten en voorraad. Handig als reservekopie.">
         <div className="px-2 sm:px-3">

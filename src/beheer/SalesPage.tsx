@@ -6,7 +6,7 @@ import type { ApiResult } from "../lib/api";
 import { Button } from "../ui/Button";
 import { Dialog } from "../ui/Dialog";
 import { useToast } from "../ui/Toast";
-import { Loaded, PageTitle, Problem, field, textLink, today } from "./parts";
+import { Loaded, PageTitle, Problem, Section, field, textLink, today } from "./parts";
 import { useAdminData, useAdminWrite } from "./useAdmin";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -29,6 +29,8 @@ function explain(answer: Extract<ApiResult<unknown>, { ok: false }>): string {
       return "Een tegenboeking kan niet worden teruggedraaid.";
     case "not_found":
       return "Deze verkoop bestaat niet meer.";
+    case "not_paid":
+      return "Deze pinbetaling is niet gelukt en kan niet worden teruggedraaid.";
     default:
       return "Terugdraaien is niet gelukt. Probeer het opnieuw.";
   }
@@ -44,6 +46,11 @@ function SaleCard({ sale, onReverse }: { sale: AdminSale; onReverse(): void }) {
         <span className="text-lg">{sale.method === "cash" ? "Contant" : "Pin"}</span>
         {sale.reversed && <span className={`${badge} bg-sand text-ink`}>Teruggedraaid</span>}
         {sale.reversesSaleId !== null && <span className={`${badge} bg-redbrown text-white`}>Tegenboeking</span>}
+        {sale.possiblyDouble && (
+          <span className={`${badge} bg-redbrown text-white`} title="Er is contant afgerekend en de pinbetaling is daarna toch gelukt. Draai één van de twee terug.">
+            Mogelijk dubbel betaald
+          </span>
+        )}
         {sale.late && (
           <span className={`${badge} bg-[#F5E7BF] text-[#5E4500]`} title="Kwam binnen nadat het kluisje al was geteld">
             Nagekomen
@@ -70,6 +77,40 @@ function SaleCard({ sale, onReverse }: { sale: AdminSale; onReverse(): void }) {
         </div>
       )}
     </article>
+  );
+}
+
+/** How a pin payment that is not a sale stands. */
+function attemptLabel(outcome: AdminPinAttempt["outcome"]): string {
+  switch (outcome) {
+    case null:
+      return "Wacht op bevestiging";
+    case "declined":
+      return "Geweigerd";
+    case "canceled":
+      return "Geannuleerd";
+    case "expired":
+      return "Verlopen";
+    case "start_failed":
+      return "Niet gestart";
+  }
+}
+
+/** The pin payments of the day that are not sales: refused, cancelled, expired, never started, or still waiting for Mollie. */
+function PinAttempts({ attempts }: { attempts: AdminPinAttempt[] }) {
+  return (
+    <Section title="Pin: niet gelukt of nog open" note="Deze pinbetalingen tellen niet mee in de omzet.">
+      <ul className="flex flex-col px-2 sm:px-3">
+        {attempts.map((attempt) => (
+          <li key={attempt.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-sand py-3">
+            <span className="text-lg font-bold tabular-nums">{attempt.soldAtLocal}</span>
+            <span className={`${badge} ${attempt.outcome === null ? "bg-[#F5E7BF] text-[#5E4500]" : "bg-sand text-ink"}`}>{attemptLabel(attempt.outcome)}</span>
+            <span className="ml-auto text-lg font-bold tabular-nums">{formatEuro(attempt.totalCents)}</span>
+            {attempt.lines.length > 0 && <span className="basis-full text-ink/70">{attempt.lines.map((line) => `${line.qty} × ${line.name}`).join(", ")}</span>}
+          </li>
+        ))}
+      </ul>
+    </Section>
   );
 }
 
@@ -100,9 +141,10 @@ function ReverseForm({ sale, onDone, onStale, onClose }: { sale: AdminSale; onDo
         Er komt een tegenboeking; een bijgehouden voorraad gaat weer omhoog.
       </p>
       {sale.method === "pin" && (
-        <p className="rounded-xl bg-[#F5E7BF] p-3 text-lg font-semibold text-[#5E4500]">
-          Betaal het bedrag eerst terug in het Mollie-dashboard. De kassa doet dat niet.
-        </p>
+        <div className="rounded-xl bg-[#F5E7BF] p-3 text-lg font-semibold text-[#5E4500]">
+          <p>Betaal het bedrag eerst terug in het Mollie-dashboard. De kassa doet dat niet.</p>
+          <p>Terugdraaien kan alleen voor het hele bedrag.</p>
+        </div>
       )}
       <label className="flex flex-col gap-1 text-lg font-semibold">
         Reden
@@ -150,17 +192,19 @@ export function SalesPage() {
       </div>
 
       <Loaded from={list}>
-        {({ sales }) =>
-          sales.length === 0 ? (
-            <p className="mt-6 text-lg text-ink/70">Geen verkopen op deze dag.</p>
-          ) : (
-            <div className="mt-6 flex flex-col gap-3">
-              {sales.map((sale) => (
-                <SaleCard key={sale.id} sale={sale} onReverse={() => setReversing(sale)} />
-              ))}
-            </div>
-          )
-        }
+        {({ sales, pinAttempts }) => (
+          <>
+            {sales.length === 0 && pinAttempts.length === 0 && <p className="mt-6 text-lg text-ink/70">Geen verkopen op deze dag.</p>}
+            {sales.length > 0 && (
+              <div className="mt-6 flex flex-col gap-3">
+                {sales.map((sale) => (
+                  <SaleCard key={sale.id} sale={sale} onReverse={() => setReversing(sale)} />
+                ))}
+              </div>
+            )}
+            {pinAttempts.length > 0 && <PinAttempts attempts={pinAttempts} />}
+          </>
+        )}
       </Loaded>
 
       <Dialog open={reversing !== null} onClose={() => setReversing(null)} title="Verkoop terugdraaien">

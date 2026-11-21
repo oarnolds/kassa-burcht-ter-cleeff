@@ -130,3 +130,32 @@ it("says so when a page cannot be loaded, and tries again", async () => {
   await tap("Opnieuw proberen");
   expect(await screen.findByText("€ 12,10")).toBeInTheDocument();
 });
+
+const NBSP = String.fromCharCode(160);
+
+it("points at pin payments that need a look", async () => {
+  mockLoggedIn();
+  mockApi({
+    "/api/admin/summary": {
+      ...summary,
+      pinAttention: [
+        { kind: "pending", date: "2026-07-30", totalCents: 360 },
+        { kind: "double", date: "2026-07-29", totalCents: 110 },
+      ],
+    },
+  });
+  renderAt("/beheer");
+  expect(await screen.findByRole("heading", { name: "Pin: let op" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: `Pinbetaling van €${NBSP}3,60 wacht op bevestiging (30-07-2026)` })).toHaveAttribute("href", "/beheer/verkopen?datum=2026-07-30");
+  expect(screen.getByRole("link", { name: `Mogelijk dubbel betaald: €${NBSP}1,10 (29-07-2026)` })).toHaveAttribute("href", "/beheer/verkopen?datum=2026-07-29");
+  // The first thing on the page.
+  expect(screen.getAllByRole("heading", { level: 2 })[0]).toHaveTextContent("Pin: let op");
+});
+
+it("says nothing about pin on the overview when nothing needs a look", async () => {
+  mockLoggedIn();
+  mockApi({ "/api/admin/summary": summary });
+  renderAt("/beheer");
+  await screen.findByText("€ 12,10");
+  expect(screen.queryByRole("heading", { name: "Pin: let op" })).not.toBeInTheDocument();
+});

@@ -1,9 +1,14 @@
 import { Link } from "react-router";
 import { formatEuro } from "../../shared/money";
 import { formatDateNl } from "../../shared/time";
-import type { Summary } from "../../shared/types";
+import type { PinAttention, Summary } from "../../shared/types";
 import { Card, Loaded, PageTitle, TotalsBlock, count, pillLink, textLink } from "./parts";
 import { useAdminData } from "./useAdmin";
+
+const attentionText = ({ kind, date, totalCents }: PinAttention): string =>
+  kind === "pending"
+    ? `Pinbetaling van ${formatEuro(totalCents)} wacht op bevestiging (${formatDateNl(date)})`
+    : `Mogelijk dubbel betaald: ${formatEuro(totalCents)} (${formatDateNl(date)})`;
 
 /** The first page of beheer: how today and this month stand, what should be in the cash box, what to order. */
 export function DashboardPage() {
@@ -14,6 +19,19 @@ export function DashboardPage() {
       <Loaded from={summary}>
         {(s) => (
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            {s.pinAttention.length > 0 && (
+              <Card title="Pin: let op" className="border-2 border-redbrown sm:col-span-2">
+                <ul className="flex flex-col gap-1 text-lg">
+                  {s.pinAttention.map((entry, index) => (
+                    <li key={index}>
+                      <Link className={`${textLink} inline-flex min-h-11 items-center`} to={`/beheer/verkopen?datum=${entry.date}`}>
+                        {attentionText(entry)}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
             <Card title="Vandaag">
               <TotalsBlock totals={s.today} />
               <p className="mt-3">

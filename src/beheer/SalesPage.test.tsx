@@ -106,3 +106,87 @@ it("opens on today and follows the date field", async () => {
   fireEvent.change(screen.getByLabelText("Datum"), { target: { value: "2026-07-29" } });
   await waitFor(() => expect(calls("GET").some((c) => c.url === "/api/admin/sales?date=2026-07-29")).toBe(true));
 });
+
+// Pin (fase 2)
+
+const DOUBLE = "Er is contant afgerekend en de pinbetaling is daarna toch gelukt. Draai één van de twee terug.";
+
+it("marks a receipt that may have been paid twice", async () => {
+  mockLoggedIn();
+  mockApi({
+    "/api/admin/sales": { sales: [sale({ possiblyDouble: true }), sale({ method: "pin", possiblyDouble: true }), sale({ soldAtLocal: "12:10" })], pinAttempts: [] },
+  });
+  renderAt("/beheer/verkopen?datum=2026-07-30");
+  const cards = await screen.findAllByRole("article");
+  expect(within(cards[0]!).getByText("Mogelijk dubbel betaald")).toHaveAttribute("title", DOUBLE);
+  expect(within(cards[1]!).getByText("Mogelijk dubbel betaald")).toBeInTheDocument();
+  expect(within(cards[2]!).queryByText("Mogelijk dubbel betaald")).not.toBeInTheDocument();
+  // Either of the two can be reversed.
+  expect(within(cards[0]!).getByRole("button", { name: "Terugdraaien" })).toBeInTheDocument();
+  expect(within(cards[1]!).getByRole("button", { name: "Terugdraaien" })).toBeInTheDocument();
+});
+
+it("shows pin attempts that did not go through apart from the sales, without a way to reverse them", async () => {
+  mockLoggedIn();
+  mockApi({
+    "/api/admin/sales": {
+      sales: [],
+      pinAttempts: [
+        { id: "a", soldAtLocal: "14:32", totalCents: 360, outcome: null, reason: null, lines: [{ name: "Aardbeitje", categoryName: "IJs", unitPriceCents: 110, qty: 2 }, { name: "Koffie", categoryName: "Warme dranken", unitPriceCents: 140, qty: 1 }] },
+        { id: "b", soldAtLocal: "14:40", totalCents: 110, outcome: "declined", reason: "insufficient_funds", lines: [] },
+        { id: "c", soldAtLocal: "14:41", totalCents: 110, outcome: "canceled", reason: null, lines: [] },
+        { id: "d", soldAtLocal: "14:42", totalCents: 110, outcome: "expired", reason: null, lines: [] },
+        { id: "e", soldAtLocal: "14:43", totalCents: 110, outcome: "start_failed", reason: "no_answer", lines: [] },
+      ],
+    },
+  });
+  renderAt("/beheer/verkopen?datum=2026-07-30");
+  const region = within(await screen.findByRole("region", { name: "Pin: niet gelukt of nog open" }));
+  expect(region.getByText("Deze pinbetalingen tellen niet mee in de omzet.")).toBeInTheDocument();
+  const rows = region.getAllByRole("listitem");
+  expect(rows).toHaveLength(5);
+  expect(within(rows[0]!).getByText("14:32")).toBeInTheDocument();
+  expect(within(rows[0]!).getByText("€ 3,60")).toBeInTheDocument();
+  expect(within(rows[0]!).getByText("2 × Aardbeitje, 1 × Koffie")).toBeInTheDocument();
+  expect(within(rows[0]!).getByText("Wacht op bevestiging")).toBeInTheDocument();
+  expect(within(rows[1]!).getByText("Geweigerd")).toBeInTheDocument();
+  expect(within(rows[2]!).getByText("Geannuleerd")).toBeInTheDocument();
+  expect(within(rows[3]!).getByText("Verlopen")).toBeInTheDocument();
+  expect(within(rows[4]!).getByText("Niet gestart")).toBeInTheDocument();
+  expect(region.queryByRole("button")).not.toBeInTheDocument();
+  expect(screen.queryByText("Geen verkopen op deze dag.")).not.toBeInTheDocument();
+  expect(screen.queryByRole("article")).not.toBeInTheDocument(); // none of them is a sale
+});
+
+it("lists pin attempts under the sales of the day, and leaves the section out when there are none", async () => {
+  mockLoggedIn();
+  mockApi({ "/api/admin/sales": { sales: [sale()], pinAttempts: [{ id: "b", soldAtLocal: "14:40", totalCents: 110, outcome: "declined", reason: null, lines: [] }] } });
+  const first = renderAt("/beheer/verkopen?datum=2026-07-30");
+  const card = await screen.findByRole("article");
+  const region = screen.getByRole("region", { name: "Pin: niet gelukt of nog open" });
+  expect(card.compareDocumentPosition(region) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  first.unmount();
+  mockApi({ "/api/admin/sales": { sales: [sale()], pinAttempts: [] } });
+  renderAt("/beheer/verkopen?datum=2026-07-30");
+  await screen.findByRole("article");
+  expect(screen.queryByRole("region", { name: "Pin: niet gelukt of nog open" })).not.toBeInTheDocument();
+});
+
+it("says a pin sale is reversed for the whole amount, after refunding at Mollie", async () => {
+  const dialog = await openDialog([sale({ method: "pin" })]);
+  expect(dialog.getByText(/Betaal het bedrag eerst terug in het Mollie-dashboard\. De kassa doet dat niet\./)).toBeInTheDocument();
+  expect(dialog.getByText(/Terugdraaien kan alleen voor het hele bedrag\./)).toBeInTheDocument();
+});
+
+it("says nothing about Mollie when a cash sale is reversed", async () => {
+  const dialog = await openDialog([sale()]);
+  expect(dialog.queryByText(/Mollie/)).not.toBeInTheDocument();
+  expect(dialog.queryByText(/hele bedrag/)).not.toBeInTheDocument();
+});
+
+it("explains that a failed pin payment cannot be reversed", async () => {
+  const dialog = await openDialog([sale({ method: "pin" })], [409, { error: "not_paid" }]);
+  await userEvent.type(dialog.getByLabelText("Reden"), "klant betaalde niet");
+  await userEvent.click(dialog.getByRole("button", { name: "Terugdraaien" }));
+  expect(await screen.findByText("Deze pinbetaling is niet gelukt en kan niet worden teruggedraaid.")).toBeInTheDocument();
+});
