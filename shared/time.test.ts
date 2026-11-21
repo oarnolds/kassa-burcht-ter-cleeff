@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { businessDate, formatDateNl, localTime, monthOf, monthRange } from "./time";
+import { businessDate, formatDateNl, localTime, monthOf, monthRange, shiftDate, weekRange } from "./time";
 
 describe("businessDate", () => {
   it("follows Amsterdam summer time around midnight", () => {
@@ -38,4 +38,17 @@ describe("formatDateNl", () => {
   it("writes day-month-year", () => {
     expect(formatDateNl("2026-07-30")).toBe("30-07-2026");
   });
+});
+
+it("gives the week of a day, from Monday to Sunday", () => {
+  expect(weekRange("2026-07-30")).toEqual({ first: "2026-07-27", last: "2026-08-02" });
+  expect(weekRange("2026-07-27")).toEqual({ first: "2026-07-27", last: "2026-08-02" }); // a Monday
+  expect(weekRange("2026-08-02")).toEqual({ first: "2026-07-27", last: "2026-08-02" }); // a Sunday
+  expect(weekRange("2027-01-01")).toEqual({ first: "2026-12-28", last: "2027-01-03" }); // across the new year
+});
+
+it("moves a date by days, across months and years", () => {
+  expect(shiftDate("2026-07-30", 7)).toBe("2026-08-06");
+  expect(shiftDate("2026-03-01", -1)).toBe("2026-02-28");
+  expect(shiftDate("2026-12-31", 1)).toBe("2027-01-01");
 });

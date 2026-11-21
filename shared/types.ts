@@ -68,6 +68,16 @@ export type MonthReport = {
   byProduct: ProductRow[];
 };
 
+/** A week from Monday to Sunday, as the kassa shows it. Only days with sales are listed. */
+export type WeekReport = {
+  first: string;
+  last: string;
+  totals: Totals;
+  days: ({ date: string } & Totals)[];
+  byCategory: CategoryRow[];
+  byProduct: ProductRow[];
+};
+
 export type Summary = {
   today: { date: string } & Totals;
   month: { month: string } & Totals;

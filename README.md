@@ -49,6 +49,8 @@ De iPad blijft gekoppeld tot de penningmeester hem in beheer ontkoppelt. De kass
 
 **Levering van ijsjes.** Staat er boven in beeld een gele balk **Levering onderweg**, dan heeft de penningmeester een bestelling ingevoerd. Staan de dozen in de vriezer? Tik op de balk, kijk of het klopt en tik op **Ontvangen**. De voorraad wordt bijgewerkt. Klopt de levering niet, bevestig dan toch en geef de afwijking door aan de penningmeester.
 
+**Omzet bekijken.** Tik rechtsonder op **Omzet**. Je ziet de omzet van vandaag: het totaal, contant en pin, en wat er per categorie en per product is verkocht. Met **Week** zie je de week van maandag tot en met zondag, met een regel per dag; tik op een datum om die dag te openen. Met de pijltjes ga je een dag of een week terug. Het is alleen om te bekijken: downloaden kan alleen de penningmeester in beheer. Verkopen die nog op verzending wachten tellen pas mee als ze verstuurd zijn; dat staat er dan bij. Zonder internet is de omzet niet te zien. Tik op **Sluiten** om terug te gaan; de bon blijft staan.
+
 **Voorraad op de tegel.** "nog 5" betekent dat die smaak bijna op is, "op?" dat hij volgens de kassa op is. De tegel blijft altijd werken: wat in de vriezer ligt is leidend.
 
 **De regel onderaan.** "Online" betekent dat de kassa verbinding heeft. "Offline · contant werkt door" betekent dat er geen internet is: je kunt gewoon doorwerken, de verkopen worden verstuurd zodra er weer verbinding is. Staat er "… wacht op verzending", dan zijn die verkopen nog niet bij de penningmeester aangekomen. Dat lost zichzelf op. Blijft het langer dan een paar minuten staan terwijl er "Online" staat, meld het dan aan de penningmeester.

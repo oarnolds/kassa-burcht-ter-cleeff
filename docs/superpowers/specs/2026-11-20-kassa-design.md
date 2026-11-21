@@ -99,6 +99,8 @@ De penningmeester koos uit drie aanklikbare schetsen **variant A**. De schets st
 
 **Status.** Een klein teken laat zien of de kassa online is en of er verkopen wachten op verzending. In de testmodus van Mollie staat er een duidelijke balk "TEST" in beeld.
 
+**Omzet.** Een knop "Omzet" rechtsonder opent een scherm met de omzet van een dag of van een week (maandag tot en met zondag): totaal, contant en pin, per dag, per categorie en per product. Het zijn dezelfde cijfers als onder Rapporten in het beheer, alleen om te bekijken en zonder downloads. Het werkt alleen met verbinding; verkopen die nog op de iPad wachten tellen nog niet mee en dat staat erbij. *(Toegevoegd op 21 november 2026 op verzoek van de penningmeester: de gebruiker van de kassa mag de dag- en weekopbrengst zien.)*
+
 **Niet vergrendeld.** De kassa vraagt geen pincode voor het aanslaan. *(Eigen keuze, zie 14.)*
 
 **Snelheid, meetbaar.** Een contante verkoop van drie producten kost vijf tikken (drie producten, Contant, Gepast). Een tik geeft binnen 100 milliseconden zichtbare reactie. De app start vanaf het beginscherm binnen twee seconden, ook zonder internet.

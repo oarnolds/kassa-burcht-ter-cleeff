@@ -21,6 +21,25 @@ test("a cash sale of three products takes five taps and shows up in beheer", asy
   await expectToday(beheer, { cashCents: 360, saleCount: 1 });
 });
 
+test("the kassa shows the revenue of today and of the week, to look at only", async ({ page, request }) => {
+  const { code, beheer } = await prepare(request);
+  await pair(page, code);
+  for (const name of [/Aardbeitje/, /Koffie/, "Contant", "Gepast"]) await page.getByRole("button", { name }).click();
+  await expectToday(beheer, { cashCents: 250, saleCount: 1 });
+  await tap(page, "Omzet");
+  const omzet = page.getByRole("dialog", { name: "Omzet" });
+  await expect(omzet.getByRole("heading", { name: /^Vandaag · / })).toBeVisible();
+  await expect(omzet.getByText(/contant €\s2,50/)).toBeVisible();
+  await expect(omzet.getByRole("region", { name: "Per product" }).getByRole("row", { name: /Koffie/ })).toBeVisible();
+  await tap(page, "Week");
+  await expect(omzet.getByRole("heading", { name: /^Deze week · / })).toBeVisible();
+  await expect(omzet.getByRole("region", { name: "Per dag" }).getByRole("row", { name: /Hele week/ })).toContainText("2,50");
+  await expect(omzet.locator("a")).toHaveCount(0);
+  await tap(page, "Sluiten");
+  await expect(omzet).toBeHidden();
+  await expect(receipt(page).getByText("Tik op een product om te beginnen.")).toBeVisible();
+});
+
 test("a sale made offline arrives once when the connection returns", async ({ page, context, request }) => {
   const { code, beheer } = await prepare(request);
   await pair(page, code);
