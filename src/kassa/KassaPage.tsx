@@ -11,6 +11,7 @@ import { DeliveryBar } from "./DeliveryBar";
 import { KassaScreen } from "./KassaScreen";
 import { ParkedPins } from "./ParkedPins";
 import { RevenuePanel } from "./RevenuePanel";
+import { prepareReceiptShare } from "./share-receipt";
 import { StatusBadge } from "./StatusBadge";
 import { stockLabel } from "./stock-label";
 import { loadCatalog, noteSold, soldSinceFetch } from "./store/catalog";
@@ -208,6 +209,7 @@ export function KassaPage() {
       tileNote={tileNote}
       pin={{ blocked: pinBlocked(sync, catalog), start: startPin }}
       onPinPaid={(receipt) => void countSold([receipt])}
+      shareReceipt={(sale) => prepareReceiptShare(sale)}
       header={
         <>
           {(catalog as Partial<Catalog>).pin?.mode === "test" && <TestBar />}

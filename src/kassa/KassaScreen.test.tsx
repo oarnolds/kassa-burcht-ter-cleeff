@@ -4,6 +4,7 @@ import { expect, it, vi, type Mock } from "vitest";
 import { cashSaleInput, pinSaleInput } from "../../shared/schemas";
 import { catalog, render, tap } from "../test-utils";
 import { KassaScreen } from "./KassaScreen";
+import type { FinishedSale } from "./share-receipt";
 import type { PinEnd, PinProgress, PinReceipt } from "./store/pin";
 
 const NBSP = String.fromCharCode(160);
@@ -469,4 +470,86 @@ it("shows what it is given above and below the screen", () => {
   render(<KassaScreen catalog={catalog} onSale={vi.fn()} header={<p>Levering onderweg</p>} footer={<p>Online</p>} />);
   expect(screen.getByText("Levering onderweg")).toBeInTheDocument();
   expect(screen.getByText("Online")).toBeInTheDocument();
+});
+
+// A receipt for the customer who asks for one: a picture of the last sale, sent from the share sheet.
+
+function shareable() {
+  const send = vi.fn();
+  const prepare = vi.fn(async (_sale: FinishedSale): Promise<(() => void) | null> => send);
+  return { prepare, send };
+}
+
+it("offers the last cash sale as a receipt to share, until the next customer's first product", async () => {
+  const onSale = vi.fn();
+  const { prepare, send } = shareable();
+  render(<KassaScreen catalog={catalog} onSale={onSale} shareReceipt={prepare} />);
+  expect(screen.queryByRole("button", { name: "Bon delen" })).not.toBeInTheDocument();
+  await tap(/Koffie/);
+  await tap("Contant");
+  await tap(`€${NBSP}5`);
+  await tap("Klaar");
+  expect(prepare).toHaveBeenCalledTimes(1);
+  expect(prepare.mock.calls[0]![0]).toEqual({
+    id: onSale.mock.calls[0]![0].id,
+    soldAt: onSale.mock.calls[0]![0].soldAt,
+    lines: [{ productId: "koffie", name: "Koffie", unitPriceCents: 140, qty: 1 }],
+    totalCents: 140,
+    method: "cash",
+    cashGivenCents: 500,
+  });
+  await tap("Bon delen");
+  expect(send).toHaveBeenCalledTimes(1);
+  // The next customer: the receipt of the one before is not offered to them.
+  await tap(/Aardbeitje/);
+  expect(screen.queryByRole("button", { name: "Bon delen" })).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Bon" })).toBeInTheDocument();
+});
+
+it("offers a pin sale as a receipt too", async () => {
+  const { prepare, send } = shareable();
+  const { pin, runs } = fakePin();
+  render(<KassaScreen catalog={catalog} onSale={vi.fn()} pin={pin} shareReceipt={prepare} />);
+  await tap(/Koffie/);
+  await tap("Pin");
+  expect(screen.queryByRole("button", { name: "Bon delen" })).not.toBeInTheDocument();
+  await runs[0]!.end({ kind: "paid" });
+  expect(prepare.mock.calls[0]![0]).toMatchObject({ id: runs[0]!.receipt.id, method: "pin", totalCents: 140, cashGivenCents: null });
+  await tap("Bon delen");
+  expect(send).toHaveBeenCalledTimes(1);
+});
+
+it("offers no receipt for a pin payment that did not go through", async () => {
+  const { prepare } = shareable();
+  const { pin, runs } = fakePin();
+  render(<KassaScreen catalog={catalog} onSale={vi.fn()} pin={pin} shareReceipt={prepare} />);
+  await tap(/Koffie/);
+  await tap("Pin");
+  await runs[0]!.end({ kind: "unknown", why: "lost" });
+  await tap("Volgende klant");
+  expect(prepare).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Bon delen" })).not.toBeInTheDocument();
+});
+
+it("offers nothing where the iPad cannot share a picture", async () => {
+  render(<KassaScreen catalog={catalog} onSale={vi.fn()} shareReceipt={async () => null} />);
+  await tap(/Koffie/);
+  await tap("Contant");
+  await tap("Gepast");
+  await act(async () => {});
+  expect(screen.queryByRole("button", { name: "Bon delen" })).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Bon" })).toBeInTheDocument();
+});
+
+it("does not offer a receipt that is ready only after the next customer has started", async () => {
+  let ready!: (send: () => void) => void;
+  const prepare = vi.fn(() => new Promise<(() => void) | null>((resolve) => (ready = resolve)));
+  render(<KassaScreen catalog={catalog} onSale={vi.fn()} shareReceipt={prepare} />);
+  await tap(/Koffie/);
+  await tap("Contant");
+  await tap("Gepast");
+  await tap(/Aardbeitje/);
+  await act(async () => ready(vi.fn()));
+  await tap("Wis alles");
+  expect(screen.queryByRole("button", { name: "Bon delen" })).not.toBeInTheDocument();
 });

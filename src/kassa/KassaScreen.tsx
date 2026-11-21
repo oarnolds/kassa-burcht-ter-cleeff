@@ -1,4 +1,4 @@
-import { useReducer, useRef, useState, type ReactNode } from "react";
+import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
 import type { CashSaleInput, SaleLineInput } from "../../shared/schemas";
 import type { Catalog, CatalogProduct } from "../../shared/types";
 import { useToast } from "../ui/Toast";
@@ -9,6 +9,7 @@ import { PinDialog, type PinView } from "./PinDialog";
 import { ProductGrid } from "./ProductGrid";
 import { QuantityPad } from "./QuantityPad";
 import { Receipt } from "./Receipt";
+import type { FinishedSale } from "./share-receipt";
 import type { PinProgress, PinReceipt, PinRun } from "./store/pin";
 
 type Props = {
@@ -27,6 +28,11 @@ type Props = {
   };
   /** A pin payment went through. The screen is already empty again when this is called. */
   onPinPaid?(receipt: PinReceipt): void;
+  /**
+   * A receipt for the customer who asks for one. Called for every finished sale; returns what a tap on
+   * "Bon" does, or null when this device cannot share a picture.
+   */
+  shareReceipt?(sale: FinishedSale): Promise<(() => void) | null>;
 };
 
 /** What is being paid in cash: the receipt on the screen, or one that was parked a moment ago. */
@@ -35,7 +41,7 @@ type CashFor = { totalCents: number; lines: SaleLineInput[]; insteadOfSaleId: st
 const payButton = "h-[4.5rem] rounded-2xl border-2 border-green text-2xl font-extrabold select-none disabled:opacity-30";
 
 /** The kassa: every product one tap away on the left, the receipt on the right. */
-export function KassaScreen({ catalog, onSale, tileNote, header, footer, pin, onPinPaid }: Props) {
+export function KassaScreen({ catalog, onSale, tileNote, header, footer, pin, onPinPaid, shareReceipt }: Props) {
   const [cart, dispatch] = useReducer(cartReducer, emptyCart);
   const [cashFor, setCashFor] = useState<CashFor | null>(null);
   const [pinning, setPinning] = useState<{ receipt: PinReceipt; view: PinView } | null>(null);
@@ -45,9 +51,32 @@ export function KassaScreen({ catalog, onSale, tileNote, header, footer, pin, on
   // receipt names the attempt, whichever way the beheerder got to the cash dialog.
   const attempt = useRef<{ id: string; cart: Cart } | null>(null);
   const [padFor, setPadFor] = useState<CatalogProduct | null>(null);
+  // The receipt of the last sale, while the screen is empty: the next customer's first product ends it.
+  const [lastReceipt, setLastReceipt] = useState<{ id: string; send: () => void } | null>(null);
+  const latestSale = useRef<string | null>(null);
   const toast = useToast();
   const total = cartTotal(cart);
   const busy = cashFor !== null || pinning !== null;
+  const count = cart.lines.length;
+
+  useEffect(() => {
+    if (count === 0) return;
+    latestSale.current = null;
+    setLastReceipt(null);
+  }, [count]);
+
+  /** Makes the receipt of a sale that has just been paid ready to share, unless the next customer came first. */
+  const offerReceipt = (sale: FinishedSale) => {
+    if (!shareReceipt) return;
+    latestSale.current = sale.id;
+    setLastReceipt(null);
+    shareReceipt(sale).then(
+      (send) => {
+        if (send && latestSale.current === sale.id) setLastReceipt({ id: sale.id, send });
+      },
+      () => {},
+    );
+  };
 
   const tapProduct = (product: CatalogProduct) => {
     if (product.quantityPad) setPadFor(product);
@@ -61,6 +90,7 @@ export function KassaScreen({ catalog, onSale, tileNote, header, footer, pin, on
     setCashFor(null);
     toast.show("Contant ontvangen", { ms: 1000 });
     onSale(sale);
+    offerReceipt({ id: sale.id, soldAt: sale.soldAt, lines: sale.lines, totalCents: sale.totalCents, method: "cash", cashGivenCents: sale.cashGivenCents });
   };
 
   const cashFromCart = () =>
@@ -89,6 +119,7 @@ export function KassaScreen({ catalog, onSale, tileNote, header, footer, pin, on
         setPinning(null);
         toast.show("Pin betaald", { ms: 1500 });
         onPinPaid?.(receipt);
+        offerReceipt({ id: receipt.id, soldAt: receipt.soldAt, lines: receipt.lines, totalCents: receipt.totalCents, method: "pin", cashGivenCents: null });
       } else if (end.kind === "failed") {
         attempt.current = { id: receipt.id, cart: forCart };
         setPinning({ receipt, view: { step: "failed", outcome: end.outcome, reason: end.reason } });
@@ -122,6 +153,7 @@ export function KassaScreen({ catalog, onSale, tileNote, header, footer, pin, on
           onDec={(productId) => dispatch({ type: "dec", productId })}
           onRemove={(productId) => dispatch({ type: "remove", productId })}
           onClear={() => dispatch({ type: "clear" })}
+          onShare={lastReceipt && count === 0 && !busy ? lastReceipt.send : undefined}
         >
           <div className="grid grid-cols-2 gap-3">
             <button

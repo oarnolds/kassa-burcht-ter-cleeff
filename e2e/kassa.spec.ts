@@ -158,6 +158,40 @@ test("the footer still fits with a sale waiting, a pin payment waiting and one t
   await expectKassaFits(page);
 });
 
+test("a customer who asks gets the receipt as a picture from the share sheet", async ({ page, request }) => {
+  // Playwright's WebKit has no share sheet: stand in for it, and keep what the kassa hands over.
+  await page.addInitScript(() => {
+    const shared: { name: string; type: string; size: number; png: boolean }[] = [];
+    Object.assign(window, { shared });
+    Object.defineProperty(navigator, "canShare", { configurable: true, value: () => true });
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: async ({ files }: { files: File[] }) => {
+        for (const file of files) {
+          const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+          shared.push({ name: file.name, type: file.type, size: file.size, png: head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47 });
+        }
+      },
+    });
+  });
+  const { code } = await prepare(request);
+  await pair(page, code);
+  const share = page.getByRole("button", { name: "Bon delen" });
+  await expect(share).toHaveCount(0);
+  for (const name of [/Koffie/, /Entreegeld/]) await tile(page, name).click();
+  await tap(page, "Contant");
+  await page.getByRole("button", { name: /^€\s5$/ }).click();
+  await tap(page, "Klaar");
+  await expect(share).toBeInViewport({ ratio: 1 });
+  await share.click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { shared: unknown[] }).shared)).toEqual([
+    { name: expect.stringMatching(/^bon-[0-9a-f]{8}\.png$/), type: "image/png", size: expect.any(Number), png: true },
+  ]);
+  // The next customer's first product: the receipt before is not offered to them.
+  await tile(page, /Thee/).click();
+  await expect(share).toHaveCount(0);
+});
+
 test("a tap shows on the receipt within 100 ms", async ({ page, request }) => {
   const { code } = await prepare(request);
   await pair(page, code);

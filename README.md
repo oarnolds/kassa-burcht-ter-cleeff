@@ -43,6 +43,8 @@ De iPad blijft gekoppeld tot de penningmeester hem in beheer ontkoppelt. De kass
 
 **Contant.** Tik op **Contant**. Betaalt de klant gepast, tik dan op **Gepast** en de verkoop is klaar. Geeft de klant een biljet, tik dan op dat biljet: de kassa toont het wisselgeld. Tik op **Klaar** als je het hebt teruggegeven.
 
+**Bonnetje.** Wil een klant een bon, tik dan na het afrekenen bovenaan op **Bon** (met het deel-symbool). Het deelvenster van de iPad gaat open met een afbeelding van de bon: de producten, het totaal, contant of pin, en het bonnummer. Kies **AirDrop** en de telefoon van de klant; de klant moet AirDrop wel aan hebben staan. De knop staat er tot je het eerste product van de volgende klant aantikt. Een pinbetaling die niet is gelukt, krijgt geen bon. De kassa bewaart of verstuurt de afbeelding verder nergens.
+
 **Pin.** Tik op **Pin**. De kassa toont het bedrag en "Houd pas of telefoon tegen de betaalterminal". De klant betaalt op de terminal; jij hoeft niets te doen. De bon blijft staan tot de betaling is goedgekeurd. Daarna staat er kort "Pin betaald" en is de bon leeg voor de volgende klant. Een pinbetaling komt in het scherm **Omzet** bij pin te staan, niet bij contant, en telt niet mee voor het kluisje.
 
 Wat er anders kan gebeuren:

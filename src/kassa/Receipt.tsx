@@ -8,14 +8,26 @@ type Props = {
   onDec(productId: string): void;
   onRemove(productId: string): void;
   onClear(): void;
+  /** Sends the last sale's receipt from the share sheet. Without it, "Bon" is only a heading. */
+  onShare?(): void;
   /** The pay buttons. */
   children: ReactNode;
 };
 
+/** The share symbol of iOS: a box with an arrow out of it. */
+function ShareIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3v12M7.5 7.5 12 3l4.5 4.5" />
+      <path d="M8 10H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-2" />
+    </svg>
+  );
+}
+
 const stepButton = "h-11 w-12 rounded-xl border-2 border-ink/20 bg-cream text-2xl leading-none font-extrabold active:bg-sand";
 
 /** The receipt: what has been tapped, with a way to correct every line, and the total. */
-export function Receipt({ cart, onInc, onDec, onRemove, onClear, children }: Props) {
+export function Receipt({ cart, onInc, onDec, onRemove, onClear, onShare, children }: Props) {
   const list = useRef<HTMLUListElement>(null);
   const count = cart.lines.length;
 
@@ -27,7 +39,21 @@ export function Receipt({ cart, onInc, onDec, onRemove, onClear, children }: Pro
   return (
     <aside aria-label="Bon" className="flex w-[35%] shrink-0 flex-col border-l-2 border-sand bg-white">
       <div className="flex items-center justify-between border-b-2 border-sand px-4 py-2.5">
-        <h2 className="text-xl font-bold">Bon</h2>
+        <h2 className="text-xl font-bold">
+          {onShare ? (
+            <button
+              type="button"
+              aria-label="Bon delen"
+              onClick={onShare}
+              className="flex min-h-11 items-center gap-2 rounded-full border-2 border-green bg-white px-4 text-xl font-bold text-green-dark active:bg-sand"
+            >
+              Bon
+              <ShareIcon />
+            </button>
+          ) : (
+            "Bon"
+          )}
+        </h2>
         <button
           type="button"
           onClick={onClear}

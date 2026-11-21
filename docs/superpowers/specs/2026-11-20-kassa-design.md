@@ -216,19 +216,25 @@ Toegevoegd bij het bouwen van fase 2 (pin), 21 november 2026:
 - De melding van Mollie (webhook) is niet ondertekend. De kassa gebruikt hem alleen als seintje en haalt de betaling daarna zelf bij Mollie op; wat in de melding staat wordt niet geloofd.
 - Terugdraaien van een pinverkoop gaat alleen voor het hele bedrag. Een gedeeltelijke terugbetaling in Mollie kan de kassa niet vastleggen.
 
+Toegevoegd op verzoek van de penningmeester, 21 november 2026 (bon delen):
+- Na het afrekenen wordt het kopje **Bon** een knop met het deel-symbool. Een tik opent het deelvenster van de iPad met een afbeelding van de laatst afgerekende bon (speeltuin, datum en tijd, bonnummer, producten, totaal, contant met wisselgeld of pin); de beheerder kiest daar AirDrop. De knop verdwijnt bij het eerste product van de volgende klant, zodat niemand de bon van een ander krijgt. Een pinbetaling die niet is gelukt, krijgt geen bon. De afbeelding wordt nergens bewaard of verstuurd behalve via het deelvenster.
+- Er staat geen btw op de bon (de bouwer weet niet of de speeltuin btw rekent); moet dat erop, dan zegt de penningmeester het. Kan het apparaat geen afbeelding delen, dan blijft "Bon" een gewoon kopje.
+
 ## 15. Wat nog open staat
 
-De penningmeester heeft alle vragen beantwoord. Wat overblijft is pas te beantwoorden door te testen. Hieronder staat per vraag wat Mollie's documentatie zegt (gelezen op 21 november 2026, alleen docs.mollie.com) en wat er nog te testen is. De kassa is zo gebouwd dat hij met beide antwoorden werkt. De eerste drie punten gaan over de iPhone en spelen alleen tijdens het testen, omdat er in de kiosk een Mollie-terminal komt:
-- Hoe de iPhone met de Mollie Tap-app aan een `terminalId` komt. De documentatie noemt bij terminals het merk "Tap" naast "PAX", en beschrijft voor de app een stroom waarbij betalingen via de API op de telefoon binnenkomen. Dat wijst erop dat de iPhone in de lijst van terminals verschijnt, en daar kiest de penningmeester hem in het beheer. Nog te testen: of hij er werkelijk in staat.
-- Of de Tap-app open moet staan om een betaling te ontvangen. De documentatie zegt het niet. Nog te testen met de iPhone.
-- Welke passen de iPhone accepteert (Maestro en V PAY zijn niet bevestigd). De documentatie zegt het niet. Nog te testen.
-- Of Mollie een goedkeuring vraagt voor het aanzetten van Point of Sale. De documentatie zegt alleen dat de betaalmethode op het profiel moet aanstaan en dat er dan in de testmodus vanzelf een testterminal komt. Nog te zien bij het aanzetten.
-- Of een lopende pinbetaling via de API te annuleren is. De documentatie beschrijft annuleren in het algemeen, met een weigering als het niet meer kan, maar zegt niet of het kan zolang de terminal op een pas wacht. De kassa probeert het en meldt "Annuleren lukte niet. Kijk op de betaalterminal." als Mollie weigert. Nog te testen in de testmodus.
+De penningmeester heeft alle vragen beantwoord. Op 21 november 2026 is de kassa op de computer van de bouwer getest tegen Mollie's echte testmodus, met de testsleutel van de penningmeester en Mollie's testterminal. Wat dat opleverde:
 
-Bij het bouwen kwamen er drie vragen bij, ook te beantwoorden in de testmodus:
-- Welke uitkomst Mollie geeft als de klant op de terminal annuleert, als de pas wordt geweigerd en als niemand betaalt, en na hoe lang een onbetaalde betaling verloopt. De documentatie noemt de mogelijke uitkomsten en een wachttijd van ongeveer 40 seconden op de terminal. De kassa gaat af op de einduitkomst en raadt niet.
-- Of Mollie in ontwikkeling een terugkeeradres op `localhost` aanneemt. De documentatie verbiedt `localhost` alleen voor het adres van de melding (webhook), en dat stuurt de kassa lokaal dan ook niet mee.
-- Hoe de testterminal heet, en welke keuzes Mollie's testpagina biedt naast betaald, geannuleerd en mislukt.
+- **Point of Sale aanzetten.** De penningmeester zette de betaalmethode aan in de Mollie-app; in de testmodus was er meteen een testterminal ("Test terminal", PAX A920, status actief). Mollie's testpagina meldt: "Je account is klaar om Point of sale betalingen te verwerken." Of Mollie voor echte betalingen nog een goedkeuring vraagt, blijkt bij de overstap naar de live-sleutel.
+- **Annuleren via de API.** Kan niet zolang de terminal op een pas wacht: Mollie geeft de betaling `isCancelable: false` en weigert het annuleren met "The payment cannot be cancelled". De kassa meldt dan "Annuleren lukte niet. Kijk op de betaalterminal." Annuleren gaat dus op de terminal; het handboek zegt dat. Of een echte terminal het wel toestaat, is nog niet bekend; de kassa werkt met beide.
+- **Uitkomsten.** Mollie's testpagina biedt open, betaald, mislukt, geannuleerd en verlopen. Een mislukte testbetaling heeft geen reden (`statusReason` leeg), dus de kassa toont alleen "Betaling geweigerd". Een betaling die niemand afrondt, blijft "open" en verloopt na 15 minuten; de kassa parkeert hem na 2 minuten en toont na het verlopen de rode knop "Pinbetaling van € … niet gelukt".
+- **Terugkeeradres op `localhost`.** Mollie maakt de betaling gewoon aan en bewaart voor een pinbetaling geen terugkeeradres. Lokaal stuurt de kassa geen webhook-adres mee, zoals bedoeld.
+- **Twee betalingen op één terminal.** In de testmodus zet Mollie een tweede betaling op de terminal terwijl de eerste nog open staat. Een echte terminal kan dan "nog bezig" melden; de kassa toont dat als reden.
+- **Dubbele start.** Twee keer dezelfde start (zelfde bon) gaf één betaling bij Mollie.
+
+Wat alleen met de iPhone te beantwoorden is, en dus nog open staat (er komt in de kiosk een Mollie-terminal, dus dit speelt alleen tijdens het testen):
+- Hoe de iPhone met de Mollie Tap-app aan een `terminalId` komt. De documentatie noemt bij terminals het merk "Tap" naast "PAX", en beschrijft voor de app een stroom waarbij betalingen via de API op de telefoon binnenkomen. Dat wijst erop dat de iPhone in de lijst van terminals verschijnt, en daar kiest de penningmeester hem in het beheer.
+- Of de Tap-app open moet staan om een betaling te ontvangen.
+- Welke passen de iPhone accepteert (Maestro en V PAY zijn niet bevestigd).
 
 ## 16. Aan de bouwer
 
