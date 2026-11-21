@@ -126,3 +126,25 @@ it("closes back to the kassa with the receipt as it was", async () => {
   expect(screen.queryByRole("dialog", { name: "Omzet" })).not.toBeInTheDocument();
   expect(screen.getByRole("listitem", { name: "Koffie" })).toBeInTheDocument();
 });
+
+it("fetches the figures again once the waiting sales have been sent", async () => {
+  mockApi({ ...server, "POST /api/kassa/sales": [500, { error: "server" }] });
+  renderAt("/");
+  await tap(/Aardbeitje/);
+  await tap("Contant");
+  await tap("Gepast");
+  await screen.findByText("1 verkoop wacht op verzending");
+  await tap("Omzet");
+  expect(await panel().findByText("contant € 3,30")).toBeInTheDocument();
+  expect(panel().getByText("1 verkoop wacht nog op verzending en telt hier nog niet mee.")).toBeInTheDocument();
+  // The connection is back: the sale goes out, and from then on the server counts it.
+  mockApi({
+    "POST /api/kassa/sales": (req: { body: { items: { id: string }[] } }) => ({
+      results: req.body.items.map((item) => ({ id: item.id, status: "accepted" })),
+    }),
+    "/api/kassa/reports/day": { date: "2026-07-30", totals: totals(440, 3), ...ijs(4) },
+  });
+  window.dispatchEvent(new Event("online"));
+  expect(await panel().findByText("contant € 4,40")).toBeInTheDocument();
+  expect(panel().queryByText(/wacht nog op verzending/)).not.toBeInTheDocument();
+});

@@ -22,7 +22,8 @@ export function KassaPage() {
   const [sync, setSync] = useState<SyncState>({ online: navigator.onLine, pending: 0, rejected: 0, paired: true });
   // Pieces sold per product since the catalog was fetched: the stock on the tiles is the server's minus these.
   const [sold, setSold] = useState<Record<string, number>>({});
-  const [showRevenue, setShowRevenue] = useState(false);
+  // Omzet: "never" until it has been opened once. A closed panel leaves the tap shield behind, as a Dialog does.
+  const [revenue, setRevenue] = useState<"never" | "open" | "closed">("never");
   const kick = useRef<() => void>(() => {});
   const toast = useToast();
 
@@ -119,11 +120,13 @@ export function KassaPage() {
           <button
             type="button"
             className="min-h-11 shrink-0 rounded-full border-2 border-green bg-white px-5 font-bold text-green-dark active:bg-sand"
-            onClick={() => setShowRevenue(true)}
+            onClick={() => setRevenue("open")}
           >
             Omzet
           </button>
-          {showRevenue && <RevenuePanel pending={sync.pending} onClose={() => setShowRevenue(false)} />}
+          {revenue === "open" && <RevenuePanel pending={sync.pending} onClose={() => setRevenue("closed")} />}
+          {/* Sluiten sits right above "Wis alles": the shield takes the second tap of a double tap (see app.css). */}
+          {revenue === "closed" && <div className="tap-shield" />}
         </footer>
       }
     />

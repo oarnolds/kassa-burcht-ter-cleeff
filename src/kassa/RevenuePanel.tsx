@@ -36,7 +36,9 @@ export function RevenuePanel({ pending, onClose }: Props) {
   const [date, setDate] = useState(today);
   const [round, setRound] = useState(0);
   const [loaded, setLoaded] = useState<Loaded>({ key: "", shown: null, problem: null });
-  const key = `${view} ${date} ${round}`;
+  // The number of waiting sales is part of what was asked: once they have been sent, the server counts them
+  // and the figures on screen are fetched again.
+  const key = `${view} ${date} ${round} ${pending}`;
 
   useEffect(() => {
     let left = false;

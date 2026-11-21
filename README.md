@@ -150,7 +150,7 @@ Database terugzetten naar een eerder moment (tijd in UTC):
 npx wrangler d1 time-travel restore kassa --timestamp=2026-07-31T16:00:00Z
 ```
 
-De wekelijkse reservekopie staat in de R2-bucket `kassa-backups` als `kassa-JJJJ-MM-DD.json` (zelfde vorm als "Alles downloaden"). De Worker schrijft hem elke maandag om 03:00 UTC (`triggers.crons` in `wrangler.jsonc`, code in `worker/backup.ts`) en bewaart de 26 nieuwste. Dit staat aan sinds 21 november 2026: R2 is ingeschakeld in het Cloudflare-account, de bucket bestaat en de twee regels `r2_buckets` en `triggers` staan in `wrangler.jsonc`. Zonder die twee regels draait de kassa gewoon door en meldt beheer dat de wekelijkse kopie niet aanstaat. In een nieuw Cloudflare-account moet R2 eerst in het dashboard worden ingeschakeld (dat vraagt een betaalmethode); daarna wordt de bucket één keer aangemaakt met:
+De wekelijkse reservekopie staat in de R2-bucket `kassa-backups` als `kassa-JJJJ-MM-DD.json` (zelfde vorm als "Alles downloaden"). De Worker schrijft hem elke maandag om 03:00 UTC (`triggers.crons` in `wrangler.jsonc`, code in `worker/backup.ts`; de dag staat er als `MON`, want bij Cloudflare is dag 1 de zondag) en bewaart de 26 nieuwste. Dit staat aan sinds 21 november 2026: R2 is ingeschakeld in het Cloudflare-account, de bucket bestaat en de twee regels `r2_buckets` en `triggers` staan in `wrangler.jsonc`. Zonder die twee regels draait de kassa gewoon door en meldt beheer dat de wekelijkse kopie niet aanstaat. In een nieuw Cloudflare-account moet R2 eerst in het dashboard worden ingeschakeld (dat vraagt een betaalmethode); daarna wordt de bucket één keer aangemaakt met:
 
 ```bash
 npx wrangler r2 bucket create kassa-backups
@@ -162,7 +162,13 @@ Een kopie ophalen:
 npx wrangler r2 object get kassa-backups/kassa-2026-11-23.json --remote --file kassa-2026-11-23.json
 ```
 
-Terugzetten uit zo'n bestand is handwerk: er is geen knop voor. De kopie is één bestand met alles en groeit mee met de geschiedenis. Gemeten: 20.000 verkopen (100.000 rijen) geven ongeveer 22 MB en vragen meer rekentijd dan de 10 ms die het gratis abonnement per aanroep noemt. Wordt de kopie daardoor ooit afgebroken, dan staat in beheer dat de laatste kopie ouder is dan een week; de uitweg is het betaalde Workers-abonnement of de kopie per jaar opsplitsen.
+Terugzetten uit zo'n bestand is handwerk: er is geen knop voor, en het is nog niet geoefend. Let daarbij op drie dingen:
+
+- Verkopen verwijzen naar een kassa (`sales.device_id`), maar kassa's en logins staan bewust niet in de kopie. Maak die kolom leeg bij het terugzetten, of koppel eerst de iPad opnieuw en gebruik dat nummer.
+- De voorraad per product (`products.stock`) wordt door de database zelf bijgehouden (migratie 0003). Wie `stock_movements` terugzet bovenop de teruggezette producten, telt de voorraad dubbel. Zet de producten daarom met voorraad 0 terug en daarna pas de mutaties.
+- De ingebruikname (`settings.in_use_since`) staat niet in de kopie. Na het terugzetten is "Proefgegevens wissen" weer beschikbaar tot die regel opnieuw is gezet.
+
+De kopie is één bestand met alles en groeit mee met de geschiedenis. Gemeten: 20.000 verkopen (100.000 rijen) geven ongeveer 22 MB en vragen meer rekentijd dan de 10 ms die het gratis abonnement per aanroep noemt. Wordt de kopie daardoor ooit afgebroken, dan staat in beheer dat de laatste kopie ouder is dan een week; de uitweg is het betaalde Workers-abonnement of de kopie per jaar opsplitsen.
 
 Wachtwoord van beheer wissen, waarna `/beheer` opnieuw om de instelcode vraagt:
 
