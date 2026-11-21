@@ -136,3 +136,12 @@ export type Device = { id: string; name: string; createdAt: string; lastSeenAt: 
 
 /** The weekly copies in the backup bucket, as beheer sees them. Not `available` while the bucket is not switched on. */
 export type BackupState = { available: boolean; latest: { key: string; at: string; sizeBytes: number } | null; count: number };
+
+/** Which Mollie key the kassa runs on: with a test key no money moves. */
+export type PinMode = "test" | "live";
+
+/** How a pin payment ended. `start_failed`: the terminal was never asked, or the kassa gave up asking. */
+export type PinOutcome = "paid" | "declined" | "canceled" | "expired" | "start_failed";
+
+/** A payment terminal as Mollie lists it. */
+export type PinTerminal = { id: string; description: string; status: string; brand: string | null; model: string | null; serialNumber: string | null };

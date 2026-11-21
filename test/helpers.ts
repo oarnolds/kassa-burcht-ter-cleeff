@@ -1,7 +1,10 @@
 import { env } from "cloudflare:workers";
+import { afterEach, beforeEach, vi } from "vitest";
 import type { CashSaleInput } from "../shared/schemas";
 import type { ItemResult } from "../shared/types";
 import { app } from "../worker/app";
+import type { Env } from "../worker/env";
+import { createFakeMollie, type FakeMollie } from "./fake-mollie";
 
 export const TEST_PASSWORD = "test-wachtwoord-123";
 export const TEST_SETUP_TOKEN = "test-setup-token";
@@ -9,9 +12,13 @@ export const TEST_SETUP_TOKEN = "test-setup-token";
 type ApiInit = {
   method?: string;
   json?: unknown;
+  /** A form-encoded body, as Mollie's webhook sends it. */
+  form?: Record<string, string>;
   cookie?: string;
   token?: string;
   headers?: Record<string, string>;
+  /** Laid over the test environment for this one call, to try another Mollie key or none. */
+  env?: Partial<Env>;
 };
 
 /** Calls the Worker the way the app does: the csrf header on writes, a cookie for beheer, a bearer token for the kassa. */
@@ -20,11 +27,28 @@ export async function api(path: string, init: ApiInit = {}): Promise<Response> {
   const headers: Record<string, string> = {};
   if (method !== "GET") headers["X-Requested-With"] = "kassa";
   if (init.json !== undefined) headers["Content-Type"] = "application/json";
+  if (init.form !== undefined) headers["Content-Type"] = "application/x-www-form-urlencoded";
   if (init.cookie) headers["Cookie"] = init.cookie;
   if (init.token) headers["Authorization"] = `Bearer ${init.token}`;
   Object.assign(headers, init.headers);
-  const body = init.json === undefined ? undefined : JSON.stringify(init.json);
-  return app.request(path, { method, headers, body }, env);
+  const body = init.form !== undefined ? new URLSearchParams(init.form).toString() : init.json === undefined ? undefined : JSON.stringify(init.json);
+  return app.request(path, { method, headers, body }, init.env ? { ...env, ...init.env } : env);
+}
+
+/**
+ * Sends every `fetch` in this test file to a fresh fake Mollie, so no test can reach the real one.
+ * Call it at the top of a test file; `current` is the fake of the running test.
+ */
+export function useFakeMollie(): { current: FakeMollie } {
+  const holder = {} as { current: FakeMollie };
+  beforeEach(() => {
+    holder.current = createFakeMollie({ key: "*", origin: "https://fake.mollie.test" });
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => holder.current.handle(new Request(input, init)));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+  return holder;
 }
 
 // Children before parents, so no foreign key is left dangling.

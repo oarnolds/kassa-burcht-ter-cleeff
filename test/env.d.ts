@@ -3,6 +3,8 @@ declare namespace Cloudflare {
     DB: D1Database;
     SETUP_TOKEN: string;
     BACKUPS: R2Bucket;
+    MOLLIE_API_KEY?: string;
+    MOLLIE_API_BASE?: string;
     TEST_MIGRATIONS: import("cloudflare:test").D1Migration[];
   }
 }

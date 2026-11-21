@@ -8,7 +8,7 @@ export default defineConfig(async () => {
     plugins: [
       cloudflareTest({
         wrangler: { configPath: "./wrangler.test.jsonc" },
-        miniflare: { bindings: { TEST_MIGRATIONS: migrations, SETUP_TOKEN: "test-setup-token" } },
+        miniflare: { bindings: { TEST_MIGRATIONS: migrations, SETUP_TOKEN: "test-setup-token", MOLLIE_API_KEY: "test_fake" } },
       }),
     ],
     test: { include: ["test/**/*.test.ts"], setupFiles: ["./test/apply-migrations.ts"] },
