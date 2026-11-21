@@ -268,12 +268,20 @@ function Backups() {
   };
 
   return (
-    <Section title="Reservekopie" note="Elke maandagnacht bewaart de kassa zelf een kopie van alles bij Cloudflare. De 26 nieuwste blijven staan: een half jaar.">
+    <Section title="Reservekopie">
       <Loaded from={copies}>
         {(loaded) => {
-          const { latest } = made ?? loaded;
+          const { available, latest } = made ?? loaded;
+          if (!available) {
+            return (
+              <p className="px-2 text-lg sm:px-3">
+                De wekelijkse reservekopie staat nog niet aan: de opslag bij Cloudflare (R2) is nog niet ingeschakeld.
+              </p>
+            );
+          }
           return (
             <div className={inside}>
+              <p className="text-ink/70">Elke maandagnacht bewaart de kassa zelf een kopie van alles bij Cloudflare. De 26 nieuwste blijven staan: een half jaar.</p>
               <p className="text-lg">
                 {latest ? `Laatste kopie: ${formatDateNl(businessDate(latest.at))} om ${localTime(latest.at)}` : "Er is nog geen kopie gemaakt."}
               </p>

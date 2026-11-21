@@ -9,8 +9,11 @@
   "assets": { "not_found_handling": "single-page-application", "run_worker_first": ["/api/*"] },
   "d1_databases": [
     { "binding": "DB", "database_name": "kassa", "database_id": "4ff8db5f-926a-494a-893c-e11c4fa16d8a", "migrations_dir": "migrations" }
-  ],
+  ]
   // The weekly copy of everything: every Monday at 03:00 UTC, the 26 newest are kept (worker/backup.ts).
-  "r2_buckets": [{ "binding": "BACKUPS", "bucket_name": "kassa-backups" }],
-  "triggers": { "crons": ["0 3 * * 1"] }
+  // Switched off until R2 is enabled in the Cloudflare account (the penningmeester does that in the dashboard).
+  // Then: `npx wrangler r2 bucket create kassa-backups`, put the two lines below back (with a comma after the
+  // bracket above) and deploy. Until then beheer says that the weekly copy is not switched on.
+  // "r2_buckets": [{ "binding": "BACKUPS", "bucket_name": "kassa-backups" }],
+  // "triggers": { "crons": ["0 3 * * 1"] }
 }

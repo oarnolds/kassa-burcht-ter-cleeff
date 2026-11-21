@@ -150,7 +150,7 @@ Database terugzetten naar een eerder moment (tijd in UTC):
 npx wrangler d1 time-travel restore kassa --timestamp=2026-07-31T16:00:00Z
 ```
 
-De wekelijkse reservekopie staat in de R2-bucket `kassa-backups` als `kassa-JJJJ-MM-DD.json` (zelfde vorm als "Alles downloaden"). De Worker schrijft hem elke maandag om 03:00 UTC (`triggers.crons` in `wrangler.jsonc`, code in `worker/backup.ts`) en bewaart de 26 nieuwste. De bucket is één keer aangemaakt met:
+De wekelijkse reservekopie staat in de R2-bucket `kassa-backups` als `kassa-JJJJ-MM-DD.json` (zelfde vorm als "Alles downloaden"). De Worker schrijft hem elke maandag om 03:00 UTC (`triggers.crons` in `wrangler.jsonc`, code in `worker/backup.ts`) en bewaart de 26 nieuwste. Dit staat pas aan als R2 in het Cloudflare-account is ingeschakeld (dat doet de penningmeester in het dashboard) en de twee regels `r2_buckets` en `triggers` in `wrangler.jsonc` actief zijn; tot dan meldt beheer dat de wekelijkse kopie niet aanstaat. De bucket wordt één keer aangemaakt met:
 
 ```bash
 npx wrangler r2 bucket create kassa-backups

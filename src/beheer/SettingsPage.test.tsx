@@ -10,7 +10,7 @@ const open = async (extra: Record<string, unknown> = {}) => {
   mockApi({
     "/api/admin/devices": { devices: [device] },
     "/api/admin/wipe-trial": { inUseSince: null },
-    "/api/admin/backups": { latest: null, count: 0 },
+    "/api/admin/backups": { available: true, latest: null, count: 0 },
     ...extra,
   });
   renderAt("/beheer/instellingen");
@@ -180,7 +180,7 @@ const STALE = "De laatste kopie is ouder dan een week. Meld het aan de bouwer.";
 it("shows when the last weekly copy was made", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(new Date("2026-07-30T10:00:00.000Z"));
-  await open({ "/api/admin/backups": { latest: copy, count: 12 } });
+  await open({ "/api/admin/backups": { available: true, latest: copy, count: 12 } });
   expect(await backups().findByText("Laatste kopie: 27-07-2026 om 05:00")).toBeInTheDocument();
   expect(backups().queryByText(STALE)).not.toBeInTheDocument();
 });
@@ -188,12 +188,12 @@ it("shows when the last weekly copy was made", async () => {
 it("warns when the weekly copy has stopped coming", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   vi.setSystemTime(new Date("2026-08-05T10:00:00.000Z"));
-  await open({ "/api/admin/backups": { latest: copy, count: 12 } });
+  await open({ "/api/admin/backups": { available: true, latest: copy, count: 12 } });
   expect(await backups().findByText(STALE)).toBeInTheDocument();
 });
 
 it("says so when no copy has been made yet, and makes one on request", async () => {
-  await open({ "POST /api/admin/backups": { latest: { ...copy, key: "kassa-2026-07-30.json", at: "2026-07-30T10:00:00.000Z" }, count: 1 } });
+  await open({ "POST /api/admin/backups": { available: true, latest: { ...copy, key: "kassa-2026-07-30.json", at: "2026-07-30T10:00:00.000Z" }, count: 1 } });
   expect(await backups().findByText("Er is nog geen kopie gemaakt.")).toBeInTheDocument();
   await user().click(backups().getByRole("button", { name: "Nu een kopie maken" }));
   expect(await backups().findByText("Laatste kopie: 30-07-2026 om 12:00")).toBeInTheDocument();
@@ -206,4 +206,11 @@ it("says so when a copy could not be made", async () => {
   await user().click(backups().getByRole("button", { name: "Nu een kopie maken" }));
   expect(await backups().findByText("Een kopie maken is niet gelukt. Probeer het later opnieuw.")).toBeInTheDocument();
   expect(backups().getByText("Er is nog geen kopie gemaakt.")).toBeInTheDocument();
+});
+
+it("says so when the weekly copy is not switched on yet, and offers no button", async () => {
+  await open({ "/api/admin/backups": { available: false, latest: null, count: 0 } });
+  expect(await backups().findByText("De wekelijkse reservekopie staat nog niet aan: de opslag bij Cloudflare (R2) is nog niet ingeschakeld.")).toBeInTheDocument();
+  expect(backups().queryByRole("button", { name: "Nu een kopie maken" })).not.toBeInTheDocument();
+  expect(backups().queryByText("Er is nog geen kopie gemaakt.")).not.toBeInTheDocument();
 });

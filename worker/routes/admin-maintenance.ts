@@ -36,6 +36,6 @@ adminMaintenance.get("/backups", async (c) => c.json(await backupState(c.env)));
 
 /** A copy right now, next to the weekly one: before something risky, or to see that it works. */
 adminMaintenance.post("/backups", async (c) => {
-  await runBackup(c.env, new Date());
+  if (!(await runBackup(c.env, new Date()))) return c.json({ error: "not_available" }, 409);
   return c.json(await backupState(c.env));
 });
