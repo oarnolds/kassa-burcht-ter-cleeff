@@ -154,7 +154,7 @@ Deze keuzes zijn door de bouwer gemaakt; de penningmeester sprak over uitkomsten
 
 **Startassortiment.** De 22 producten uit de iZettle-export van 20 november 2026 worden bij de eerste ingebruikname ingeladen, met de categorieën IJs, Koude dranken, Warme dranken, Snacks, Entree en Statiegeld.
 
-**Back-up.** D1 kan tot zeven dagen terug worden hersteld. Daarnaast schrijft een wekelijkse taak een volledige kopie weg naar Cloudflare R2-opslag. *(Eigen keuze met een voorbehoud, zie 14.)* De penningmeester kan in het beheer altijd zelf alles downloaden.
+**Back-up.** D1 kan tot zeven dagen terug worden hersteld. Daarnaast schrijft een wekelijkse taak een volledige kopie weg naar Cloudflare R2-opslag; de 26 nieuwste blijven staan. *(Eigen keuze, zie 14.)* Het beheer toont onder Instellingen wanneer de laatste kopie is gemaakt, waarschuwt als die ouder is dan een week, en heeft een knop om er direct een te maken. De penningmeester kan in het beheer altijd zelf alles downloaden.
 
 **Adres.** Het standaardadres van Cloudflare (eindigt op `workers.dev`). Een eigen adres zoals `kassa.burchttercleeff.nl` kan pas als het domein naar Cloudflare verhuist; dat valt buiten dit ontwerp.
 
@@ -189,7 +189,7 @@ Deze zijn niet met de penningmeester besproken en kunnen worden teruggedraaid:
 - De kassa is niet vergrendeld met een pincode. Reden: elke extra handeling kost snelheid, en iZettle is nu ook niet vergrendeld.
 - Geen losse kasmutaties; uitzonderingen gaan via het verschil bij de afdracht.
 - Eén beheerdersaccount.
-- De wekelijkse kopie naar R2. Voorbehoud: R2 is gratis binnen de limieten, maar Cloudflare vraagt mogelijk een betaalmethode in het account om het aan te zetten. Als dat zo is en de penningmeester wil dat niet, vervalt de automatische kopie en blijft het bij zeven dagen terugzetten plus zelf downloaden.
+- De wekelijkse kopie naar R2. Voorbehoud: R2 is gratis binnen de limieten, maar Cloudflare vraagt mogelijk een betaalmethode in het account om het aan te zetten. De penningmeester heeft op 21 november 2026 voor de kopie gekozen. Toegevoegd bij het bouwen: de regel "Laatste kopie" met waarschuwing en de knop "Nu een kopie maken" in het beheer. Reden: zonder die regel merkt niemand het als de wekelijkse kopie ophoudt, en de kopie is één bestand dat met de geschiedenis meegroeit.
 - De kassa staat los van de website en de ledenadministratie.
 - De iPad hangt liggend.
 - Terugdraaien werkt als tegenboeking op de dag van terugdraaien, en voor contant alleen na de laatste afdracht. Reden: cijfers van een afgesloten maand en een vastgelegde afdracht veranderen dan nooit achteraf.

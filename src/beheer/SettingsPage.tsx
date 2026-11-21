@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { businessDate, formatDateNl, localTime } from "../../shared/time";
-import type { Device } from "../../shared/types";
+import type { BackupState, Device } from "../../shared/types";
 import { adminApi } from "../lib/api";
 import { Button } from "../ui/Button";
 import { Dialog } from "../ui/Dialog";
@@ -18,6 +18,8 @@ const CODE_MS = 10 * 60_000;
 const LOOK_AGAIN_MS = 5_000;
 const MIN_PASSWORD = 10;
 const WIPE_WORD = "WISSEN";
+// A weekly copy is at most seven days old; one day of slack before it counts as missing.
+const COPY_STALE_MS = 8 * 86_400_000;
 
 const offlineOr = (status: number, other: string) => (status === 0 ? "Geen verbinding. Probeer het opnieuw." : other);
 
@@ -247,7 +249,57 @@ function WipeTrial() {
   );
 }
 
-/** The switches around the kassa: paired iPads, the password, a full download, wiping the trial. */
+/** The weekly copies at Cloudflare: when the last one was made, so a copy that stopped coming is seen, and one right now. */
+function Backups() {
+  const copies = useAdminData<BackupState>("/api/admin/backups");
+  const [made, setMade] = useState<BackupState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const write = useAdminWrite();
+
+  const make = async () => {
+    setBusy(true);
+    setError(null);
+    setMade(null);
+    const answer = await write<BackupState>("/api/admin/backups", "POST");
+    setBusy(false);
+    if (!answer.ok) return setError(offlineOr(answer.status, "Een kopie maken is niet gelukt. Probeer het later opnieuw."));
+    setMade(answer.data);
+  };
+
+  return (
+    <Section title="Reservekopie" note="Elke maandagnacht bewaart de kassa zelf een kopie van alles bij Cloudflare. De 26 nieuwste blijven staan: een half jaar.">
+      <Loaded from={copies}>
+        {(loaded) => {
+          const { latest } = made ?? loaded;
+          return (
+            <div className={inside}>
+              <p className="text-lg">
+                {latest ? `Laatste kopie: ${formatDateNl(businessDate(latest.at))} om ${localTime(latest.at)}` : "Er is nog geen kopie gemaakt."}
+              </p>
+              {latest && Date.now() - Date.parse(latest.at) > COPY_STALE_MS && (
+                <Problem>De laatste kopie is ouder dan een week. Meld het aan de bouwer.</Problem>
+              )}
+              {error && <Problem>{error}</Problem>}
+              {made && (
+                <p role="status" className="text-lg font-semibold text-green-dark">
+                  Kopie gemaakt.
+                </p>
+              )}
+              <div>
+                <Button onClick={() => void make()} disabled={busy}>
+                  Nu een kopie maken
+                </Button>
+              </div>
+            </div>
+          );
+        }}
+      </Loaded>
+    </Section>
+  );
+}
+
+/** The switches around the kassa: paired iPads, the password, a full download, the weekly copies, wiping the trial. */
 export function SettingsPage() {
   return (
     <>
@@ -261,6 +313,7 @@ export function SettingsPage() {
           </a>
         </div>
       </Section>
+      <Backups />
       <WipeTrial />
     </>
   );

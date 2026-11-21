@@ -123,3 +123,6 @@ export type AdminSale = {
 };
 
 export type Device = { id: string; name: string; createdAt: string; lastSeenAt: string | null; revoked: boolean };
+
+/** The weekly copies in the backup bucket, as beheer sees them. */
+export type BackupState = { latest: { key: string; at: string; sizeBytes: number } | null; count: number };

@@ -1,12 +1,13 @@
 import { Hono } from "hono";
 import { businessDate } from "../../shared/time";
+import { backupState, runBackup } from "../backup";
 import { exportAll, inUseSince, wipeTrialData } from "../db/maintenance";
 import type { AppEnv } from "../env";
 
 // Typed in by hand in beheer, so that a stray click cannot wipe anything.
 const CONFIRM_WORD = "WISSEN";
 
-/** Beheer: starting clean after the trial, and a full download. Mounted behind `requireAdmin`. */
+/** Beheer: starting clean after the trial, a full download, and the weekly copies. Mounted behind `requireAdmin`. */
 export const adminMaintenance = new Hono<AppEnv>();
 
 /** Whether wiping is still possible: not once the kassa has gone into real use. */
@@ -28,4 +29,13 @@ adminMaintenance.get("/export.json", async (c) => {
     "Content-Type": "application/json; charset=utf-8",
     "Content-Disposition": `attachment; filename="kassa-export-${businessDate(now.toISOString())}.json"`,
   });
+});
+
+/** When the last weekly copy was written, so a copy that stopped running is seen. */
+adminMaintenance.get("/backups", async (c) => c.json(await backupState(c.env)));
+
+/** A copy right now, next to the weekly one: before something risky, or to see that it works. */
+adminMaintenance.post("/backups", async (c) => {
+  await runBackup(c.env, new Date());
+  return c.json(await backupState(c.env));
 });
