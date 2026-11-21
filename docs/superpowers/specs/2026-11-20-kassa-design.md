@@ -79,7 +79,7 @@ De penningmeester koos uit drie aanklikbare schetsen **variant A**. De schets st
 **Corrigeren.**
 - Elke bonregel heeft een min- en plusknop. Bij min op het laatste stuk verdwijnt de regel.
 - Elke bonregel heeft "Verwijder" voor de hele regel.
-- "Wis alles" leegt de bon direct, zonder bevestigingsvraag. Vijf seconden lang staat er een melding met "Ongedaan maken".
+- "Wis alles" leegt de bon direct, zonder bevestigingsvraag en zonder melding. *(Gewijzigd op 21 november 2026 door de penningmeester: eerst stond er vijf seconden lang een melding "Bon gewist" met "Ongedaan maken"; die was verwarrend voor de gebruiker.)*
 
 **Statiegeld.** De tegel Statiegeld opent een cijferblok. De beheerder typt het aantal ingeleverde stuks en ziet de som (40 × € 0,15 = € 6,00). Dit is een inkomst die contant wordt afgerekend, geen toeslag bij een verkoop. Of een product zo'n cijferblok opent is een instelling per product.
 

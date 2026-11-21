@@ -39,7 +39,7 @@ De iPad blijft gekoppeld tot de penningmeester hem in beheer ontkoppelt. De kass
 **Corrigeren.**
 - **−** en **+** op een bonregel: een stuk minder of meer.
 - **Verwijder**: de hele regel weg.
-- **Wis alles**: de bon leeg. Vijf seconden lang kun je dat terughalen met **Ongedaan maken**.
+- **Wis alles**: de bon is meteen leeg. Terughalen kan niet; tik de producten opnieuw aan.
 
 **Contant.** Tik op **Contant**. Betaalt de klant gepast, tik dan op **Gepast** en de verkoop is klaar. Geeft de klant een biljet, tik dan op dat biljet: de kassa toont het wisselgeld. Tik op **Klaar** als je het hebt teruggegeven.
 

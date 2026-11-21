@@ -33,14 +33,6 @@ export function KassaScreen({ catalog, onSale, tileNote, header, footer }: Props
     else dispatch({ type: "add", product });
   };
 
-  const clear = () => {
-    const cleared = cart;
-    dispatch({ type: "clear" });
-    toast.show("Bon gewist", {
-      action: { label: "Ongedaan maken", onClick: () => dispatch({ type: "restore", cart: cleared }) },
-    });
-  };
-
   const finish = (cashGivenCents: number) => {
     const sale: CashSaleInput = {
       id: crypto.randomUUID(),
@@ -69,7 +61,7 @@ export function KassaScreen({ catalog, onSale, tileNote, header, footer }: Props
           onInc={(productId) => dispatch({ type: "inc", productId })}
           onDec={(productId) => dispatch({ type: "dec", productId })}
           onRemove={(productId) => dispatch({ type: "remove", productId })}
-          onClear={clear}
+          onClear={() => dispatch({ type: "clear" })}
         >
           <div className="grid grid-cols-2 gap-3">
             <button

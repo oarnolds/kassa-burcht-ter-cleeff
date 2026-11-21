@@ -6,8 +6,7 @@ export type Cart = { lines: CartLine[] };
 export type CartAction =
   | { type: "add"; product: { id: string; name: string; priceCents: number }; qty?: number }
   | { type: "inc" | "dec" | "remove"; productId: string }
-  | { type: "clear" }
-  | { type: "restore"; cart: Cart };
+  | { type: "clear" };
 
 export const emptyCart: Cart = { lines: [] };
 
@@ -43,9 +42,6 @@ export function cartReducer(cart: Cart, action: CartAction): Cart {
       return withQty(cart, action.productId, () => 0);
     case "clear":
       return emptyCart;
-    case "restore":
-      // Puts a cleared receipt back. What was tapped since the clearing stays, behind it.
-      return cart.lines.reduce(add, action.cart);
   }
 }
 
