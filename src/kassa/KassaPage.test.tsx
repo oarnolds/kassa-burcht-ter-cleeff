@@ -515,8 +515,9 @@ it("confirms a parked payment that went through after cash was taken", async () 
   act(() => {
     window.dispatchEvent(new Event("online"));
   });
-  // Both sales stand; beheer marks them for the penningmeester.
-  expect(await screen.findByText("Pinbetaling van € 1,10 is gelukt")).toBeInTheDocument();
+  // Both sales stand; beheer marks them for the penningmeester. The beheerder must not hand the cash back.
+  expect(await screen.findByText("Pinbetaling van € 1,10 is toch gelukt. Er is ook contant afgerekend: geef niets terug, de penningmeester regelt het")).toBeInTheDocument();
+  expect(screen.queryByText("Pinbetaling van € 1,10 is gelukt")).not.toBeInTheDocument();
   await waitFor(async () => expect(await (await getPinDb()).getAll("pin")).toEqual([]));
 });
 

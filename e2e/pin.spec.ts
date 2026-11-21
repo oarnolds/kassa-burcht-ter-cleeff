@@ -240,7 +240,8 @@ test("cash for a parked receipt and a pin payment that went through after all: b
   await expect(page.getByText("1 verkoop wacht op verzending")).toBeVisible();
   await atTerminal(request, "paid");
   await context.setOffline(false);
-  await expect(page.getByText(/Pinbetaling van €\s1,40 is gelukt/)).toBeVisible({ timeout: 40_000 });
+  // The beheerder is told not to hand the cash back: the penningmeester settles it.
+  await expect(page.getByText(/^Pinbetaling van €\s1,40 is toch gelukt\. Er is ook contant afgerekend: geef niets terug, de penningmeester regelt het$/)).toBeVisible({ timeout: 40_000 });
   await expectToday(beheer, { pinCents: 140, cashCents: 140, saleCount: 2 }, 40_000);
   const day = await dayOf(beheer);
   expect(day.sales.map((sale) => sale.possiblyDouble)).toEqual([true, true]);

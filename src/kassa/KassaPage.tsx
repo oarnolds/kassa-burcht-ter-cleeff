@@ -166,11 +166,18 @@ export function KassaPage() {
         await readParked();
         for (const receipt of paid) noteLast({ totalCents: receipt.totalCents, method: "pin", soldAt: receipt.soldAt });
         // One message: the toast shows one at a time. A payment that did not go through is said once; Betalingen keeps it.
+        // One that went through after the receipt was rung up as cash: the customer paid twice, and the beheerder
+        // must not settle that at the kassa (the penningmeester sees it in beheer and refunds one of the two).
+        const plain = paid.filter((receipt) => !receipt.cashTaken);
+        const twice = paid.filter((receipt) => receipt.cashTaken);
         const told = [
-          paid.length === 0 ? "" : paid.length === 1 ? `Pinbetaling van ${formatEuro(paid[0]!.totalCents)} is gelukt` : `${paid.length} pinbetalingen zijn gelukt`,
+          plain.length === 0 ? "" : plain.length === 1 ? `Pinbetaling van ${formatEuro(plain[0]!.totalCents)} is gelukt` : `${plain.length} pinbetalingen zijn gelukt`,
+          twice.length === 0
+            ? ""
+            : `${twice.length === 1 ? `Pinbetaling van ${formatEuro(twice[0]!.totalCents)} is` : `${twice.length} pinbetalingen zijn`} toch gelukt. Er is ook contant afgerekend: geef niets terug, de penningmeester regelt het`,
           failed.length === 0 ? "" : failed.length === 1 ? `Pinbetaling van ${formatEuro(failed[0]!.totalCents)} is niet gelukt` : `${failed.length} pinbetalingen zijn niet gelukt`,
         ].filter(Boolean);
-        if (told.length > 0) toast.show(told.join(". "), { ms: failed.length > 0 ? 5000 : 3000 });
+        if (told.length > 0) toast.show(told.join(". "), { ms: twice.length > 0 ? 8000 : failed.length > 0 ? 5000 : 3000 });
         if (paid.length > 0) await countSold(paid);
       } while (settleAgain.current);
     } catch {

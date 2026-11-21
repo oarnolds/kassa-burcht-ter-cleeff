@@ -225,6 +225,10 @@ Toegevoegd op verzoek van de penningmeester, 21 november 2026 (onderbalk en Beta
 - Nieuw is de knop **Betalingen** naast **Omzet**, samen rechts in de onderbalk. Hij opent "Betalingen vandaag": alle betalingen van de dag van de server (`GET /api/kassa/payments?date=…`, dezelfde lijst als Verkopen in beheer, zonder Mollie te vragen), aangevuld met wat alleen de iPad weet (nog niet verstuurde contante verkopen, wachtende pinbonnen). Alleen om te bekijken; alleen bij een wachtende pinbetaling staat **Toch contant**. Geen terugdraaien op de kassa.
 - De onderbalk loopt alleen onder de productknoppen; de bon loopt door tot de onderkant, zodat Contant en Pin lager staan en de bon meer ruimte heeft.
 
+Toegevoegd op verzoek van de penningmeester, 21 november 2026 (melding bij dubbel betaald):
+- Blijkt een geparkeerde pinbetaling gelukt terwijl de beheerder de bon intussen contant heeft afgerekend, dan zegt de kassa niet het gewone "Pinbetaling van € … is gelukt", maar "Pinbetaling van € … is toch gelukt. Er is ook contant afgerekend: geef niets terug, de penningmeester regelt het", 8 seconden lang. Reden: anders geeft een vrijwilliger het contante geld terug terwijl de penningmeester in beheer ("Mogelijk dubbel betaald") ook de pin terugbetaalt.
+- Er komt geen btw op de bon; de penningmeester bevestigde dat het niet nodig is.
+
 ## 15. Wat nog open staat
 
 De penningmeester heeft alle vragen beantwoord. Op 21 november 2026 is de kassa op de computer van de bouwer getest tegen Mollie's echte testmodus, met de testsleutel van de penningmeester en Mollie's testterminal. Wat dat opleverde:
