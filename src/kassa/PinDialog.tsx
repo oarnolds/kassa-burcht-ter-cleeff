@@ -8,7 +8,7 @@ import { pinDetail, pinTitle } from "./pin-text";
 export type PinView =
   | { step: "waiting"; sent: boolean; testUrl: string | null; cancelFailed: boolean }
   | { step: "failed"; outcome: Exclude<PinOutcome, "paid">; reason: string | null }
-  | { step: "unknown" };
+  | { step: "unknown"; why: "lost" | "unsent" | "slow" };
 
 type Props = {
   /** null: no pin payment is going on. */
@@ -74,8 +74,21 @@ export function PinDialog({ view, totalCents, onCancel, onRetry, onCash, onBack,
         )}
         {view?.step === "unknown" && (
           <>
-            <p className="text-lg">De verbinding viel weg tijdens het pinnen. Kijk op de betaalterminal of de betaling is gelukt.</p>
-            <p className="mt-4 text-lg">{`De bon van ${formatEuro(totalCents)} is geparkeerd. Zodra er weer verbinding is, haalt de kassa de uitkomst op.`}</p>
+            {view.why === "lost" ? (
+              <>
+                <p className="text-lg">De verbinding viel weg tijdens het pinnen. Kijk op de betaalterminal of de betaling is gelukt.</p>
+                <p className="mt-4 text-lg">{`De bon van ${formatEuro(totalCents)} is geparkeerd. Zodra er weer verbinding is, haalt de kassa de uitkomst op.`}</p>
+              </>
+            ) : (
+              <>
+                <p className="text-lg">
+                  {view.why === "unsent"
+                    ? "Mollie reageert niet. Kijk op de betaalterminal of de betaling is gelukt."
+                    : "De betaalterminal heeft na 2 minuten nog geen uitkomst. Kijk op de betaalterminal of de betaling is gelukt."}
+                </p>
+                <p className="mt-4 text-lg">{`De bon van ${formatEuro(totalCents)} is geparkeerd. De kassa haalt de uitkomst vanzelf op.`}</p>
+              </>
+            )}
             <div className="mt-auto flex flex-col gap-3 pt-5">
               <Button variant="primary" size="lg" onClick={onNext}>
                 Volgende klant

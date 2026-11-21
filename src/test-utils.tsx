@@ -132,16 +132,20 @@ export const catalog: Catalog = {
   pin: { mode: "live", ready: true },
 };
 
-/** Removes the kassa's database on this "iPad". */
-export function deleteKassaDatabase(): Promise<void> {
-  return new Promise((resolve) => {
-    const request = indexedDB.deleteDatabase("kassa");
-    request.onsuccess = request.onerror = request.onblocked = () => resolve();
-  });
+const KASSA_DATABASES = ["kassa", "kassa-pin"];
+
+/** Removes the kassa's databases on this "iPad". */
+export async function deleteKassaDatabase(): Promise<void> {
+  for (const name of KASSA_DATABASES) {
+    await new Promise<void>((resolve) => {
+      const request = indexedDB.deleteDatabase(name);
+      request.onsuccess = request.onerror = request.onblocked = () => resolve();
+    });
+  }
 }
 
 async function kassaDatabaseExists(): Promise<boolean> {
-  return (await indexedDB.databases()).some((database) => database.name === "kassa");
+  return (await indexedDB.databases()).some((database) => KASSA_DATABASES.includes(database.name ?? ""));
 }
 
 // Every test starts from nothing: no page, no routes, no recorded calls, real timers, an empty database.

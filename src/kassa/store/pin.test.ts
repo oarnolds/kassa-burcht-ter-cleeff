@@ -1,11 +1,12 @@
 import { openDB } from "idb";
 import { beforeEach, expect, it, vi } from "vitest";
 import { calls, deleteKassaDatabase, mockApi, mockOffline } from "../../test-utils";
-import { getDb, setMeta } from "./db";
+import { getDb, getPinDb, setMeta } from "./db";
 import { pendingCount } from "./outbox";
 import {
   LOST_MS,
   POLL_MS,
+  UNSENT_MS,
   WAIT_LIMIT_MS,
   dismissFailed,
   listParked,
@@ -31,7 +32,7 @@ const receipt = (over: Partial<PinReceipt> = {}): PinReceipt => ({
   ...over,
 });
 const status = (r: PinReceipt, over: object = {}) => ({ id: r.id, outcome: null, reason: null, sent: true, testUrl: null, ...over });
-const stored = async () => (await getDb()).getAll("pin");
+const stored = async () => (await getPinDb()).getAll("pin");
 const statusUrl = (r: PinReceipt) => `/api/kassa/pin/${r.id}`;
 const cancelUrl = (r: PinReceipt) => `/api/kassa/pin/${r.id}/cancel`;
 const cancels = () => calls("POST").filter((call) => call.url.endsWith("/cancel"));
@@ -55,7 +56,7 @@ async function pass(ms: number, step = 250): Promise<void> {
 /** Puts a receipt on the iPad as one whose outcome is not known, at the minute given. */
 async function park(minute: number, over: Partial<Parked> = {}): Promise<Parked> {
   const parked: Parked = { ...receipt({ soldAt: `2026-07-30T10:${String(minute).padStart(2, "0")}:00.000Z` }), parked: true, failed: false, cashTaken: false, ...over };
-  await (await getDb()).put("pin", parked);
+  await (await getPinDb()).put("pin", parked);
   return parked;
 }
 
@@ -137,7 +138,7 @@ it("parks the receipt after ten seconds without an answer", async () => {
   await pass(LOST_MS - 2 * POLL_MS);
   expect(await listParked()).toEqual([]); // not yet: the connection may come back
   await pass(3 * POLL_MS);
-  expect(await run.done).toEqual({ kind: "unknown" });
+  expect(await run.done).toEqual({ kind: "unknown", why: "lost" });
   expect(await listParked()).toMatchObject([{ id: r.id, totalCents: 110, parked: true, failed: false, cashTaken: false }]);
 });
 
@@ -146,7 +147,7 @@ it("parks a receipt whose start never got an answer", async () => {
   mockOffline();
   const run = runPin(r, vi.fn());
   await pass(LOST_MS + POLL_MS);
-  expect(await run.done).toEqual({ kind: "unknown" });
+  expect(await run.done).toEqual({ kind: "unknown", why: "lost" });
   expect(await listParked()).toMatchObject([{ id: r.id, parked: true }]);
 });
 
@@ -155,7 +156,7 @@ it("treats a server in trouble like no answer", async () => {
   mockApi({ "POST /api/kassa/pin": status(r), [statusUrl(r)]: [503, { error: "server" }] });
   const run = runPin(r, vi.fn());
   await pass(LOST_MS + 2 * POLL_MS);
-  expect(await run.done).toEqual({ kind: "unknown" });
+  expect(await run.done).toEqual({ kind: "unknown", why: "lost" });
   expect(await listParked()).toMatchObject([{ id: r.id, parked: true }]);
 });
 
@@ -166,8 +167,33 @@ it("parks the receipt when the payment is still running after two minutes", asyn
   await pass(WAIT_LIMIT_MS - 2 * POLL_MS, POLL_MS);
   expect(await listParked()).toEqual([]);
   await pass(3 * POLL_MS);
-  expect(await run.done).toEqual({ kind: "unknown" });
+  expect(await run.done).toEqual({ kind: "unknown", why: "slow" });
   expect(await listParked()).toMatchObject([{ id: r.id, parked: true }]);
+});
+
+it("parks the receipt when Mollie keeps not answering the start for twenty seconds (final review)", async () => {
+  // The server answers every question, but its start never reached Mollie: nothing to cancel, nothing to wait for.
+  const r = receipt();
+  mockApi({ "POST /api/kassa/pin": status(r, { sent: false }), [statusUrl(r)]: status(r, { sent: false }) });
+  const run = runPin(r, vi.fn());
+  await pass(UNSENT_MS - 2 * POLL_MS, POLL_MS);
+  expect(await listParked()).toEqual([]);
+  await pass(3 * POLL_MS);
+  expect(await run.done).toEqual({ kind: "unknown", why: "unsent" });
+  expect(await listParked()).toMatchObject([{ id: r.id, parked: true }]);
+});
+
+it("keeps following a payment that reached the terminal late", async () => {
+  const r = receipt();
+  const from = Date.now();
+  const late = () => status(r, { sent: Date.now() - from >= UNSENT_MS - 5 * POLL_MS });
+  mockApi({ "POST /api/kassa/pin": late, [statusUrl(r)]: late });
+  const run = runPin(r, vi.fn());
+  let ended = false;
+  void run.done.then(() => (ended = true));
+  await pass(UNSENT_MS + 5 * POLL_MS, POLL_MS);
+  expect(ended).toBe(false);
+  expect(await listParked()).toEqual([]);
 });
 
 it("asks the server to cancel, and keeps following when that is refused", async () => {
@@ -246,7 +272,8 @@ it("settles parked receipts when the server knows their outcome", async () => {
   mockApi({
     [statusUrl(paid)]: status(paid, { outcome: "paid" }),
     [statusUrl(declined)]: status(declined, { outcome: "declined", reason: "card_declined" }),
-    // nothing for the third: the server answers 404, it never got that start
+    // The server never got the third start.
+    [statusUrl(unknown)]: [404, { error: "no_pin_sale" }],
     [statusUrl(running)]: status(running),
   });
   expect(await resolveParked()).toEqual({ paid: [paid], failed: [{ ...declined, parked: false, failed: true }, { ...unknown, parked: false, failed: true }] });
@@ -255,6 +282,14 @@ it("settles parked receipts when the server knows their outcome", async () => {
   mockOffline();
   expect(await resolveParked()).toEqual({ paid: [], failed: [] });
   expect(await listParked()).toHaveLength(3);
+});
+
+it("keeps a receipt parked when the server does not know pin at all (final review)", async () => {
+  // A server of an older version, after a rollback: its "not found" says nothing about the payment.
+  const parked = await park(1);
+  mockApi({ [statusUrl(parked)]: [404, { error: "not_found" }] });
+  expect(await resolveParked()).toEqual({ paid: [], failed: [] });
+  expect(await listParked()).toEqual([parked]);
 });
 
 it("keeps a payment that did not go through until the beheerder has seen it, also over a restart", async () => {
@@ -303,7 +338,7 @@ it("asks about each parked receipt once when two rounds come at the same moment 
   expect(calls("GET")).toHaveLength(1);
 });
 
-it("adds the pin store to a kassa from fase 1 without losing what waits", async () => {
+it("opens a kassa database from fase 1 as it is, and keeps pin receipts beside it", async () => {
   // A version 1 database, as fase 1 made it, with one sale that still has to be sent.
   await deleteKassaDatabase();
   const old = await openDB("kassa", 1, {
@@ -317,9 +352,19 @@ it("adds the pin store to a kassa from fase 1 without losing what waits", async 
   await old.put("meta", "tok-1", "deviceToken");
   old.close();
   const db = await getDb();
-  expect(db.version).toBe(2);
-  expect([...db.objectStoreNames]).toEqual(["meta", "outbox", "pin", "rejected"]);
+  expect(db.version).toBe(1);
+  expect([...db.objectStoreNames]).toEqual(["meta", "outbox", "rejected"]);
   expect(await pendingCount()).toBe(1);
   expect(await db.get("meta", "deviceToken")).toBe("tok-1");
   expect(await listParked()).toEqual([]);
+});
+
+it("leaves the kassa database so that fase 1 can still open it after a rollback (final review)", async () => {
+  const parked = await park(1);
+  // What the fase 1 app does on start. A newer version of the database would make it fail, and the kassa
+  // would stay blank, cash included.
+  const fase1 = await openDB("kassa", 1);
+  expect(await fase1.get("meta", "deviceToken")).toBe("tok");
+  fase1.close();
+  expect(await listParked()).toEqual([parked]);
 });

@@ -350,7 +350,7 @@ it("names the pin attempt also when the beheerder went back to the receipt and t
 
 it("parks the receipt and frees the screen at once when the outcome is unknown", async () => {
   const { runs, onSale, onPinPaid } = await pinningKoffie();
-  await runs[0]!.end({ kind: "unknown" });
+  await runs[0]!.end({ kind: "unknown", why: "lost" });
   const dialog = within(await screen.findByRole("dialog", { name: "Uitkomst onbekend" }));
   expect(dialog.getByText("De verbinding viel weg tijdens het pinnen. Kijk op de betaalterminal of de betaling is gelukt.")).toBeInTheDocument();
   expect(dialog.getByText("De bon van € 1,40 is geparkeerd. Zodra er weer verbinding is, haalt de kassa de uitkomst op.")).toBeInTheDocument();
@@ -362,9 +362,28 @@ it("parks the receipt and frees the screen at once when the outcome is unknown",
   expect(onPinPaid).not.toHaveBeenCalled();
 });
 
+it("says the terminal has no outcome yet, not that the connection dropped, when the payment runs past two minutes", async () => {
+  const { runs } = await pinningKoffie();
+  await runs[0]!.end({ kind: "unknown", why: "slow" });
+  const dialog = within(await screen.findByRole("dialog", { name: "Uitkomst onbekend" }));
+  expect(dialog.getByText("De betaalterminal heeft na 2 minuten nog geen uitkomst. Kijk op de betaalterminal of de betaling is gelukt.")).toBeInTheDocument();
+  expect(dialog.getByText("De bon van € 1,40 is geparkeerd. De kassa haalt de uitkomst vanzelf op.")).toBeInTheDocument();
+  expect(dialog.queryByText(/verbinding/)).not.toBeInTheDocument();
+  expect(dialog.getAllByRole("button").map((b) => b.textContent)).toEqual(["Volgende klant", "Toch contant"]);
+});
+
+it("says Mollie does not answer when the start never reached the terminal", async () => {
+  const { runs } = await pinningKoffie();
+  await runs[0]!.end({ kind: "unknown", why: "unsent" });
+  const dialog = within(await screen.findByRole("dialog", { name: "Uitkomst onbekend" }));
+  expect(dialog.getByText("Mollie reageert niet. Kijk op de betaalterminal of de betaling is gelukt.")).toBeInTheDocument();
+  expect(dialog.getByText("De bon van € 1,40 is geparkeerd. De kassa haalt de uitkomst vanzelf op.")).toBeInTheDocument();
+  expect(dialog.getAllByRole("button").map((b) => b.textContent)).toEqual(["Volgende klant", "Toch contant"]);
+});
+
 it("rings up the parked receipt as cash when the beheerder chooses that", async () => {
   const { runs, onSale } = await pinningKoffie();
-  await runs[0]!.end({ kind: "unknown" });
+  await runs[0]!.end({ kind: "unknown", why: "lost" });
   await tap("Toch contant");
   const cash = within(screen.getByRole("dialog", { name: "Contant, te betalen" }));
   expect(cash.getByText("€ 1,40")).toBeInTheDocument();

@@ -138,7 +138,8 @@ test("the footer still fits with a sale waiting, a pin payment waiting and one t
   await expect(page.getByText("1 verkoop wacht op verzending")).toBeVisible();
   await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const opening = indexedDB.open("kassa");
+      // The pin receipts' own database, made by the kassa when it started.
+      const opening = indexedDB.open("kassa-pin");
       opening.onsuccess = () => resolve(opening.result);
       opening.onerror = () => reject(opening.error);
     });

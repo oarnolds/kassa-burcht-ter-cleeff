@@ -95,7 +95,7 @@ export function KassaScreen({ catalog, onSale, tileNote, header, footer, pin, on
       } else {
         // The receipt is parked: the kassa is free for the next customer at once.
         dispatch({ type: "clear" });
-        setPinning({ receipt, view: { step: "unknown" } });
+        setPinning({ receipt, view: { step: "unknown", why: end.why } });
       }
     });
   };

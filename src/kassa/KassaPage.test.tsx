@@ -3,7 +3,7 @@ import { expect, it, vi } from "vitest";
 import type { Catalog, PinStatus } from "../../shared/types";
 import { calls, catalog, mockApi, mockOffline, renderAt, tap, user } from "../test-utils";
 import { loadCatalog, saveCatalog, soldSinceFetch } from "./store/catalog";
-import { getDb, setMeta } from "./store/db";
+import { getDb, getPinDb, setMeta } from "./store/db";
 import { pendingCount, rejectedCount } from "./store/outbox";
 import type { Parked } from "./store/pin";
 
@@ -312,7 +312,7 @@ const kept = async (over: Partial<Parked> = {}): Promise<Parked> => {
     cashTaken: false,
     ...over,
   };
-  await (await getDb()).put("pin", receipt);
+  await (await getPinDb()).put("pin", receipt);
   return receipt;
 };
 const twoIcesAndACoffee = {
@@ -463,7 +463,7 @@ it("tells the beheerder with the amount when a parked payment did not go through
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   await waitFor(() => expect(screen.queryByRole("button", { name: /niet gelukt/ })).not.toBeInTheDocument());
   expect(screen.getByTestId("total")).toHaveTextContent("€ 1,40"); // the receipt in progress is untouched
-  expect(await (await getDb()).getAll("pin")).toEqual([]);
+  expect(await (await getPinDb()).getAll("pin")).toEqual([]);
 });
 
 it("still shows a failed payment after the kassa was closed and opened again, until it has been seen", async () => {
@@ -491,7 +491,7 @@ it("keeps a payment that was seen in its place, greyed, while the list is open",
   await waitFor(() => expect(dialog.getAllByRole("button", { name: "Gezien" })).toHaveLength(1));
   expect(dialog.getByText("Niet gelukt · Pin van 14:32 · € 1,10")).toBeInTheDocument();
   expect(dialog.getByText("Niet gelukt · Pin van 14:40 · € 3,60")).toBeInTheDocument();
-  await waitFor(async () => expect((await (await getDb()).getAll("pin")).map((row) => row.id)).not.toContain(first.id));
+  await waitFor(async () => expect((await (await getPinDb()).getAll("pin")).map((row) => row.id)).not.toContain(first.id));
   expect(await screen.findByRole("button", { name: `Pinbetaling van €${NBSP}3,60 niet gelukt` })).toBeInTheDocument();
   await user().click(dialog.getByRole("button", { name: "Gezien" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
@@ -522,7 +522,7 @@ it("rings up a parked receipt as cash, and then says nothing when the pin paymen
   expect(screen.queryByRole("button", { name: /niet gelukt/ })).not.toBeInTheDocument();
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   expect(screen.queryByText(/is gelukt/)).not.toBeInTheDocument();
-  expect(await (await getDb()).getAll("pin")).toEqual([]);
+  expect(await (await getPinDb()).getAll("pin")).toEqual([]);
 });
 
 it("confirms a parked payment that went through after cash was taken", async () => {

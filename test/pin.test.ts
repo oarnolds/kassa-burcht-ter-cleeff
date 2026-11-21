@@ -290,8 +290,11 @@ it("answers any paired kassa, and nobody else", async () => {
   expect((await api(`/api/kassa/pin/${sale.id}/cancel`, { method: "POST" })).status).toBe(401);
   const unknown = await api(`/api/kassa/pin/${crypto.randomUUID()}`, { token });
   expect(unknown.status).toBe(404);
-  expect(await unknown.json()).toEqual({ error: "not_found" });
-  expect((await cancel(crypto.randomUUID())).status).toBe(404);
+  // Its own answer: a server without pin (an older version) says "not_found", which proves nothing about a payment.
+  expect(await unknown.json()).toEqual({ error: "no_pin_sale" });
+  const cancelled = await cancel(crypto.randomUUID());
+  expect(cancelled.status).toBe(404);
+  expect(await cancelled.json()).toEqual({ error: "no_pin_sale" });
   expect((await row(sale.id))!.status).toBe("pending");
 });
 

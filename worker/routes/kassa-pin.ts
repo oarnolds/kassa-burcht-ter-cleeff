@@ -24,13 +24,17 @@ kassaPin.post("/pin", async (c) => {
   }
 });
 
+// No pin sale with this id: the start never arrived. Its own code, because a server without pin (an older
+// version, after a rollback) answers "not_found" to every path, and that proves nothing about a payment.
+const NO_PIN_SALE = { error: "no_pin_sale" } as const;
+
 // The iPad asks this every second while the customer stands at the terminal.
 kassaPin.get("/pin/:id", async (c) => {
   const status = await pinStatus(contextOf(c), c.req.param("id"));
-  return status ? c.json(status) : c.json({ error: "not_found" }, 404);
+  return status ? c.json(status) : c.json(NO_PIN_SALE, 404);
 });
 
 kassaPin.post("/pin/:id/cancel", async (c) => {
   const status = await cancelPin(contextOf(c), c.req.param("id"));
-  return status ? c.json(status) : c.json({ error: "not_found" }, 404);
+  return status ? c.json(status) : c.json(NO_PIN_SALE, 404);
 });

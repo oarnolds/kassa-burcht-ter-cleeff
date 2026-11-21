@@ -5,12 +5,13 @@
 import type { PinSaleInput } from "../../../shared/schemas";
 import type { PinOutcome, PinStatus } from "../../../shared/types";
 import { kassaApi, type ApiResult } from "../../lib/api";
-import { getDb, getMeta } from "./db";
+import { getMeta, getPinDb } from "./db";
 
 export const POLL_MS = 1000; // spec §11: the iPad asks every second
 export const POLL_TIMEOUT_MS = 5000; // one question may take this long
 export const LOST_MS = 10_000; // no answer for this long: the outcome is unknown
 export const WAIT_LIMIT_MS = 120_000; // still running after this long: the outcome is unknown
+export const UNSENT_MS = 20_000; // the server answers, but its start has not reached Mollie after this long
 
 /** A receipt being paid by pin, as it is sent to the server. */
 export type PinReceipt = PinSaleInput;
@@ -25,7 +26,9 @@ export type Parked = PinReceipt & { parked: boolean; failed: boolean; cashTaken:
 export type PinEnd =
   | { kind: "paid" }
   | { kind: "failed"; outcome: Exclude<PinOutcome, "paid">; reason: string | null }
-  | { kind: "unknown" };
+  // lost: no answer from the server for a while. unsent: the server answers, but its start does not reach Mollie.
+  // slow: the payment is on the terminal, but has no outcome yet.
+  | { kind: "unknown"; why: "lost" | "unsent" | "slow" };
 
 export type PinProgress = { sent: boolean; testUrl: string | null; cancelFailed: boolean };
 export type PinRun = { done: Promise<PinEnd>; cancel(): void };
@@ -34,14 +37,14 @@ const STORE = "pin";
 
 /** Changes one stored receipt in a single step; a receipt that is not there stays away. */
 async function change(id: string, patch: Partial<Parked>): Promise<void> {
-  const tx = (await getDb()).transaction(STORE, "readwrite");
+  const tx = (await getPinDb()).transaction(STORE, "readwrite");
   const row = (await tx.store.get(id)) as Parked | undefined;
   if (row) await tx.store.put({ ...row, ...patch });
   await tx.done;
 }
 
 async function forget(id: string): Promise<void> {
-  await (await getDb()).delete(STORE, id);
+  await (await getPinDb()).delete(STORE, id);
 }
 
 function ask(path: string, token: string, more: { method?: string; json?: unknown; timeoutMs: number }): Promise<ApiResult<PinStatus>> {
@@ -74,7 +77,7 @@ export function runPin(receipt: PinReceipt, onProgress: (progress: PinProgress) 
     // Stored first: should the kassa be closed while the customer pays, the next start finds this receipt.
     // A full or broken storage does not stop the payment.
     try {
-      await (await getDb()).put(STORE, { ...receipt, parked: false, failed: false, cashTaken: false } satisfies Parked);
+      await (await getPinDb()).put(STORE, { ...receipt, parked: false, failed: false, cashTaken: false } satisfies Parked);
     } catch {
       // go on without it
     }
@@ -84,6 +87,7 @@ export function runPin(receipt: PinReceipt, onProgress: (progress: PinProgress) 
     const started = Date.now();
     let lastAnswer = started;
     let cancelFailed = false;
+    let everSent = false;
     for (;;) {
       const cancelling = cancelPending();
       const answer = cancelling
@@ -97,6 +101,7 @@ export function runPin(receipt: PinReceipt, onProgress: (progress: PinProgress) 
         answered = true;
         lastAnswer = Date.now();
         const { outcome, reason, sent, testUrl } = answer.data;
+        if (sent) everSent = true;
         if (outcome === "paid") return { kind: "paid" };
         if (outcome !== null) return { kind: "failed", outcome, reason };
         if (cancelling) {
@@ -111,7 +116,10 @@ export function runPin(receipt: PinReceipt, onProgress: (progress: PinProgress) 
       }
       // Anything else is no answer: no connection, a server in trouble, or a server that no longer knows us.
       const now = Date.now();
-      if (now - lastAnswer >= LOST_MS || now - started >= WAIT_LIMIT_MS) return { kind: "unknown" };
+      if (now - lastAnswer >= LOST_MS) return { kind: "unknown", why: "lost" };
+      // The beheerder cannot cancel a start that has not reached Mollie: park it, so that cash is one tap away.
+      if (answered && !everSent && now - started >= UNSENT_MS) return { kind: "unknown", why: "unsent" };
+      if (now - started >= WAIT_LIMIT_MS) return { kind: "unknown", why: "slow" };
       // A cancel asked for while this round was under way goes out at once. One that got no answer waits
       // a second, like any other question.
       if (cancelPending() && !cancelling) continue;
@@ -142,13 +150,13 @@ export function runPin(receipt: PinReceipt, onProgress: (progress: PinProgress) 
 
 /** The receipts that are parked or failed, oldest first. */
 export async function listParked(): Promise<Parked[]> {
-  const rows = (await (await getDb()).getAll(STORE)) as Parked[];
+  const rows = (await (await getPinDb()).getAll(STORE)) as Parked[];
   return rows.filter((row) => row.parked || row.failed).sort((a, b) => a.soldAt.localeCompare(b.soldAt));
 }
 
 /** On start: every receipt that is neither parked nor failed belonged to a kassa that was closed while it waited. They are parked. */
 export async function parkLeftovers(): Promise<void> {
-  const tx = (await getDb()).transaction(STORE, "readwrite");
+  const tx = (await getPinDb()).transaction(STORE, "readwrite");
   for (const row of (await tx.store.getAll()) as Parked[]) {
     if (!row.parked && !row.failed) await tx.store.put({ ...row, parked: true });
   }
@@ -189,7 +197,7 @@ async function resolve(): Promise<{ paid: Parked[]; failed: Parked[] }> {
     if (answer.ok && answer.data.outcome === "paid") {
       await forget(row.id);
       paid.push(row);
-    } else if ((answer.ok && answer.data.outcome !== null) || (!answer.ok && answer.status === 404)) {
+    } else if ((answer.ok && answer.data.outcome !== null) || (!answer.ok && answer.status === 404 && answer.error === "no_pin_sale")) {
       // It did not go through, or the server never got the start. With cash taken the customer has paid: nothing to tell.
       if (row.cashTaken) {
         await forget(row.id);
