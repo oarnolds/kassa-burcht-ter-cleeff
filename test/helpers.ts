@@ -211,3 +211,8 @@ export async function pinStatusOf(token: string, id: string): Promise<PinStatus>
   if (res.status !== 200) throw new Error(`pin status answered ${res.status}`);
   return res.json();
 }
+
+/** Calls the webhook the way Mollie does: a form with only the payment's id. */
+export function webhook(paymentId: string): Promise<Response> {
+  return api("/api/mollie/webhook", { method: "POST", form: { id: paymentId } });
+}

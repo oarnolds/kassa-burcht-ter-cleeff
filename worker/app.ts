@@ -14,6 +14,7 @@ import { adminSales } from "./routes/admin-sales";
 import { adminStock } from "./routes/admin-stock";
 import { kassa } from "./routes/kassa";
 import { kassaPin } from "./routes/kassa-pin";
+import { mollieWebhook } from "./routes/mollie-webhook";
 import { pair } from "./routes/pair";
 
 export const app = new Hono<AppEnv>();
@@ -30,6 +31,8 @@ app.use("/api/*", async (c, next) => {
 
 app.get("/api/health", (c) => c.json({ ok: true }));
 app.route("/api/pair", pair);
+// Mollie calls this itself: no token and no session.
+app.route("/api/mollie", mollieWebhook);
 
 // Kassa: every route needs the token of a paired device.
 app.use("/api/kassa/*", requireDevice);

@@ -1,6 +1,7 @@
 // A pin payment from start to finish. The receipt waits as a 'pending' sale until the server has read
 // Mollie's final word; only then does it count as revenue and does the stock go down.
 
+import { z } from "zod";
 import type { PinSaleInput } from "../../shared/schemas";
 import { businessDate } from "../../shared/time";
 import type { PinOutcome, PinStatus } from "../../shared/types";
@@ -231,4 +232,30 @@ export async function cancelPin(ctx: PinContext, saleId: string): Promise<PinSta
   }
   // Mollie would not cancel: the payment may be running still, or may just have gone through. Say which.
   return follow(ctx, sale);
+}
+
+const saleIdShape = z.uuid();
+
+/**
+ * Mollie says something changed about this payment. "retry": Mollie could not be asked, it should call again.
+ * The caller is not believed: what happened is read from Mollie, and a sale that is final is not touched.
+ */
+export async function noticeFromMollie(ctx: PinContext, paymentId: string): Promise<"done" | "retry"> {
+  const { db, now } = ctx;
+  if (!ctx.mollie) return "done";
+  const known = await db.prepare("SELECT * FROM sales WHERE mollie_payment_id = ?").bind(paymentId).first<SaleRow>();
+  if (known && (known.status !== "pending" || !mollieOf(ctx, known))) return "done";
+  const asked = await ctx.mollie.getPayment(paymentId);
+  if (!asked.ok) return asked.failure === "unreachable" || asked.failure === "unauthorized" ? "retry" : "done";
+  const payment = asked.data;
+  // The kassa may never have learned of this payment (the answer to its start was lost): the payment itself
+  // names the sale it was made for.
+  const sale =
+    known ??
+    (saleIdShape.safeParse(payment.saleId).success
+      ? await db.prepare("SELECT * FROM sales WHERE id = ? AND method = 'pin' AND mollie_payment_id IS NULL").bind(payment.saleId).first<SaleRow>()
+      : null);
+  if (!sale || !mollieOf(ctx, sale)) return "done";
+  await settleFromMollie(db, sale, payment, now);
+  return "done";
 }
