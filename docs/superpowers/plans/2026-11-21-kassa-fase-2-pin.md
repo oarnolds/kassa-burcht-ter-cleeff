@@ -42,8 +42,10 @@ Facts this plan relies on, with the page they come from:
 - A sale is `paid` only after the Worker has read status `paid` from Mollie in that same request. Nothing the iPad or a webhook caller sends can make a sale paid.
 - Pin needs a connection. Without one the Pin button is off with the reason shown, and cash goes on as in fase 1.
 - A paid sale cannot be taken back on the iPad (decision of 21 November 2026). No reversal control appears anywhere on the kassa.
+- The kassa screen holds only what the beheerder needs to take a payment (the penningmeester on 21 November 2026: the reversal button was "te gevaarlijk", the undo pop-up "verwarrend voor gebruiker"). No undo offers, no extra confirmations, and nothing that opens by itself over a sale in progress. The pin window holds what spec §8 names (the amount, the instruction, the outcome, the three choices after a refusal) plus `Annuleren` from spec §11. Anything more on the iPad needs the penningmeester's yes first; corrections go through him in beheer.
+- Leave `r2_buckets` and `triggers` in `wrangler.jsonc`, `worker/backup.ts` and the section `Reservekopie` as they are: the weekly copy belongs to another session.
 - Cloudflare free plan: about 10 ms CPU and 50 database calls per request. A status poll uses at most four database calls and one call to Mollie.
-- Work on branch `claude/nervous-roentgen-4ab9ef`, which holds `fase-1`. Commit after every task, locally. Never push. No deploy, no merge into `fase-1` or `main`, nothing against the live database without the penningmeester's explicit yes. Before asking to deploy, merge the newest `fase-1` (or `main`, once it holds fase 1) into this branch.
+- Work on branch `claude/nervous-roentgen-4ab9ef`, which holds `fase-1` up to `1b258b6` (the button Omzet on the kassa, the weekly copy, Wis alles without a message). Commit after every task, locally. Never push. No deploy, no merge into `fase-1` or `main`, nothing against the live database without the penningmeester's explicit yes. Before asking to deploy, merge the newest `fase-1` (or `main`, once it holds fase 1) into this branch.
 - Every commit message ends with `Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>`.
 - Worker tests call `resetData()` in `beforeEach`. No test talks to the real Mollie.
 
@@ -79,7 +81,7 @@ src/kassa/store/pin.ts             follows one payment; parked receipts
 src/kassa/pin-text.ts              Dutch wording for every outcome and reason
 src/kassa/PinDialog.tsx            waiting, failed, unknown
 src/kassa/TestBar.tsx              the TEST bar
-src/kassa/ParkedPins.tsx           "wacht op bevestiging": chip, list, not-paid notice
+src/kassa/ParkedPins.tsx           in the footer: "wacht op bevestiging" and "niet gelukt", with their list
 src/kassa/KassaScreen.tsx  KassaPage.tsx  cash.ts      wiring
 src/beheer/SettingsPage.tsx  SalesPage.tsx  DashboardPage.tsx
 e2e/global-setup.ts  e2e/pin.spec.ts  e2e/setup.ts   .dev.vars.e2e   playwright.config.ts
@@ -104,7 +106,7 @@ Route files only parse, authorise and respond; rules live in `worker/db/*`. `Kas
   export type PinOutcome = "paid" | "declined" | "canceled" | "expired" | "start_failed";
   export type PinTerminal = { id: string; description: string; status: string; brand: string | null; model: string | null; serialNumber: string | null };
   ```
-- Produces in `worker/env.ts`: `export type Env = { DB: D1Database; SETUP_TOKEN: string; MOLLIE_API_KEY?: string; MOLLIE_API_BASE?: string }`.
+- Produces in `worker/env.ts`: `Env` gains `MOLLIE_API_KEY?: string; MOLLIE_API_BASE?: string` next to `DB`, `SETUP_TOKEN` and `BACKUPS?`.
 - Produces in `worker/lib/mollie.ts`:
   ```ts
   export const MOLLIE_API = "https://api.mollie.com/v2";
@@ -638,6 +640,15 @@ Route files only parse, authorise and respond; rules live in `worker/db/*`. `Kas
     expect(summary.today).toMatchObject({ cashCents: 140, pinCents: 110 });
     expect(summary.cashExpectedCents).toBe(140);               // pin never passes through the cash box
   });
+  it("shows a paid pin sale under pin in the kassa's own Omzet, of the day and of the week", async () => {
+    await paidPin();
+    await startPinSale(token, pinSale());                                                     // a second one, still waiting: counts nowhere
+    const day = await (await api(`/api/kassa/reports/day?date=${today}`, { token })).json<DayReport>();
+    expect(day.totals).toEqual({ cashCents: 0, pinCents: 110, totalCents: 110, saleCount: 1 });
+    const week = await (await api(`/api/kassa/reports/week?date=${today}`, { token })).json<WeekReport>();
+    expect(week.totals).toEqual({ cashCents: 0, pinCents: 110, totalCents: 110, saleCount: 1 });
+    expect(week.days).toEqual([{ date: today, cashCents: 0, pinCents: 110, totalCents: 110, saleCount: 1 }]);
+  });
   it("keeps pin out of the cash box, also across a handover", …)
     // paid pin 110 → cash state expectedCents 0; record an opening and a handover → the pin sale's handover_id stays null, differenceCents 0
   it("reverses a pin sale for the whole amount, as pin, and puts the stock back", …)
@@ -709,8 +720,12 @@ Route files only parse, authorise and respond; rules live in `worker/db/*`. `Kas
 
   /** A receipt being paid by pin, as it is sent to the server. */
   export type PinReceipt = PinSaleInput;
-  /** A receipt whose outcome the kassa does not know yet. `cashTaken`: the beheerder rang it up as cash in the meantime. */
-  export type Parked = PinReceipt & { parked: boolean; cashTaken: boolean };
+  /**
+   * A receipt the kassa is not done with. `parked`: the outcome of its payment is not known yet.
+   * `failed`: the payment did not go through and the beheerder has not seen that yet.
+   * `cashTaken`: the beheerder rang it up as cash in the meantime.
+   */
+  export type Parked = PinReceipt & { parked: boolean; failed: boolean; cashTaken: boolean };
   export type PinEnd =
     | { kind: "paid" }
     | { kind: "failed"; outcome: Exclude<PinOutcome, "paid">; reason: string | null }
@@ -720,17 +735,19 @@ Route files only parse, authorise and respond; rules live in `worker/db/*`. `Kas
 
   /** Starts the payment and follows it to its end. The receipt is kept on the iPad for as long as its outcome is not known. */
   export function runPin(receipt: PinReceipt, onProgress: (progress: PinProgress) => void): PinRun;
-  /** The parked receipts, oldest first. */
+  /** The receipts that are parked or failed, oldest first. */
   export async function listParked(): Promise<Parked[]>;
-  /** On start: every receipt still in the store belonged to a kassa that was closed while it waited. They are parked. */
+  /** On start: every receipt that is neither parked nor failed belonged to a kassa that was closed while it waited. They are parked. */
   export async function parkLeftovers(): Promise<void>;
   export async function markCashTaken(id: string): Promise<void>;
-  /** Asks the server about every parked receipt and takes the ones with an outcome off the list. */
+  /** Asks the server about every parked receipt. `paid`: forgotten. `failed`: kept as failed until `dismissFailed`. */
   export async function resolveParked(): Promise<{ paid: Parked[]; failed: Parked[] }>;
+  /** The beheerder has seen that this payment did not go through: the receipt is forgotten. */
+  export async function dismissFailed(id: string): Promise<void>;
   ```
 
 **How `runPin` works:**
-1. Store the receipt (`parked: false`, `cashTaken: false`). A failure to store does not stop the payment.
+1. Store the receipt (`parked: false`, `failed: false`, `cashTaken: false`). A failure to store does not stop the payment.
 2. Each round, at once and then every `POLL_MS` after the previous answer: until the server has answered once, `POST /api/kassa/pin` with the receipt (the server takes the same id again); after that `GET /api/kassa/pin/<id>` with `timeoutMs: POLL_TIMEOUT_MS`.
 3. An answer `200`: with an `outcome` → end (`paid`, or `failed` with that outcome and reason); without → `onProgress({ sent, testUrl, cancelFailed })`.
 4. A `4xx` answer to the start (`401` included) → end `failed`, outcome `start_failed`, reason the error code. Nothing was started.
@@ -738,7 +755,7 @@ Route files only parse, authorise and respond; rules live in `worker/db/*`. `Kas
 6. `cancel()` does nothing before the server has answered once. After that it posts `/api/kassa/pin/<id>/cancel` once: an answer with an outcome ends the run; an answer without one sets `cancelFailed` in the next progress and the rounds go on.
 7. At the end: `paid` or `failed` → the receipt is removed from the store; `unknown` → it stays, with `parked: true`.
 
-`resolveParked`, per parked receipt, `GET /api/kassa/pin/<id>` (`timeoutMs: POLL_TIMEOUT_MS`): outcome `paid` → removed, in `paid`; another outcome → removed, in `failed`; `404` (the server never got the start) → removed, in `failed`; no outcome yet, or no answer → stays.
+`resolveParked`, per receipt with `parked: true`, `GET /api/kassa/pin/<id>` (`timeoutMs: POLL_TIMEOUT_MS`): outcome `paid` → removed, in `paid`; another outcome, or `404` (the server never got the start) → not paid; no outcome yet, or no answer → stays parked. A receipt that was not paid is removed when `cashTaken` (the customer has paid, there is nothing to tell); otherwise it stays with `parked: false, failed: true` and is in `failed`. A failed receipt is never asked about again: it stays, also over a restart of the kassa, until `dismissFailed`.
 
 - [ ] **Step 1: Write the failing tests** in `src/kassa/store/pin.test.ts` (`vi.useFakeTimers({ shouldAdvanceTime: true })`, `await setMeta("deviceToken", "tok")`, `const receipt = (): PinReceipt => ({ id: crypto.randomUUID(), soldAt: new Date().toISOString(), totalCents: 110, lines: [{ productId: "aardbeitje", name: "Aardbeitje", unitPriceCents: 110, qty: 1 }] })`, `const status = (r, over = {}) => ({ id: r.id, outcome: null, reason: null, sent: true, testUrl: null, ...over })`, `const stored = async () => (await getDb()).getAll("pin")`):
 
@@ -787,8 +804,12 @@ Route files only parse, authorise and respond; rules live in `worker/db/*`. `Kas
     expect(await listParked()).toMatchObject([{ id: r.id, parked: true }]);
   });
   it("settles parked receipts when the server knows their outcome", …)
-    // four parked: paid, declined, 404 not_found, still running → resolveParked() → { paid: [first], failed: [second, third] }; listParked() → [fourth]; offline → nothing changes
-  it("remembers that cash was taken for a parked receipt", …)   // markCashTaken(id) → listParked()[0].cashTaken true
+    // four parked: paid, declined, 404 not_found, still running → resolveParked() → { paid: [first], failed: [second, third] };
+    // listParked() → second and third with { parked: false, failed: true }, fourth still parked; offline → nothing changes
+  it("keeps a payment that did not go through until the beheerder has seen it, also over a restart", …)
+    // after the above: resolveParked() again asks only about the fourth; parkLeftovers() leaves the failed ones failed; dismissFailed(second.id) → gone from listParked()
+  it("remembers that cash was taken for a parked receipt, and then has nothing to tell when the payment fails", …)
+    // markCashTaken(id) → listParked()[0].cashTaken true; the server answers declined → resolveParked() → { paid: [], failed: [] }; listParked() → []
   it("adds the pin store to a kassa from fase 1 without losing what waits", async () => {
     // Build a version 1 database by hand with one outbox item, then open it through getDb().
     …expect([...db.objectStoreNames]).toEqual(["meta", "outbox", "pin", "rejected"]);
@@ -954,16 +975,16 @@ Route files only parse, authorise and respond; rules live in `worker/db/*`. `Kas
 - Modify: `src/kassa/KassaPage.tsx`, `src/kassa/KassaPage.test.tsx`, `src/test-utils.tsx` (`mockApi` keys ending in `/*`)
 
 **Interfaces:**
-- Consumes: `runPin`, `listParked`, `parkLeftovers`, `markCashTaken`, `resolveParked`, `Parked` (Task 6); `KassaScreen`'s `pin` and `onPinPaid` (Task 7); `cashSaleFor` (Task 7); `Catalog.pin` (Task 2).
+- Consumes: `runPin`, `listParked`, `parkLeftovers`, `markCashTaken`, `resolveParked`, `dismissFailed`, `Parked` (Task 6); `KassaScreen`'s `pin` and `onPinPaid` (Task 7); `cashSaleFor` (Task 7); `Catalog.pin` (Task 2).
 - Produces `TestBar` (no props): a full-width bar above everything else on the kassa, `role="status"`, background `#F5E7BF`, text `#5E4500`, a bold `TEST` and `Pinbetalingen zijn nagespeeld: er wordt geen geld afgeschreven.`
 - Produces `ParkedPins`:
   ```ts
   type Props = {
-    parked: Parked[];
-    /** Receipts whose payment turned out not to have gone through, still to be acknowledged. */
-    notPaid: Parked[];
+    /** The receipts that are parked or failed, oldest first. */
+    receipts: Parked[];
     onCash(receipt: Parked, cashGivenCents: number): void;
-    onAcknowledge(id: string): void;
+    /** The beheerder has seen that this payment did not go through. */
+    onSeen(id: string): void;
   };
   ```
 
@@ -973,9 +994,13 @@ Route files only parse, authorise and respond; rules live in `worker/db/*`. `Kas
 - `TestBar` is shown when `catalog.pin?.mode === "test"`, above the delivery bar.
 - `pin.start` is `runPin`; when a run ends, the parked list is read again. `onPinPaid`: `noteSold(receipt.lines)`, the count on the tiles is refreshed and the sync is kicked (which fetches the catalog with the new stock).
 - A cash sale with an `insteadOfSaleId` (from the screen or from the parked list) also calls `markCashTaken(insteadOfSaleId)`.
-- While anything is parked: `resolveParked()` every 5 seconds, and at once when the browser reports `online`. For each receipt in `paid`: `noteSold`, toast `Pinbetaling van € 3,60 is gelukt`. For each in `failed` with `cashTaken` false: it joins `notPaid`. With `cashTaken` true nothing is shown.
-- `ParkedPins` in the footer, next to the status badge. With parked receipts a button `1 pinbetaling wacht op bevestiging` / `2 pinbetalingen wachten op bevestiging` (same look as the "afgekeurd" button). It opens the dialog `Wacht op bevestiging` (wide): the line `Van deze bonnen weet de kassa nog niet of de pinbetaling is gelukt. Kijk op de betaalterminal. Zodra er verbinding is, haalt de kassa de uitkomst op.`, then per receipt `Pin van 14:32 · € 3,60` (time in Amsterdam), its lines as `2× Aardbeitje, 1× Koffie`, and a button `Toch contant`, or the text `Contant afgerekend` once cash was taken; `Sluiten` at the bottom. `Toch contant` opens a `CashDialog` for that receipt's total; when paid, `onCash(receipt, cashGivenCents)`.
-- With receipts in `notPaid`, a dialog that must be answered (`dismissable={false}`), title `Pinbetaling niet gelukt`: `De pinbetaling van € 3,60 van 14:32 is niet gelukt.`, the lines, `Is er nog niet betaald? Reken dan opnieuw af.`, button `Begrepen` (acknowledges that one; the next one shows after it).
+- While anything is parked: `resolveParked()` every 5 seconds, and at once when the browser reports `online`; then the list is read again. For each receipt in `paid`: `noteSold`, and the short confirmation `Pinbetaling van € 3,60 is gelukt` (a toast, like `Pin betaald`). For a receipt that was not paid nothing opens by itself: it shows in the footer, as below.
+- The footer keeps its fase 1 layout: the status badge on the left, the button `Omzet` on the right. `ParkedPins` sits with the status badge (both in one wrapping row), and shows nothing when there is nothing:
+  - with parked receipts, a button `1 pinbetaling wacht op bevestiging` / `2 pinbetalingen wachten op bevestiging` (the look of the `Omzet` button);
+  - with failed receipts, a button `Pinbetaling van € 3,60 niet gelukt` for one, `2 pinbetalingen niet gelukt` for more (the red look of the "afgekeurd" button). This is spec §8's "melding met het bedrag": it stays until the beheerder has seen it, and it never lies over a sale in progress.
+- Either button opens the dialog `Pinbetalingen` (wide), built like the fase 1 dialog `Afgekeurde verkopen`: one block per receipt, the failed ones first, `Sluiten` at the bottom.
+  - Failed: `Niet gelukt · Pin van 14:32 · € 3,60` (time in Amsterdam), its lines as `2× Aardbeitje, 1× Koffie`, `Deze pinbetaling is niet gelukt en is niet geboekt. Staat de klant er nog? Reken dan opnieuw af.`, and the button `Gezien` (`onSeen`). A block that was dealt with keeps its place, greyed, while the dialog is open, so that the second tap of a double tap cannot land on the next one; the dialog closes when the last one is dealt with.
+  - Parked: `Wacht op bevestiging · Pin van 14:32 · € 3,60`, its lines, `Kijk op de betaalterminal of de betaling is gelukt. Zodra er verbinding is, haalt de kassa de uitkomst op.`, and the button `Toch contant`, or the text `Contant afgerekend` once cash was taken. `Toch contant` opens a `CashDialog` for that receipt's total; when paid, `onCash(receipt, cashGivenCents)`.
 
 - [ ] **Step 1: Write the failing tests** in `src/kassa/KassaPage.test.tsx` (helpers there: `paired()` stores the token and the test catalog; add `const pinStatus = (id: string, over = {}) => ({ id, outcome: null, reason: null, sent: true, testUrl: null, ...over })`, `const idOf = (req: { url: string }) => req.url.split("/")[4]!` and `const startedPin = () => calls("POST").find((c) => c.url === "/api/kassa/pin")!.body as { id: string }`). The id of a pin payment is made at the tap, so these tests need a route for "any path under": `mockApi` in `src/test-utils.tsx` gains that. A key ending in `/*` answers every path below it; an exact key still wins, and a key with a method wins over one without:
 
@@ -1019,21 +1044,40 @@ Route files only parse, authorise and respond; rules live in `worker/db/*`. `Kas
     expect(await screen.findByText("Pinbetaling van € 1,10 is gelukt")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText(/wacht op bevestiging/)).not.toBeInTheDocument());
   });
-  it("tells the beheerder with the amount when a parked payment did not go through", …)
-    // parked → the server answers declined → dialog "Pinbetaling niet gelukt" with /De pinbetaling van € 1,10 van \d\d:\d\d is niet gelukt\./ and "1× Aardbeitje"; "Begrepen" closes it; the chip is gone
+  it("tells the beheerder with the amount when a parked payment did not go through, without opening anything by itself", async () => {
+    …a parked receipt of € 1,10; the server answers declined; the round of five seconds passes
+    expect(await screen.findByRole("button", { name: "Pinbetaling van € 1,10 niet gelukt" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText(/wacht op bevestiging/)).not.toBeInTheDocument();
+    await tap(/Koffie/);                                           // the kassa is not held up
+    expect(screen.getByTestId("total")).toHaveTextContent("€ 1,40");
+    await tap("Pinbetaling van € 1,10 niet gelukt");
+    const dialog = within(await screen.findByRole("dialog", { name: "Pinbetalingen" }));
+    expect(dialog.getByText(/^Niet gelukt · Pin van \d\d:\d\d · € 1,10$/)).toBeInTheDocument();
+    expect(dialog.getByText("1× Aardbeitje")).toBeInTheDocument();
+    expect(dialog.getByText("Deze pinbetaling is niet gelukt en is niet geboekt. Staat de klant er nog? Reken dan opnieuw af.")).toBeInTheDocument();
+    await user().click(dialog.getByRole("button", { name: "Gezien" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /niet gelukt/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId("total")).toHaveTextContent("€ 1,40");   // the receipt in progress is untouched
+  });
+  it("still shows a failed payment after the kassa was closed and opened again, until it has been seen", …)
+    // a stored receipt with { parked: false, failed: true } → renderAt("/") offline → the button "Pinbetaling van € 3,60 niet gelukt"; two of them → "2 pinbetalingen niet gelukt"
   it("rings up a parked receipt as cash, and then says nothing when the pin payment fails", …)
-    // chip → dialog "Wacht op bevestiging" → "Toch contant" → "Gepast" → the outbox holds { totalCents: 110, insteadOfSaleId: <parked id> }; the row shows "Contant afgerekend";
-    // the server then answers declined → no dialog "Pinbetaling niet gelukt"; the chip is gone
-  it("still shows the chip when cash was taken and the pin payment went through after all", …)
-    // as above but the server answers paid → toast "Pinbetaling van € 1,10 is gelukt"; chip gone (beheer marks the two sales, Task 5)
+    // "1 pinbetaling wacht op bevestiging" → dialog "Pinbetalingen" → "Toch contant" → "Gepast" → the outbox holds { totalCents: 110, insteadOfSaleId: <parked id> }; the block shows "Contant afgerekend";
+    // the server then answers declined → no button /niet gelukt/, no dialog; the waiting button is gone
+  it("confirms a parked payment that went through after cash was taken", …)
+    // as above but the server answers paid → toast "Pinbetaling van € 1,10 is gelukt"; the waiting button is gone (beheer marks the two sales, Task 5)
+  it("keeps Omzet where it was, with the pin buttons beside the status", …)
+    // one parked and one failed receipt stored → the footer holds, in this order, "Online", the two pin buttons, "Omzet"; "Omzet" still opens the dialog "Omzet"
   it("brings back a receipt that was waiting when the kassa was closed (Review Focus 3)", async () => {
     await paired();
-    await (await getDb()).put("pin", { id: crypto.randomUUID(), soldAt: "2026-07-30T12:32:00.000Z", totalCents: 360, lines: [{ productId: "aardbeitje", name: "Aardbeitje", unitPriceCents: 110, qty: 2 }, { productId: "koffie", name: "Koffie", unitPriceCents: 140, qty: 1 }], parked: false, cashTaken: false });
+    await (await getDb()).put("pin", { id: crypto.randomUUID(), soldAt: "2026-07-30T12:32:00.000Z", totalCents: 360, lines: [{ productId: "aardbeitje", name: "Aardbeitje", unitPriceCents: 110, qty: 2 }, { productId: "koffie", name: "Koffie", unitPriceCents: 140, qty: 1 }], parked: false, failed: false, cashTaken: false });
     mockOffline();
     renderAt("/");
     await tap("1 pinbetaling wacht op bevestiging");
-    const dialog = within(await screen.findByRole("dialog", { name: "Wacht op bevestiging" }));
-    expect(dialog.getByText("Pin van 14:32 · € 3,60")).toBeInTheDocument();
+    const dialog = within(await screen.findByRole("dialog", { name: "Pinbetalingen" }));
+    expect(dialog.getByText("Wacht op bevestiging · Pin van 14:32 · € 3,60")).toBeInTheDocument();
     expect(dialog.getByText("2× Aardbeitje, 1× Koffie")).toBeInTheDocument();
   });
   ```
@@ -1180,6 +1224,8 @@ Route files only parse, authorise and respond; rules live in `worker/db/*`. `Kas
     await expect(receipt(page).getByText("Tik op een product om te beginnen.")).toBeVisible();
     await expectToday(beheer, { pinCents: 250, cashCents: 0, saleCount: 1 });
     expect((await beheer.get<{ expectedCents: number }>("/api/admin/cash")).expectedCents).toBe(0);
+    await tap(page, "Omzet");                                                    // the beheerder's own revenue screen shows it as pin
+    await expect(page.getByRole("dialog", { name: "Omzet" }).getByText(/pin €\s2,50/)).toBeVisible();
   });
   test("a declined payment: three choices, nothing in the overview, and trying again pays", …)
     // atTerminal "failed", "insufficient_funds" → dialog "Betaling geweigerd" with "Onvoldoende saldo."; expectToday all zero;
@@ -1210,9 +1256,10 @@ Route files only parse, authorise and respond; rules live in `worker/db/*`. `Kas
     await expectToday(beheer, { pinCents: 140, saleCount: 2 }, 40_000);
   });
   test("a parked payment that failed is reported with its amount", …)
-    // as above, but atTerminal "failed" → after the connection is back the dialog "Pinbetaling niet gelukt" with "€ 1,40" → "Begrepen"; nothing in the overview
+    // as above, but atTerminal "failed" → after the connection is back the footer shows the button "Pinbetaling van € 1,40 niet gelukt" and no dialog has opened;
+    // a product can be tapped meanwhile; the button → dialog "Pinbetalingen" → "Gezien" → the button is gone; nothing in the overview
   test("cash for a parked receipt and a pin payment that went through after all: both are marked in beheer", …)
-    // parked → chip → "Toch contant" → "Gepast" → atTerminal "paid" → back online → beheer's day: two sales, both possiblyDouble true; summary.pinAttention has kind "double"
+    // parked → the waiting button → dialog "Pinbetalingen" → "Toch contant" → "Gepast" → atTerminal "paid" → back online → beheer's day: two sales, both possiblyDouble true; summary.pinAttention has kind "double"
   test("a kassa that is reloaded while paying finds its receipt parked (Review Focus 3)", …)
     // Pin → waiting → page.reload() → the chip "1 pinbetaling wacht op bevestiging"; atTerminal "paid" → the chip goes; pinCents 140
   test("the penningmeester chooses the terminal in beheer, and only then Pin works", async ({ page, context, request }) => {
@@ -1222,12 +1269,12 @@ Route files only parse, authorise and respond; rules live in `worker/db/*`. `Kas
   });
   test("the pin dialog fits the iPad without scrolling, in every state", …)   // waiting, failed and unknown: every button in the viewport, each at least 44 px high
   ```
-  `e2e/setup.ts` exports the e2e password for the browser login. Add to the existing fits-on-the-iPad test in `e2e/kassa.spec.ts`: the line under the pay buttons (`pin-blocked`) and the TEST bar are inside the viewport and nothing scrolls with both showing.
+  `e2e/setup.ts` exports the e2e password for the browser login. Add to the existing fits-on-the-iPad test in `e2e/kassa.spec.ts`: the line under the pay buttons (`pin-blocked`) and the TEST bar are inside the viewport and nothing scrolls with both showing; and with one parked and one failed receipt the footer still shows `Omzet` in the viewport and nothing scrolls.
 
 - [ ] **Step 2: Run them.** `npm run e2e`. Expected: the new tests run against the fake and PASS together with the fase 1 tests. Check once that the built `dist/**/.dev.vars` holds `test_e2e` and not a real key: `grep -rl "MOLLIE_API_KEY" dist | xargs grep -c "test_e2e"`. A failing test here is a bug in Tasks 1 to 9: fix it there, with a unit test that pins it.
 
 - [ ] **Step 3: Update the handbook** (`README.md`, Dutch, same voice as the fase 1 text). Replace the fase 1 sentence about the grey Pin button, and add:
-  - **Dagelijks gebruik → Pin.** Tik op Pin; de klant houdt pas of telefoon tegen de terminal; de bon blijft staan tot de betaling is goedgekeurd. Wat er kan gebeuren: betaald; geweigerd, geannuleerd of verlopen met de drie keuzes; `Annuleren`; uitkomst onbekend en de knop `… wacht op bevestiging`, met wanneer `Toch contant` verstandig is (alleen als de terminal de betaling niet heeft goedgekeurd); de melding `Pinbetaling niet gelukt`.
+  - **Dagelijks gebruik → Pin.** Tik op Pin; de klant houdt pas of telefoon tegen de terminal; de bon blijft staan tot de betaling is goedgekeurd. Wat er kan gebeuren: betaald; geweigerd, geannuleerd of verlopen met de drie keuzes; `Annuleren`; uitkomst onbekend en de knop `… wacht op bevestiging`, met wanneer `Toch contant` verstandig is (alleen als de terminal de betaling niet heeft goedgekeurd); de rode knop `Pinbetaling van € … niet gelukt` onderin en wat `Gezien` doet. Ook: pin staat in het scherm `Omzet` naast contant.
   - **De balk TEST** en wat hij betekent.
   - **Voor de penningmeester → Pin.** Instellingen → Pin via Mollie; pin in Overzicht, Rapporten en Verkopen; pin telt nooit mee in het kluisje; de kolom Pin naast de uitbetalingen van Mollie; een pinverkoop terugbetalen (eerst in het Mollie-dashboard, altijd het hele bedrag, daarna Terugdraaien met een reden); `Mogelijk dubbel betaald` en wat je dan doet; `Pin: niet gelukt of nog open`.
   - **Pin instellen (eenmalig, de penningmeester zelf)**, genummerd: (1) Mollie-dashboard: betaalmethode Point of sale aanzetten; (2) testsleutel kopiëren uit Mollie (Developers → API-sleutels; begint met `test_`); (3) in de terminal `npx wrangler secret put MOLLIE_API_KEY --name kassa-burcht-ter-cleeff` en de sleutel plakken bij de vraag; nooit in een bericht, een mail of de code; (4) beheer → Instellingen → de testterminal kiezen; (5) proefbetalingen doen met de link `Test: kies de uitkomst bij Mollie`.
