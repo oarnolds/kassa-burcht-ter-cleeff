@@ -13,6 +13,7 @@ import { adminReports } from "./routes/admin-reports";
 import { adminSales } from "./routes/admin-sales";
 import { adminStock } from "./routes/admin-stock";
 import { kassa } from "./routes/kassa";
+import { kassaPin } from "./routes/kassa-pin";
 import { pair } from "./routes/pair";
 
 export const app = new Hono<AppEnv>();
@@ -33,6 +34,7 @@ app.route("/api/pair", pair);
 // Kassa: every route needs the token of a paired device.
 app.use("/api/kassa/*", requireDevice);
 app.route("/api/kassa", kassa);
+app.route("/api/kassa", kassaPin);
 
 // Beheer: status, setup and login answer without a session; everything after requireAdmin needs one.
 app.route("/api/admin", adminAuthPublic);

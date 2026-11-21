@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, vi } from "vitest";
-import type { CashSaleInput } from "../shared/schemas";
-import type { ItemResult } from "../shared/types";
+import type { CashSaleInput, PinSaleInput } from "../shared/schemas";
+import type { ItemResult, PinStatus } from "../shared/types";
 import { app } from "../worker/app";
 import type { Env } from "../worker/env";
 import { createFakeMollie, type FakeMollie } from "./fake-mollie";
@@ -185,4 +185,29 @@ export async function chooseTestTerminal(): Promise<void> {
   const { cookie } = await asAdmin();
   const answer = await api("/api/admin/pin/terminal", { method: "POST", cookie, json: { terminalId: "term_test" } });
   if (answer.status !== 200) throw new Error(`choosing the terminal answered ${answer.status}`);
+}
+
+/** A receipt as the kassa sends it to pay by pin: one Aardbeitje, rung up now, unless overridden. */
+export function pinSale(overrides: Partial<PinSaleInput> = {}): PinSaleInput {
+  return {
+    id: crypto.randomUUID(),
+    soldAt: new Date().toISOString(),
+    totalCents: 110,
+    lines: [{ productId: "aardbeitje", name: "Aardbeitje", unitPriceCents: 110, qty: 1 }],
+    ...overrides,
+  };
+}
+
+/** Starts a pin payment the way the kassa does. */
+export async function startPinSale(token: string, sale: PinSaleInput): Promise<PinStatus> {
+  const res = await api("/api/kassa/pin", { method: "POST", token, json: sale });
+  if (res.status !== 200) throw new Error(`pin start answered ${res.status}`);
+  return res.json();
+}
+
+/** Asks where a pin payment stands, the way the kassa does every second. */
+export async function pinStatusOf(token: string, id: string): Promise<PinStatus> {
+  const res = await api(`/api/kassa/pin/${id}`, { token });
+  if (res.status !== 200) throw new Error(`pin status answered ${res.status}`);
+  return res.json();
 }

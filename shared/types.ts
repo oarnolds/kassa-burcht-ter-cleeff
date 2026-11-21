@@ -143,6 +143,9 @@ export type PinMode = "test" | "live";
 /** How a pin payment ended. `start_failed`: the terminal was never asked, or the kassa gave up asking. */
 export type PinOutcome = "paid" | "declined" | "canceled" | "expired" | "start_failed";
 
+/** Where a pin payment stands. `outcome` null: still running. `sent`: the terminal has been asked. `testUrl`: test mode only, Mollie's page to choose the ending. */
+export type PinStatus = { id: string; outcome: PinOutcome | null; reason: string | null; sent: boolean; testUrl: string | null };
+
 /** A payment terminal as Mollie lists it. */
 export type PinTerminal = { id: string; description: string; status: string; brand: string | null; model: string | null; serialNumber: string | null };
 

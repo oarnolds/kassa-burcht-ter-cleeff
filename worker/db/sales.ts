@@ -1,6 +1,6 @@
-import { outboxItem, type CashSaleInput, type OutboxItem, type ReversalInput } from "../../shared/schemas";
+import { outboxItem, type CashSaleInput, type OutboxItem, type ReversalInput, type SaleLineInput } from "../../shared/schemas";
 import { businessDate } from "../../shared/time";
-import type { ItemResult, RejectReason } from "../../shared/types";
+import type { ItemResult, PinMode, PinOutcome, RejectReason } from "../../shared/types";
 
 /** A row of `sales` as stored. */
 export type SaleRow = {
@@ -18,6 +18,13 @@ export type SaleRow = {
   reversed_by: "device" | "admin" | null;
   late: number;
   handover_id: string | null;
+  // Pin sales only: Mollie's payment, and how it ended.
+  mollie_payment_id: string | null;
+  mollie_mode: PinMode | null;
+  pin_outcome: PinOutcome | null;
+  pin_reason: string | null;
+  settled_at: string | null;
+  instead_of_sale_id: string | null;
 };
 
 export type ReversalOptions = {
@@ -37,7 +44,7 @@ const REVERSAL_WINDOW_MS = 5 * 60_000;
 // A sale is "late" when it was made before a count of the cash box but arrives after it.
 const LATE = "EXISTS (SELECT 1 FROM handovers WHERE counted_at >= ?5)";
 
-type ProductInfo = { id: string; category_id: string; category_name: string; track_stock: number };
+export type ProductInfo = { id: string; category_id: string; category_name: string; track_stock: number };
 
 /** What the database holds about the items of one request, kept up to date while the items are judged. */
 type Known = {
@@ -53,7 +60,7 @@ export async function getSale(db: D1Database, id: string): Promise<SaleRow | nul
 }
 
 /** The moment of sale as stored: the device's own time, unless its clock runs ahead. Always in one format. */
-function storedSoldAt(soldAt: string, now: Date): string {
+export function storedSoldAt(soldAt: string, now: Date): string {
   const moment = Date.parse(soldAt);
   return moment > now.getTime() + CLOCK_AHEAD_MS ? now.toISOString() : new Date(moment).toISOString();
 }
@@ -102,6 +109,24 @@ export async function createReversal(db: D1Database, original: SaleRow, opts: Re
   await db.batch(reversalStatements(db, original, opts));
 }
 
+/** What a sale needs to know of every product. A statement of its own, so that a caller can fetch it in one batch with its other reads. */
+export function productsQuery(db: D1Database): D1PreparedStatement {
+  return db.prepare(
+    `SELECT p.id, p.category_id, c.name AS category_name, p.track_stock
+     FROM products p JOIN categories c ON c.id = p.category_id`,
+  );
+}
+
+/** One line of a receipt. Name and price are the ones the customer saw; the category is the product's. */
+export function lineStatement(db: D1Database, saleId: string, line: SaleLineInput, product: ProductInfo): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO sale_lines (sale_id, product_id, name, category_id, category_name, unit_price_cents, qty)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(saleId, line.productId, line.name, product.category_id, product.category_name, line.unitPriceCents, line.qty);
+}
+
 function saleStatements(
   db: D1Database,
   deviceId: string,
@@ -121,15 +146,7 @@ function saleStatements(
   ];
   for (const line of item.lines) {
     const product = products.get(line.productId)!;
-    // Name and price are the ones the customer saw; the category is the product's.
-    statements.push(
-      db
-        .prepare(
-          `INSERT INTO sale_lines (sale_id, product_id, name, category_id, category_name, unit_price_cents, qty)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .bind(item.id, line.productId, line.name, product.category_id, product.category_name, line.unitPriceCents, line.qty),
-    );
+    statements.push(lineStatement(db, item.id, line, product));
     if (product.track_stock === 1) {
       statements.push(
         db
@@ -158,6 +175,12 @@ function pendingRow(id: string, deviceId: string, totalCents: number, soldAt: st
     reversed_by: reverses ? "device" : null,
     late: 0,
     handover_id: null,
+    mollie_payment_id: null,
+    mollie_mode: null,
+    pin_outcome: null,
+    pin_reason: null,
+    settled_at: null,
+    instead_of_sale_id: null,
   };
 }
 
@@ -206,11 +229,7 @@ async function loadKnown(db: D1Database, items: OutboxItem[]): Promise<Known> {
   const hasSales = items.some((item) => item.kind === "sale");
   const [products, existing, originals, reversals] = await Promise.all([
     hasSales
-      ? db
-          .prepare(
-            `SELECT p.id, p.category_id, c.name AS category_name, p.track_stock
-             FROM products p JOIN categories c ON c.id = p.category_id`,
-          )
+      ? productsQuery(db)
           .all<ProductInfo>()
           .then((result) => result.results)
       : [],
