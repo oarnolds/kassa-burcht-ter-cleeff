@@ -1,5 +1,5 @@
 import { formatAmount } from "../../shared/money";
-import { businessDate, formatDateNl, localTime, monthOf, monthRange } from "../../shared/time";
+import { businessDate, formatDateNl, localTime, monthOf, monthRange, weekRange } from "../../shared/time";
 import type {
   AdminSale,
   CategoryRow,
@@ -8,6 +8,7 @@ import type {
   ProductRow,
   Summary,
   Totals,
+  WeekReport,
 } from "../../shared/types";
 import { toCsv } from "../lib/csv";
 import { getCashState } from "./cash";
@@ -109,20 +110,30 @@ export async function dayReport(db: D1Database, date: string): Promise<DayReport
   };
 }
 
-export async function monthReport(db: D1Database, month: string): Promise<MonthReport> {
-  const { first, last } = monthRange(month);
+/** A run of days: the totals, each day that had sales, and the breakdowns. */
+async function periodReport(db: D1Database, first: string, last: string): Promise<Pick<MonthReport, "totals" | "days" | "byCategory" | "byProduct">> {
   const [totals, days, byCategory, byProduct] = await db.batch([
     totalsQuery(db, first, last),
     daysQuery(db, first, last),
     ...breakdownQueries(db, first, last),
   ]);
   return {
-    month,
     totals: toTotals(totals!.results[0] as TotalsRow),
     days: (days!.results as DayRow[]).map((row) => ({ date: row.business_date, ...toTotals(row) })),
     byCategory: toCategoryRows(byCategory!.results as CategorySumRow[]),
     byProduct: toProductRows(byProduct!.results as ProductSumRow[]),
   };
+}
+
+export async function monthReport(db: D1Database, month: string): Promise<MonthReport> {
+  const { first, last } = monthRange(month);
+  return { month, ...(await periodReport(db, first, last)) };
+}
+
+/** The week (Monday to Sunday) that `date` falls in. */
+export async function weekReport(db: D1Database, date: string): Promise<WeekReport> {
+  const { first, last } = weekRange(date);
+  return { first, last, ...(await periodReport(db, first, last)) };
 }
 
 /** The figures on the beheer start page. */

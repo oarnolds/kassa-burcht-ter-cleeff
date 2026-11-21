@@ -7,7 +7,12 @@ import { calls, mockApi, mockLoggedIn, renderAt, tap, user } from "../test-utils
 const device: Device = { id: "d1", name: "iPad kiosk", createdAt: "2026-07-01T08:00:00.000Z", lastSeenAt: "2026-07-30T10:00:00.000Z", revoked: false };
 const open = async (extra: Record<string, unknown> = {}) => {
   mockLoggedIn();
-  mockApi({ "/api/admin/devices": { devices: [device] }, "/api/admin/wipe-trial": { inUseSince: null }, ...extra });
+  mockApi({
+    "/api/admin/devices": { devices: [device] },
+    "/api/admin/wipe-trial": { inUseSince: null },
+    "/api/admin/backups": { available: true, latest: null, count: 0 },
+    ...extra,
+  });
   renderAt("/beheer/instellingen");
   await screen.findByText("iPad kiosk");
   await screen.findByRole("heading", { name: "Proefgegevens wissen" });
@@ -165,4 +170,47 @@ it("does not send a new password that is too short", async () => {
 it("links to the full download", async () => {
   await open();
   expect(screen.getByRole("link", { name: "Alles downloaden" })).toHaveAttribute("href", "/api/admin/export.json");
+});
+
+
+const copy = { key: "kassa-2026-07-27.json", at: "2026-07-27T03:00:05.000Z", sizeBytes: 1_250_000 };
+const backups = () => within(screen.getByRole("region", { name: "Reservekopie" }));
+const STALE = "De laatste kopie is ouder dan een week. Meld het aan de bouwer.";
+
+it("shows when the last weekly copy was made", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(new Date("2026-07-30T10:00:00.000Z"));
+  await open({ "/api/admin/backups": { available: true, latest: copy, count: 12 } });
+  expect(await backups().findByText("Laatste kopie: 27-07-2026 om 05:00")).toBeInTheDocument();
+  expect(backups().queryByText(STALE)).not.toBeInTheDocument();
+});
+
+it("warns when the weekly copy has stopped coming", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(new Date("2026-08-05T10:00:00.000Z"));
+  await open({ "/api/admin/backups": { available: true, latest: copy, count: 12 } });
+  expect(await backups().findByText(STALE)).toBeInTheDocument();
+});
+
+it("says so when no copy has been made yet, and makes one on request", async () => {
+  await open({ "POST /api/admin/backups": { available: true, latest: { ...copy, key: "kassa-2026-07-30.json", at: "2026-07-30T10:00:00.000Z" }, count: 1 } });
+  expect(await backups().findByText("Er is nog geen kopie gemaakt.")).toBeInTheDocument();
+  await user().click(backups().getByRole("button", { name: "Nu een kopie maken" }));
+  expect(await backups().findByText("Laatste kopie: 30-07-2026 om 12:00")).toBeInTheDocument();
+  expect(backups().getByText("Kopie gemaakt.")).toBeInTheDocument();
+  expect(calls("POST").map((call) => call.url)).toEqual(["/api/admin/backups"]);
+});
+
+it("says so when a copy could not be made", async () => {
+  await open({ "POST /api/admin/backups": [500, { error: "server" }] });
+  await user().click(backups().getByRole("button", { name: "Nu een kopie maken" }));
+  expect(await backups().findByText("Een kopie maken is niet gelukt. Probeer het later opnieuw.")).toBeInTheDocument();
+  expect(backups().getByText("Er is nog geen kopie gemaakt.")).toBeInTheDocument();
+});
+
+it("says so when the weekly copy is not switched on yet, and offers no button", async () => {
+  await open({ "/api/admin/backups": { available: false, latest: null, count: 0 } });
+  expect(await backups().findByText("De wekelijkse reservekopie staat nog niet aan: de opslag bij Cloudflare (R2) is nog niet ingeschakeld.")).toBeInTheDocument();
+  expect(backups().queryByRole("button", { name: "Nu een kopie maken" })).not.toBeInTheDocument();
+  expect(backups().queryByText("Er is nog geen kopie gemaakt.")).not.toBeInTheDocument();
 });

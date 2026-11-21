@@ -68,6 +68,16 @@ export type MonthReport = {
   byProduct: ProductRow[];
 };
 
+/** A week from Monday to Sunday, as the kassa shows it. Only days with sales are listed. */
+export type WeekReport = {
+  first: string;
+  last: string;
+  totals: Totals;
+  days: ({ date: string } & Totals)[];
+  byCategory: CategoryRow[];
+  byProduct: ProductRow[];
+};
+
 export type Summary = {
   today: { date: string } & Totals;
   month: { month: string } & Totals;
@@ -123,3 +133,6 @@ export type AdminSale = {
 };
 
 export type Device = { id: string; name: string; createdAt: string; lastSeenAt: string | null; revoked: boolean };
+
+/** The weekly copies in the backup bucket, as beheer sees them. Not `available` while the bucket is not switched on. */
+export type BackupState = { available: boolean; latest: { key: string; at: string; sizeBytes: number } | null; count: number };

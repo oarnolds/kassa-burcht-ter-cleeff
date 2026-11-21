@@ -37,18 +37,8 @@ it("removes a whole line", () => {
   expect(run({ type: "add", product: ijs, qty: 5 }, { type: "remove", productId: "aardbeitje" })).toEqual(emptyCart);
 });
 
-it("clears and restores", () => {
-  const full = run({ type: "add", product: ijs });
-  expect(cartReducer(cartReducer(full, { type: "clear" }), { type: "restore", cart: full })).toEqual(full);
-});
-
-it("keeps what was tapped after clearing when the cleared receipt is restored", () => {
-  const cleared = run({ type: "add", product: ijs, qty: 2 });
-  const since = run({ type: "add", product: stat, qty: 3 }, { type: "add", product: ijs });
-  expect(cartReducer(since, { type: "restore", cart: cleared }).lines).toEqual([
-    { productId: "aardbeitje", name: "Aardbeitje", unitPriceCents: 110, qty: 3 },
-    { productId: "statiegeld", name: "Statiegeld", unitPriceCents: 15, qty: 3 },
-  ]);
+it("clears the receipt", () => {
+  expect(run({ type: "add", product: ijs }, { type: "add", product: stat, qty: 3 }, { type: "clear" })).toEqual(emptyCart);
 });
 
 it("ignores adding nothing", () => {

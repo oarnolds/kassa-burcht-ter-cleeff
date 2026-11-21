@@ -1,4 +1,4 @@
-import { act, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { cashSaleInput } from "../../shared/schemas";
@@ -110,22 +110,16 @@ it("corrects the receipt", async () => {
   expect(screen.getByText("Tik op een product om te beginnen.")).toBeInTheDocument();
 });
 
-it("clears at once and can undo for five seconds", async () => {
-  vi.useFakeTimers({ shouldAdvanceTime: true });
+it("clears the receipt at once, without a message or a way back", async () => {
   render(<KassaScreen catalog={catalog} onSale={vi.fn()} />);
   expect(screen.getByRole("button", { name: "Wis alles" })).toBeDisabled();
   await tap(/Koffie/);
   await tap("Wis alles");
-  expect(screen.getByText("Bon gewist")).toBeInTheDocument();
   expect(total()).toHaveTextContent("€ 0,00");
-  await tap("Ongedaan maken");
-  expect(total()).toHaveTextContent("€ 1,40");
-  await tap("Wis alles");
-  act(() => {
-    vi.advanceTimersByTime(5000);
-  });
-  expect(screen.queryByText("Ongedaan maken")).not.toBeInTheDocument();
-  expect(total()).toHaveTextContent("€ 0,00");
+  expect(screen.getByText("Tik op een product om te beginnen.")).toBeInTheDocument();
+  // The penningmeester found "Bon gewist · Ongedaan maken" confusing for the beheerder: nothing pops up.
+  expect(screen.queryByText("Bon gewist")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Ongedaan maken" })).not.toBeInTheDocument();
 });
 
 it("enters statiegeld with the number pad", async () => {

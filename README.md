@@ -39,7 +39,7 @@ De iPad blijft gekoppeld tot de penningmeester hem in beheer ontkoppelt. De kass
 **Corrigeren.**
 - **−** en **+** op een bonregel: een stuk minder of meer.
 - **Verwijder**: de hele regel weg.
-- **Wis alles**: de bon leeg. Vijf seconden lang kun je dat terughalen met **Ongedaan maken**.
+- **Wis alles**: de bon is meteen leeg. Terughalen kan niet; tik de producten opnieuw aan.
 
 **Contant.** Tik op **Contant**. Betaalt de klant gepast, tik dan op **Gepast** en de verkoop is klaar. Geeft de klant een biljet, tik dan op dat biljet: de kassa toont het wisselgeld. Tik op **Klaar** als je het hebt teruggegeven.
 
@@ -48,6 +48,8 @@ De iPad blijft gekoppeld tot de penningmeester hem in beheer ontkoppelt. De kass
 **Verkeerd aangeslagen en al afgerekend.** Op de kassa kun je een afgerekende verkoop niet terugdraaien: één verkeerde tik zou een goede verkoop ongedaan maken. Geef de klant zo nodig het geld terug, schrijf de tijd en het bedrag op en meld het dezelfde dag aan de penningmeester. Die draait de verkoop terug in beheer onder **Verkopen**. Dat kan alleen vóór de volgende afdracht; daarna blijft het een kasverschil met een toelichting.
 
 **Levering van ijsjes.** Staat er boven in beeld een gele balk **Levering onderweg**, dan heeft de penningmeester een bestelling ingevoerd. Staan de dozen in de vriezer? Tik op de balk, kijk of het klopt en tik op **Ontvangen**. De voorraad wordt bijgewerkt. Klopt de levering niet, bevestig dan toch en geef de afwijking door aan de penningmeester.
+
+**Omzet bekijken.** Tik rechtsonder op **Omzet**. Je ziet de omzet van vandaag: het totaal, contant en pin, en wat er per categorie en per product is verkocht. Met **Week** zie je de week van maandag tot en met zondag, met een regel per dag; tik op een datum om die dag te openen. Met de pijltjes ga je een dag of een week terug. Het is alleen om te bekijken: downloaden kan alleen de penningmeester in beheer. Verkopen die nog op verzending wachten tellen pas mee als ze verstuurd zijn; dat staat er dan bij. Zonder internet is de omzet niet te zien. Tik op **Sluiten** om terug te gaan; de bon blijft staan.
 
 **Voorraad op de tegel.** "nog 5" betekent dat die smaak bijna op is, "op?" dat hij volgens de kassa op is. De tegel blijft altijd werken: wat in de vriezer ligt is leidend.
 
@@ -67,7 +69,8 @@ Alles staat onder `/beheer`. Het werkt op de computer en op de telefoon.
   - *Bestelling invoeren*: wat je bij Goodoo hebt besteld, in dozen (losse stuks kan ook). De beheerder ziet dan op de iPad de balk "Levering onderweg".
   - *Onderweg*: bestellingen die nog niet zijn bevestigd. Je kunt ze zelf als ontvangen markeren of laten vervallen.
 - **Producten.** Naam, prijs, categorie en volgorde van de tegels (de pijltjes). Een product verberg je in plaats van het te verwijderen, omdat oude verkopen ernaar verwijzen. Hier zet je ook aan of een product een cijferblok opent en of de voorraad wordt bijgehouden. Onderaan staan de categorieën met hun kleur. Een wijziging staat binnen een halve minuut op de kassa.
-- **Instellingen.** Een iPad koppelen of ontkoppelen, het wachtwoord wijzigen, alles downloaden als één bestand (reservekopie), en de proefgegevens wissen zolang de kassa nog niet in gebruik is.
+- **Instellingen.** Een iPad koppelen of ontkoppelen, het wachtwoord wijzigen, alles downloaden als één bestand, de reservekopie, en de proefgegevens wissen zolang de kassa nog niet in gebruik is.
+- **Reservekopie.** Elke maandagnacht bewaart de kassa zelf een kopie van alles bij Cloudflare; de 26 nieuwste blijven staan. Onder **Instellingen** staat wanneer de laatste kopie is gemaakt. Staat daar dat de laatste kopie ouder is dan een week, meld dat dan aan de bouwer. Met **Nu een kopie maken** maak je er zelf een, bijvoorbeeld vlak voor het wissen van de proefgegevens.
 
 **Tijdens de proef** kun je de proefgegevens zo vaak wissen als je wilt: **Instellingen → Proefgegevens wissen**. Verkopen, afdrachten, bestellingen en voorraadmutaties verdwijnen; producten, prijzen en de koppeling met de iPad blijven.
 
@@ -93,7 +96,7 @@ Vanaf dat moment staat bij Instellingen sinds wanneer de kassa in gebruik is en 
 
 **Wachtwoord kwijt.** Er is geen "wachtwoord vergeten". De bouwer kan het wachtwoord wissen (zie hieronder); daarna stel je het opnieuw in met de instelcode.
 
-**Er is iets verkeerd gewist of gewijzigd.** De database kan worden teruggezet naar een eerder moment, tot 7 dagen terug (D1 Time Travel van Cloudflare). Dat doet de bouwer. Download daarnaast af en toe **Alles downloaden** als eigen reservekopie, in elk geval na elke maandafsluiting.
+**Er is iets verkeerd gewist of gewijzigd.** De database kan worden teruggezet naar een eerder moment, tot 7 dagen terug (D1 Time Travel van Cloudflare). Is het langer geleden, dan is er de wekelijkse reservekopie: tot een half jaar terug, per week. Beide doet de bouwer. Download daarnaast af en toe **Alles downloaden** als eigen kopie buiten Cloudflare, in elk geval na elke maandafsluiting.
 
 ## Voor de bouwer
 
@@ -146,6 +149,20 @@ Database terugzetten naar een eerder moment (tijd in UTC):
 ```bash
 npx wrangler d1 time-travel restore kassa --timestamp=2026-07-31T16:00:00Z
 ```
+
+De wekelijkse reservekopie staat in de R2-bucket `kassa-backups` als `kassa-JJJJ-MM-DD.json` (zelfde vorm als "Alles downloaden"). De Worker schrijft hem elke maandag om 03:00 UTC (`triggers.crons` in `wrangler.jsonc`, code in `worker/backup.ts`) en bewaart de 26 nieuwste. Dit staat aan sinds 21 november 2026: R2 is ingeschakeld in het Cloudflare-account, de bucket bestaat en de twee regels `r2_buckets` en `triggers` staan in `wrangler.jsonc`. Zonder die twee regels draait de kassa gewoon door en meldt beheer dat de wekelijkse kopie niet aanstaat. In een nieuw Cloudflare-account moet R2 eerst in het dashboard worden ingeschakeld (dat vraagt een betaalmethode); daarna wordt de bucket één keer aangemaakt met:
+
+```bash
+npx wrangler r2 bucket create kassa-backups
+```
+
+Een kopie ophalen:
+
+```bash
+npx wrangler r2 object get kassa-backups/kassa-2026-11-23.json --remote --file kassa-2026-11-23.json
+```
+
+Terugzetten uit zo'n bestand is handwerk: er is geen knop voor. De kopie is één bestand met alles en groeit mee met de geschiedenis. Gemeten: 20.000 verkopen (100.000 rijen) geven ongeveer 22 MB en vragen meer rekentijd dan de 10 ms die het gratis abonnement per aanroep noemt. Wordt de kopie daardoor ooit afgebroken, dan staat in beheer dat de laatste kopie ouder is dan een week; de uitweg is het betaalde Workers-abonnement of de kopie per jaar opsplitsen.
 
 Wachtwoord van beheer wissen, waarna `/beheer` opnieuw om de instelcode vraagt:
 

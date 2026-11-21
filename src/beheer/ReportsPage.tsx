@@ -1,9 +1,9 @@
 import { Link, useSearchParams } from "react-router";
-import { formatEuro } from "../../shared/money";
 import { formatDateNl, monthOf } from "../../shared/time";
 import type { DayReport, MonthReport } from "../../shared/types";
 import { Button } from "../ui/Button";
-import { Card, Loaded, PageTitle, Section, TotalsBlock, amount, amountHead, cell, field, head, pillLink, table, tableScroll, textLink, today } from "./parts";
+import { Breakdowns, DaysTable } from "../reports/ReportTables";
+import { Card, Loaded, PageTitle, TotalsBlock, field, pillLink, textLink, today } from "./parts";
 import { useAdminData } from "./useAdmin";
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -14,68 +14,6 @@ const monthName = new Intl.DateTimeFormat("nl-NL", { month: "long", year: "numer
 function shiftMonth(month: string, by: number): string {
   const [year, number] = month.split("-").map(Number);
   return new Date(Date.UTC(year!, number! - 1 + by, 1)).toISOString().slice(0, 7);
-}
-
-// On a phone five columns do not fit: the number of sales per day gives way.
-const wideOnly = "hidden sm:table-cell";
-
-type Row = { key: string; name: string; qty: number; cashCents: number; pinCents: number; totalCents: number };
-
-function TableSection({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
-  return (
-    <Section title={title} note={note}>
-      <div className={tableScroll}>{children}</div>
-    </Section>
-  );
-}
-
-/** Sales split by category or by product: how many, and how much in contant and in pin. */
-function Breakdown({ title, first, rows }: { title: string; first: string; rows: Row[] }) {
-  const sum = (pick: (row: Row) => number) => rows.reduce((total, row) => total + pick(row), 0);
-  return (
-    <TableSection title={title}>
-      <table className={table}>
-        <thead>
-          <tr className="border-b-2 border-sand">
-            <th className={head}>{first}</th>
-            <th className={amountHead}>Aantal</th>
-            <th className={amountHead}>Contant</th>
-            <th className={amountHead}>Pin</th>
-            <th className={amountHead}>Totaal</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.key} className="border-b border-sand">
-              <td className={cell}>{row.name}</td>
-              <td className={amount}>{row.qty}</td>
-              <td className={amount}>{formatEuro(row.cashCents)}</td>
-              <td className={amount}>{formatEuro(row.pinCents)}</td>
-              <td className={amount}>{formatEuro(row.totalCents)}</td>
-            </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr className="font-bold">
-            <td className={cell}>Samen</td>
-            <td className={amount}>{sum((row) => row.qty)}</td>
-            <td className={amount}>{formatEuro(sum((row) => row.cashCents))}</td>
-            <td className={amount}>{formatEuro(sum((row) => row.pinCents))}</td>
-            <td className={amount}>{formatEuro(sum((row) => row.totalCents))}</td>
-          </tr>
-        </tfoot>
-      </table>
-    </TableSection>
-  );
-}
-
-function Breakdowns({ report }: { report: Pick<DayReport, "byCategory" | "byProduct"> }) {
-  return (
-    <>
-      <Breakdown title="Per categorie" first="Categorie" rows={report.byCategory.map((row) => ({ ...row, key: row.categoryId, name: row.categoryName }))} />
-      <Breakdown title="Per product" first="Product" rows={report.byProduct.map((row) => ({ ...row, key: row.productId }))} />
-    </>
-  );
 }
 
 function MonthView({ month }: { month: string }) {
@@ -120,43 +58,17 @@ function MonthView({ month }: { month: string }) {
               <p className="mt-6 text-lg text-ink/70">Geen verkopen in deze maand.</p>
             ) : (
               <>
-                <TableSection title="Per dag" note="Leg de kolom Pin naast de uitbetalingen van Mollie.">
-                  <table className={table}>
-                    <thead>
-                      <tr className="border-b-2 border-sand">
-                        <th className={head}>Datum</th>
-                        <th className={amountHead}>Contant</th>
-                        <th className={amountHead}>Pin</th>
-                        <th className={amountHead}>Totaal</th>
-                        <th className={`${amountHead} ${wideOnly}`}>Verkopen</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {r.days.map((day) => (
-                        <tr key={day.date} className="border-b border-sand">
-                          <td className={`${cell} whitespace-nowrap`}>
-                            <Link className={textLink} to={`/beheer/rapporten?dag=${day.date}`}>
-                              {formatDateNl(day.date)}
-                            </Link>
-                          </td>
-                          <td className={amount}>{formatEuro(day.cashCents)}</td>
-                          <td className={amount}>{formatEuro(day.pinCents)}</td>
-                          <td className={amount}>{formatEuro(day.totalCents)}</td>
-                          <td className={`${amount} ${wideOnly}`}>{day.saleCount}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="font-bold">
-                        <td className={cell}>Hele maand</td>
-                        <td className={amount}>{formatEuro(r.totals.cashCents)}</td>
-                        <td className={amount}>{formatEuro(r.totals.pinCents)}</td>
-                        <td className={amount}>{formatEuro(r.totals.totalCents)}</td>
-                        <td className={`${amount} ${wideOnly}`}>{r.totals.saleCount}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </TableSection>
+                <DaysTable
+                  days={r.days}
+                  totals={r.totals}
+                  totalLabel="Hele maand"
+                  note="Leg de kolom Pin naast de uitbetalingen van Mollie."
+                  dateCell={(date, label) => (
+                    <Link className={textLink} to={`/beheer/rapporten?dag=${date}`}>
+                      {label}
+                    </Link>
+                  )}
+                />
                 <Breakdowns report={r} />
               </>
             )}

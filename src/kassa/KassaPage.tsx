@@ -7,6 +7,7 @@ import { Logo } from "../ui/Logo";
 import { useToast } from "../ui/Toast";
 import { DeliveryBar } from "./DeliveryBar";
 import { KassaScreen } from "./KassaScreen";
+import { RevenuePanel } from "./RevenuePanel";
 import { StatusBadge } from "./StatusBadge";
 import { stockLabel } from "./stock-label";
 import { loadCatalog, noteSold, soldSinceFetch } from "./store/catalog";
@@ -21,6 +22,7 @@ export function KassaPage() {
   const [sync, setSync] = useState<SyncState>({ online: navigator.onLine, pending: 0, rejected: 0, paired: true });
   // Pieces sold per product since the catalog was fetched: the stock on the tiles is the server's minus these.
   const [sold, setSold] = useState<Record<string, number>>({});
+  const [showRevenue, setShowRevenue] = useState(false);
   const kick = useRef<() => void>(() => {});
   const toast = useToast();
 
@@ -112,8 +114,16 @@ export function KassaPage() {
       tileNote={tileNote}
       header={<DeliveryBar orders={catalog.openOrders} online={sync.online && sync.paired} onReceive={receive} />}
       footer={
-        <footer className="flex min-h-14 shrink-0 items-center border-t-2 border-sand bg-white px-4 py-1">
+        <footer className="flex min-h-14 shrink-0 items-center justify-between gap-4 border-t-2 border-sand bg-white px-4 py-1">
           <StatusBadge state={sync} onRejectedChange={() => kick.current()} />
+          <button
+            type="button"
+            className="min-h-11 shrink-0 rounded-full border-2 border-green bg-white px-5 font-bold text-green-dark active:bg-sand"
+            onClick={() => setShowRevenue(true)}
+          >
+            Omzet
+          </button>
+          {showRevenue && <RevenuePanel pending={sync.pending} onClose={() => setShowRevenue(false)} />}
         </footer>
       }
     />

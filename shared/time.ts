@@ -42,6 +42,20 @@ export function monthRange(month: string): { first: string; last: string } {
   return { first: `${month}-01`, last: `${month}-${String(lastDay).padStart(2, "0")}` };
 }
 
+/** A `YYYY-MM-DD` date moved by a number of days. */
+export function shiftDate(date: string, days: number): string {
+  const moment = new Date(`${date}T00:00:00.000Z`);
+  moment.setUTCDate(moment.getUTCDate() + days);
+  return moment.toISOString().slice(0, 10);
+}
+
+/** The Monday and the Sunday of the week a `YYYY-MM-DD` date falls in. */
+export function weekRange(date: string): { first: string; last: string } {
+  const sinceMonday = (new Date(`${date}T00:00:00.000Z`).getUTCDay() + 6) % 7;
+  const first = shiftDate(date, -sinceMonday);
+  return { first, last: shiftDate(first, 6) };
+}
+
 /** `DD-MM-YYYY` of a `YYYY-MM-DD` date. */
 export function formatDateNl(date: string): string {
   const [year, month, day] = date.split("-");

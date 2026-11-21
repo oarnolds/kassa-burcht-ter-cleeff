@@ -1,9 +1,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { getCatalog } from "../db/products";
+import { dayReport, weekReport } from "../db/reports";
 import { ingestItems } from "../db/sales";
 import { StockError, receiveOrder } from "../db/stock";
 import type { AppEnv } from "../env";
+import { parseDate } from "../lib/params";
 
 /** Routes for the paired iPad. Mounted behind `requireDevice`. */
 export const kassa = new Hono<AppEnv>();
@@ -30,4 +32,18 @@ kassa.post("/orders/:id/receive", async (c) => {
     throw error;
   }
   return c.json({ ok: true });
+});
+
+// The beheerder may look at the revenue of a day and of a week on the iPad: the figures of beheer's
+// Rapporten, without the downloads. Those stay with the penningmeester.
+kassa.get("/reports/day", async (c) => {
+  const date = parseDate(c.req.query("date"));
+  if (!date) return c.json({ error: "invalid" }, 400);
+  return c.json(await dayReport(c.env.DB, date));
+});
+
+kassa.get("/reports/week", async (c) => {
+  const date = parseDate(c.req.query("date"));
+  if (!date) return c.json({ error: "invalid" }, 400);
+  return c.json(await weekReport(c.env.DB, date));
 });
