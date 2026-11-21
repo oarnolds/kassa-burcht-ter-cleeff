@@ -28,10 +28,22 @@ async function fakeFetch(input: RequestInfo | URL, init: RequestInit = {}): Prom
   const body = typeof init.body === "string" ? JSON.parse(init.body) : null;
   seen.push({ method, url: url.pathname + url.search, body });
   if (offline) throw new TypeError("Load failed");
-  const route = routes[`${method} ${url.pathname}`] ?? routes[url.pathname];
+  const route = routeFor(method, url.pathname);
   if (route === undefined) return Response.json({ error: "not_found" }, { status: 404 });
   const reply = typeof route === "function" ? (route as (req: Request) => Reply)({ method, url: url.pathname + url.search, body }) : route;
   return isPair(reply) ? Response.json(reply[1], { status: reply[0] }) : Response.json(reply);
+}
+
+/** The route for a request: its exact path first, then the nearest key ending in `/*` above it. */
+function routeFor(method: string, pathname: string): Route | undefined {
+  const exact = routes[`${method} ${pathname}`] ?? routes[pathname];
+  if (exact !== undefined) return exact;
+  for (let cut = pathname.lastIndexOf("/"); cut > 0; cut = pathname.lastIndexOf("/", cut - 1)) {
+    const under = `${pathname.slice(0, cut)}/*`;
+    const route = routes[`${method} ${under}`] ?? routes[under];
+    if (route !== undefined) return route;
+  }
+  return undefined;
 }
 
 function install(): void {
@@ -40,8 +52,9 @@ function install(): void {
 
 /**
  * Stubs the server. A key is a pathname, optionally with a method in front (`"POST /api/pair"`); a key with
- * a method wins. A value is a JSON body (answered with 200), a pair `[status, body]`, or a function of the
- * request returning either. A later call adds to the earlier routes. Anything else answers 404.
+ * a method wins. A key ending in `/*` answers every path below it, unless that path has a key of its own.
+ * A value is a JSON body (answered with 200), a pair `[status, body]`, or a function of the request
+ * returning either. A later call adds to the earlier routes. Anything else answers 404.
  */
 export function mockApi(more: Record<string, Route>): void {
   routes = { ...routes, ...more };
