@@ -5,6 +5,7 @@ import { dayReport, weekReport } from "../db/reports";
 import { ingestItems } from "../db/sales";
 import { StockError, receiveOrder } from "../db/stock";
 import type { AppEnv } from "../env";
+import { mollieFor } from "../lib/mollie";
 import { parseDate } from "../lib/params";
 
 /** Routes for the paired iPad. Mounted behind `requireDevice`. */
@@ -12,7 +13,7 @@ export const kassa = new Hono<AppEnv>();
 
 kassa.get("/ping", (c) => c.json({ ok: true }));
 
-kassa.get("/catalog", async (c) => c.json(await getCatalog(c.env.DB, new Date())));
+kassa.get("/catalog", async (c) => c.json(await getCatalog(c.env.DB, new Date(), mollieFor(c.env)?.mode ?? null)));
 
 // The iPad's outbox sends at most fifty items at a time.
 const salesBody = z.object({ items: z.array(z.unknown()).min(1).max(50) });

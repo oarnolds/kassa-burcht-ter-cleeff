@@ -36,7 +36,7 @@ async function rowsRead(): Promise<Record<string, number>> {
   await ingestItems(env.DB, deviceId, [sale], now());
   const order = await createOrder(env.DB, { note: null, lines: [{ productId: "aardbeitje", boxes: 0, looseUnits: 6 }] }, now());
   const work: Record<string, (db: D1Database) => Promise<unknown>> = {
-    "the catalog": (db) => getCatalog(db, now()),
+    "the catalog": (db) => getCatalog(db, now(), "test"),
     "a sale": (db) => ingestItems(db, deviceId, [cashSale()], now()),
     "a reversal": (db) => ingestItems(db, deviceId, [{ id: crypto.randomUUID(), kind: "reversal", soldAt: now().toISOString(), reversesSaleId: sale.id }], now()),
     "a delivery": (db) => receiveOrder(db, order.id, "device", now()),

@@ -23,7 +23,7 @@ export type OpenOrder = {
   lines: { productId: string; name: string; boxes: number; looseUnits: number; units: number }[];
 };
 
-export type Catalog = { fetchedAt: string; categories: Category[]; products: CatalogProduct[]; openOrders: OpenOrder[] };
+export type Catalog = { fetchedAt: string; categories: Category[]; products: CatalogProduct[]; openOrders: OpenOrder[]; pin: PinState };
 
 export type RejectReason =
   | "invalid"
@@ -145,3 +145,14 @@ export type PinOutcome = "paid" | "declined" | "canceled" | "expired" | "start_f
 
 /** A payment terminal as Mollie lists it. */
 export type PinTerminal = { id: string; description: string; status: string; brand: string | null; model: string | null; serialNumber: string | null };
+
+/** What the kassa needs to know about pin: `mode` null means there is no Mollie key; `ready` means a terminal is chosen for this key. */
+export type PinState = { mode: PinMode | null; ready: boolean };
+
+/** Beheer's view of pin: the key's mode, the chosen terminal and Mollie's own list, or why that list is missing. */
+export type PinSettings = {
+  mode: PinMode | null;
+  terminalId: string | null;
+  terminals: PinTerminal[];
+  problem: "no_key" | "unauthorized" | "unreachable" | null;
+};

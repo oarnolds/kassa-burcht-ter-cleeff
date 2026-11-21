@@ -116,6 +116,7 @@ export const catalog: Catalog = {
     { id: "statiegeld", name: "Statiegeld", priceCents: 15, categoryId: "statiegeld", sort: 22, quantityPad: true, trackStock: false, stock: null, reorderAt: null },
   ],
   openOrders: [],
+  pin: { mode: "live", ready: true },
 };
 
 /** Removes the kassa's database on this "iPad". */

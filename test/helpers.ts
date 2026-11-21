@@ -179,3 +179,10 @@ export function meteredDb(db: D1Database): { db: D1Database; calls: () => number
   });
   return { db: metered, calls: () => calls, rowsRead: () => rowsRead };
 }
+
+/** Chooses the fake Mollie's test terminal in beheer, so that pin is ready. Needs `useFakeMollie` in the test file. */
+export async function chooseTestTerminal(): Promise<void> {
+  const { cookie } = await asAdmin();
+  const answer = await api("/api/admin/pin/terminal", { method: "POST", cookie, json: { terminalId: "term_test" } });
+  if (answer.status !== 200) throw new Error(`choosing the terminal answered ${answer.status}`);
+}

@@ -1,4 +1,5 @@
-import type { AdminProduct, Catalog, CatalogProduct, Category } from "../../shared/types";
+import type { AdminProduct, Catalog, CatalogProduct, Category, PinMode } from "../../shared/types";
+import { chosenFrom, terminalChoiceQuery } from "./pin-settings";
 import { orderQueries, toOpenOrder, toOrders, type OrderLineRow, type OrderRow } from "./stock";
 
 export type DbProduct = {
@@ -50,12 +51,13 @@ export function toAdminProduct(row: DbProduct): AdminProduct {
   };
 }
 
-/** What the kassa shows: the active products with their stock, and the deliveries that are on their way. */
-export async function getCatalog(db: D1Database, now: Date): Promise<Catalog> {
+/** What the kassa shows: the active products with their stock, the deliveries that are on their way, and whether pin can be used. */
+export async function getCatalog(db: D1Database, now: Date, pinMode: PinMode | null): Promise<Catalog> {
   // One round trip that reads a fixed number of rows: the iPad asks for this twice a minute.
-  const [categories, rows, orders, orderLines] = await db.batch([
+  const [categories, rows, terminal, orders, orderLines] = await db.batch([
     db.prepare(CATEGORY_SELECT),
     db.prepare(`${PRODUCT_SELECT_WITH_STOCK} WHERE p.active = 1 ${PRODUCT_ORDER}`),
+    terminalChoiceQuery(db),
     ...orderQueries(db, "open"),
   ]);
   const products: CatalogProduct[] = (rows!.results as (DbProduct & { stock: number })[]).map((row) => ({
@@ -74,6 +76,8 @@ export async function getCatalog(db: D1Database, now: Date): Promise<Catalog> {
     categories: categories!.results as Category[],
     products,
     openOrders: toOrders(orders!.results as OrderRow[], orderLines!.results as OrderLineRow[]).map(toOpenOrder),
+    // Pin is ready when there is a Mollie key and a terminal was chosen with a key of the same kind.
+    pin: { mode: pinMode, ready: pinMode !== null && chosenFrom(terminal!.results as { key: string; value: string }[], pinMode) !== null },
   };
 }
 
