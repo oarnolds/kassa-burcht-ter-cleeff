@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { CashError, reverseSaleAsAdmin } from "../db/cash";
-import { listSales } from "../db/reports";
+import { refreshPending } from "../db/pin";
+import { listPinAttempts, listSales } from "../db/reports";
 import type { AppEnv } from "../env";
+import { mollieFor } from "../lib/mollie";
 import { parseDate } from "../lib/params";
 
 const reverseBody = z.object({ reason: z.string().max(200) });
@@ -13,7 +15,11 @@ export const adminSales = new Hono<AppEnv>();
 adminSales.get("/sales", async (c) => {
   const date = parseDate(c.req.query("date"));
   if (!date) return c.json({ error: "invalid" }, 400);
-  return c.json({ sales: await listSales(c.env.DB, date) });
+  const db = c.env.DB;
+  // A payment that was still waiting when the iPad was put away is settled when the penningmeester opens its day.
+  await refreshPending({ db, mollie: mollieFor(c.env), origin: new URL(c.req.url).origin, now: new Date() }, date, 5);
+  const [sales, pinAttempts] = await Promise.all([listSales(db, date), listPinAttempts(db, date)]);
+  return c.json({ sales, pinAttempts });
 });
 
 adminSales.post("/sales/:id/reverse", async (c) => {

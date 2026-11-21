@@ -16,6 +16,8 @@ export const cashSaleInput = z.object({
   totalCents: z.number().int().min(1).max(100000000),
   cashGivenCents: z.number().int().min(0).nullable(),
   lines: z.array(saleLineInput).min(1).max(100),
+  // The pin attempt of the same receipt that had not gone through when the beheerder took cash.
+  insteadOfSaleId: z.uuid().nullable().optional(),
 });
 
 // What the kassa sends to start a pin payment. Mollie takes at most € 10.000 on a terminal.

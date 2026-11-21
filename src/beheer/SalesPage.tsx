@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
 import { formatEuro } from "../../shared/money";
-import type { AdminSale } from "../../shared/types";
+import type { AdminPinAttempt, AdminSale } from "../../shared/types";
 import type { ApiResult } from "../lib/api";
 import { Button } from "../ui/Button";
 import { Dialog } from "../ui/Dialog";
@@ -124,7 +124,7 @@ export function SalesPage() {
   const [params, setParams] = useSearchParams();
   const asked = params.get("datum");
   const date = asked && DATE.test(asked) ? asked : today();
-  const list = useAdminData<{ sales: AdminSale[] }>(`/api/admin/sales?date=${date}`);
+  const list = useAdminData<{ sales: AdminSale[]; pinAttempts: AdminPinAttempt[] }>(`/api/admin/sales?date=${date}`);
   const [reversing, setReversing] = useState<AdminSale | null>(null);
   const toast = useToast();
 

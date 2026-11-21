@@ -185,8 +185,11 @@ export async function startPin(ctx: PinContext, deviceId: string, input: PinSale
   return sendStart(ctx, mollie, sale, terminalId);
 }
 
-/** Where a pin sale stands, after asking Mollie when it is still running. */
-async function follow(ctx: PinContext, sale: SaleRow): Promise<PinStatus> {
+/**
+ * Where a pin sale stands, after asking Mollie when it is still running. Only the kassa that is waiting
+ * for the payment sends an unanswered start again (`resend`): from another address it would be another request.
+ */
+async function follow(ctx: PinContext, sale: SaleRow, resend = true): Promise<PinStatus> {
   const { db, now } = ctx;
   if (sale.status !== "pending") return statusOf(sale);
   const mollie = mollieOf(ctx, sale);
@@ -199,7 +202,7 @@ async function follow(ctx: PinContext, sale: SaleRow): Promise<PinStatus> {
   }
   const age = now.getTime() - Date.parse(sale.received_at);
   if (age > GIVE_UP_MS) return statusOf(await endWithoutPayment(db, sale, "start_failed", "no_answer", now));
-  if (age < RESEND_MS && mollie) {
+  if (resend && age < RESEND_MS && mollie) {
     const terminalId = await chosenTerminal(db, mollie.mode);
     if (terminalId) return sendStart(ctx, mollie, sale, terminalId);
   }
@@ -232,6 +235,18 @@ export async function cancelPin(ctx: PinContext, saleId: string): Promise<PinSta
   }
   // Mollie would not cancel: the payment may be running still, or may just have gone through. Say which.
   return follow(ctx, sale);
+}
+
+/**
+ * Asks Mollie about the pin sales of one day that are still waiting, the longest-waiting first and at most
+ * `limit` of them, all at the same time. Beheer calls this when the penningmeester opens the day.
+ */
+export async function refreshPending(ctx: PinContext, date: string, limit: number): Promise<void> {
+  const { results } = await ctx.db
+    .prepare("SELECT * FROM sales WHERE method = 'pin' AND status = 'pending' AND business_date = ?1 ORDER BY sold_at, id LIMIT ?2")
+    .bind(date, limit)
+    .all<SaleRow>();
+  await Promise.all(results.map((sale) => follow(ctx, sale, false)));
 }
 
 const saleIdShape = z.uuid();

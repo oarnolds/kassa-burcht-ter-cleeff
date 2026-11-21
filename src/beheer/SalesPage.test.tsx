@@ -16,6 +16,7 @@ const sale = (o: Partial<AdminSale> = {}): AdminSale => ({
   reversed: false,
   reversesSaleId: null,
   reversalReason: null,
+  possiblyDouble: false,
   lines: [
     { name: "Aardbeitje", categoryName: "IJs", unitPriceCents: 110, qty: 2 },
     { name: "Koffie", categoryName: "Warme dranken", unitPriceCents: 140, qty: 1 },
@@ -25,7 +26,7 @@ const sale = (o: Partial<AdminSale> = {}): AdminSale => ({
 
 const openDialog = async (sales: AdminSale[], reverse: unknown = [201, { id: "r1" }]) => {
   mockLoggedIn();
-  mockApi({ "/api/admin/sales": { sales }, [`POST /api/admin/sales/${sales[0]!.id}/reverse`]: reverse });
+  mockApi({ "/api/admin/sales": { sales, pinAttempts: [] }, [`POST /api/admin/sales/${sales[0]!.id}/reverse`]: reverse });
   renderAt("/beheer/verkopen?datum=2026-07-30");
   await userEvent.click((await screen.findAllByRole("button", { name: "Terugdraaien" }))[0]!);
   return within(screen.getByRole("dialog"));
@@ -66,6 +67,7 @@ it("marks reversed, late and counter-entry sales, and offers a reversal only whe
   mockApi({
     "/api/admin/sales": {
       sales: [sale({ reversed: true }), sale({ late: true }), sale({ totalCents: -360, reversesSaleId: "x", reversalReason: "dubbel aangeslagen" })],
+      pinAttempts: [],
     },
   });
   renderAt("/beheer/verkopen?datum=2026-07-30");
@@ -83,7 +85,7 @@ it("warns that a pin refund happens at Mollie", async () => {
 
 it("shows each sale with its time, way of paying, lines and total", async () => {
   mockLoggedIn();
-  mockApi({ "/api/admin/sales": { sales: [sale(), sale({ method: "pin", totalCents: 140, soldAtLocal: "12:05", lines: [{ name: "Koffie", categoryName: "Warme dranken", unitPriceCents: 140, qty: 1 }] })] } });
+  mockApi({ "/api/admin/sales": { sales: [sale(), sale({ method: "pin", totalCents: 140, soldAtLocal: "12:05", lines: [{ name: "Koffie", categoryName: "Warme dranken", unitPriceCents: 140, qty: 1 }] })], pinAttempts: [] } });
   renderAt("/beheer/verkopen?datum=2026-07-30");
   const first = within((await screen.findAllByRole("article"))[0]!);
   expect(first.getByText("12:00")).toBeInTheDocument();
@@ -97,7 +99,7 @@ it("shows each sale with its time, way of paying, lines and total", async () => 
 it("opens on today and follows the date field", async () => {
   const today = businessDate(new Date().toISOString());
   mockLoggedIn();
-  mockApi({ "/api/admin/sales": { sales: [] } });
+  mockApi({ "/api/admin/sales": { sales: [], pinAttempts: [] } });
   renderAt("/beheer/verkopen");
   expect(await screen.findByText("Geen verkopen op deze dag.")).toBeInTheDocument();
   expect(calls("GET").some((c) => c.url === `/api/admin/sales?date=${today}`)).toBe(true);

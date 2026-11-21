@@ -9,6 +9,7 @@ const summary = {
   cashExpectedCents: 5660,
   reorderCount: 2,
   openOrderCount: 1,
+  pinAttention: [],
 };
 
 it("sends a fresh installation to setup", async () => {

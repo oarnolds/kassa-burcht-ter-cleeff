@@ -134,15 +134,16 @@ function saleStatements(
   soldAt: string,
   now: Date,
   products: Map<string, ProductInfo>,
+  insteadOf: string | null,
 ): D1PreparedStatement[] {
   const received = now.toISOString();
   const statements = [
     db
       .prepare(
-        `INSERT INTO sales (id, device_id, method, status, total_cents, cash_given_cents, sold_at, received_at, business_date, late)
-         VALUES (?1, ?2, 'cash', 'paid', ?3, ?4, ?5, ?6, ?7, ${LATE})`,
+        `INSERT INTO sales (id, device_id, method, status, total_cents, cash_given_cents, sold_at, received_at, business_date, late, instead_of_sale_id)
+         VALUES (?1, ?2, 'cash', 'paid', ?3, ?4, ?5, ?6, ?7, ${LATE}, ?8)`,
       )
-      .bind(item.id, deviceId, item.totalCents, item.cashGivenCents, soldAt, received, businessDate(soldAt)),
+      .bind(item.id, deviceId, item.totalCents, item.cashGivenCents, soldAt, received, businessDate(soldAt), insteadOf),
   ];
   for (const line of item.lines) {
     const product = products.get(line.productId)!;
@@ -191,8 +192,12 @@ function judgeSale(db: D1Database, deviceId: string, item: CashSaleInput, now: D
   // A product hidden in beheer still counts: the customer has already paid for it.
   if (item.lines.some((line) => !known.products.has(line.productId))) return { reject: "unknown_product" };
   const soldAt = storedSoldAt(item.soldAt, now);
+  // The kassa says which pin attempt this cash replaces. The link is kept only when the server knows that
+  // attempt; the cash sale counts either way: the money is in the cash box.
+  const attempt = item.insteadOfSaleId ? known.sales.get(item.insteadOfSaleId) : undefined;
+  const insteadOf = attempt?.method === "pin" && attempt.reverses_sale_id === null ? attempt.id : null;
   return {
-    statements: saleStatements(db, deviceId, item, soldAt, now, known.products),
+    statements: saleStatements(db, deviceId, item, soldAt, now, known.products, insteadOf),
     row: pendingRow(item.id, deviceId, item.totalCents, soldAt, now, null),
   };
 }
@@ -227,6 +232,7 @@ async function loadKnown(db: D1Database, items: OutboxItem[]): Promise<Known> {
   const ids = [...new Set(items.map((item) => item.id))];
   const targets = [...new Set(items.flatMap((item) => (item.kind === "reversal" ? [item.reversesSaleId] : [])))];
   const hasSales = items.some((item) => item.kind === "sale");
+  const replaced = [...new Set(items.flatMap((item) => (item.kind === "sale" && item.insteadOfSaleId ? [item.insteadOfSaleId] : [])))];
   const [products, existing, originals, reversals] = await Promise.all([
     hasSales
       ? productsQuery(db)
@@ -234,7 +240,7 @@ async function loadKnown(db: D1Database, items: OutboxItem[]): Promise<Known> {
           .then((result) => result.results)
       : [],
     loadSales(db, ids),
-    loadSales(db, targets),
+    loadSales(db, [...new Set([...targets, ...replaced])]),
     targets.length > 0
       ? db
           .prepare(`SELECT reverses_sale_id FROM sales WHERE reverses_sale_id IN (${targets.map(() => "?").join(", ")})`)

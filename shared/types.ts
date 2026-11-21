@@ -84,7 +84,11 @@ export type Summary = {
   cashExpectedCents: number;
   reorderCount: number;
   openOrderCount: number;
+  pinAttention: PinAttention[];
 };
+
+/** Something about pin the penningmeester should look at, with the day to open. */
+export type PinAttention = { kind: "pending" | "double"; date: string; totalCents: number };
 
 export type Handover = {
   id: string;
@@ -129,7 +133,19 @@ export type AdminSale = {
   reversed: boolean;
   reversesSaleId: string | null;
   reversalReason: string | null;
+  /** Cash was taken for a receipt whose pin payment went through after all; shown on both sales until one is reversed. */
+  possiblyDouble: boolean;
   lines: { name: string; categoryName: string; unitPriceCents: number; qty: number }[];
+};
+
+/** A pin payment that did not go through (`outcome`), or is still waiting for Mollie (`outcome` null). */
+export type AdminPinAttempt = {
+  id: string;
+  soldAtLocal: string;
+  totalCents: number;
+  outcome: Exclude<PinOutcome, "paid"> | null;
+  reason: string | null;
+  lines: AdminSale["lines"];
 };
 
 export type Device = { id: string; name: string; createdAt: string; lastSeenAt: string | null; revoked: boolean };

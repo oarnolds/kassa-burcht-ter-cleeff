@@ -1,10 +1,12 @@
 import { formatAmount } from "../../shared/money";
 import { businessDate, formatDateNl, localTime, monthOf, monthRange, weekRange } from "../../shared/time";
 import type {
+  AdminPinAttempt,
   AdminSale,
   CategoryRow,
   DayReport,
   MonthReport,
+  PinAttention,
   ProductRow,
   Summary,
   Totals,
@@ -136,13 +138,41 @@ export async function weekReport(db: D1Database, date: string): Promise<WeekRepo
   return { first, last, ...(await periodReport(db, first, last)) };
 }
 
+// A pin payment that still waits after this long is shown on the start page.
+const PENDING_ATTENTION_MS = 5 * 60_000;
+const ATTENTION_LIMIT = 5;
+
+type AttentionRow = { business_date: string; total_cents: number };
+
+function attention(kind: PinAttention["kind"], rows: AttentionRow[]): PinAttention[] {
+  return rows.map((row) => ({ kind, date: row.business_date, totalCents: row.total_cents }));
+}
+
 /** The figures on the beheer start page. */
 export async function summary(db: D1Database, now: Date): Promise<Summary> {
   const date = businessDate(now.toISOString());
   const month = monthOf(date);
   const { first, last } = monthRange(month);
-  const [[today, thisMonth], cash, stock, openOrders] = await Promise.all([
-    db.batch([totalsQuery(db, date, date), totalsQuery(db, first, last)]),
+  const [[today, thisMonth, waiting, doubles], cash, stock, openOrders] = await Promise.all([
+    db.batch([
+      totalsQuery(db, date, date),
+      totalsQuery(db, first, last),
+      // A pin payment normally ends within a minute or two. One that still waits after five was left behind.
+      db
+        .prepare(
+          `SELECT business_date, total_cents FROM sales
+           WHERE status = 'pending' AND method = 'pin' AND sold_at < ?1 ORDER BY sold_at, id LIMIT ${ATTENTION_LIMIT}`,
+        )
+        .bind(new Date(now.getTime() - PENDING_ATTENTION_MS).toISOString()),
+      // Cash was taken for a receipt whose pin payment went through after all, and neither has been reversed.
+      db.prepare(
+        `SELECT c.business_date, c.total_cents FROM sales c JOIN sales p ON p.id = c.instead_of_sale_id
+         WHERE c.instead_of_sale_id IS NOT NULL AND c.status = 'paid' AND p.status = 'paid'
+           AND NOT EXISTS (SELECT 1 FROM sales r WHERE r.reverses_sale_id = c.id)
+           AND NOT EXISTS (SELECT 1 FROM sales r WHERE r.reverses_sale_id = p.id)
+         ORDER BY c.sold_at, c.id LIMIT ${ATTENTION_LIMIT}`,
+      ),
+    ]),
     getCashState(db),
     listStock(db),
     listOrders(db, "open"),
@@ -153,7 +183,27 @@ export async function summary(db: D1Database, now: Date): Promise<Summary> {
     cashExpectedCents: cash.expectedCents,
     reorderCount: stock.filter((item) => item.belowReorder).length,
     openOrderCount: openOrders.length,
+    pinAttention: [...attention("pending", waiting!.results as AttentionRow[]), ...attention("double", doubles!.results as AttentionRow[])],
   };
+}
+
+const NOT_REVERSED = (sale: string) => `NOT EXISTS (SELECT 1 FROM sales r WHERE r.reverses_sale_id = ${sale}.id)`;
+
+// A receipt that may have been paid twice: as the cash sale that replaced a pin attempt which went through
+// after all, or as that pin sale. It stays marked until one of the two has been reversed.
+const POSSIBLY_DOUBLE = `(
+  ${NOT_REVERSED("s")} AND (
+    EXISTS (SELECT 1 FROM sales p WHERE p.id = s.instead_of_sale_id AND p.status = 'paid' AND ${NOT_REVERSED("p")})
+    OR EXISTS (SELECT 1 FROM sales c WHERE c.instead_of_sale_id = s.id AND c.status = 'paid' AND ${NOT_REVERSED("c")})
+  )
+)`;
+
+type LineRow = { sale_id: string; name: string; category_name: string; unit_price_cents: number; qty: number };
+
+function linesOf(rows: LineRow[], saleId: string): AdminSale["lines"] {
+  return rows
+    .filter((line) => line.sale_id === saleId)
+    .map((line) => ({ name: line.name, categoryName: line.category_name, unitPriceCents: line.unit_price_cents, qty: line.qty }));
 }
 
 /** Every sale and counter-entry of one day, in the order they were made. */
@@ -161,7 +211,7 @@ export async function listSales(db: D1Database, date: string): Promise<AdminSale
   const [sales, lines] = await db.batch([
     db
       .prepare(
-        `SELECT s.*, EXISTS (SELECT 1 FROM sales r WHERE r.reverses_sale_id = s.id) AS reversed
+        `SELECT s.*, EXISTS (SELECT 1 FROM sales r WHERE r.reverses_sale_id = s.id) AS reversed, ${POSSIBLY_DOUBLE} AS possibly_double
          FROM sales s WHERE ${IN_PERIOD} ORDER BY s.sold_at, s.id`,
       )
       .bind(date, date),
@@ -169,8 +219,8 @@ export async function listSales(db: D1Database, date: string): Promise<AdminSale
       .prepare(`SELECT l.sale_id, l.name, l.category_name, l.unit_price_cents, l.qty ${LINES_IN_PERIOD} ORDER BY l.id`)
       .bind(date, date),
   ]);
-  const lineRows = lines!.results as { sale_id: string; name: string; category_name: string; unit_price_cents: number; qty: number }[];
-  return (sales!.results as (SaleRow & { reversed: number })[]).map((sale) => ({
+  const lineRows = lines!.results as LineRow[];
+  return (sales!.results as (SaleRow & { reversed: number; possibly_double: number })[]).map((sale) => ({
     id: sale.id,
     method: sale.method,
     totalCents: sale.total_cents,
@@ -181,9 +231,29 @@ export async function listSales(db: D1Database, date: string): Promise<AdminSale
     reversed: sale.reversed === 1,
     reversesSaleId: sale.reverses_sale_id,
     reversalReason: sale.reversal_reason,
-    lines: lineRows
-      .filter((line) => line.sale_id === sale.id)
-      .map((line) => ({ name: line.name, categoryName: line.category_name, unitPriceCents: line.unit_price_cents, qty: line.qty })),
+    possiblyDouble: sale.possibly_double === 1,
+    lines: linesOf(lineRows, sale.id),
+  }));
+}
+
+/** The pin payments of one day that did not go through or still wait for Mollie, oldest first. They are not sales. */
+export async function listPinAttempts(db: D1Database, date: string): Promise<AdminPinAttempt[]> {
+  const NOT_SOLD = "s.method = 'pin' AND s.status IN ('pending', 'failed') AND s.business_date = ?1";
+  const [attempts, lines] = await db.batch([
+    db.prepare(`SELECT s.* FROM sales s WHERE ${NOT_SOLD} ORDER BY s.sold_at, s.id`).bind(date),
+    db
+      .prepare(`SELECT l.sale_id, l.name, l.category_name, l.unit_price_cents, l.qty FROM sale_lines l JOIN sales s ON s.id = l.sale_id WHERE ${NOT_SOLD} ORDER BY l.id`)
+      .bind(date),
+  ]);
+  const lineRows = lines!.results as LineRow[];
+  return (attempts!.results as SaleRow[]).map((sale) => ({
+    id: sale.id,
+    soldAtLocal: localTime(sale.sold_at),
+    totalCents: sale.total_cents,
+    // A failed sale always has an outcome, and never "paid".
+    outcome: sale.pin_outcome as AdminPinAttempt["outcome"],
+    reason: sale.pin_reason,
+    lines: linesOf(lineRows, sale.id),
   }));
 }
 

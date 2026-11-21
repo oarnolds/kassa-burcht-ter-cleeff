@@ -148,9 +148,11 @@ it("exports sale lines as CSV", async () => {
 });
 
 it("lists the sales of a day with their state", async () => {
-  const { sales } = await get<{ sales: AdminSale[] }>("/api/admin/sales?date=2026-07-30");
+  const { sales, pinAttempts } = await get<{ sales: AdminSale[]; pinAttempts: unknown[] }>("/api/admin/sales?date=2026-07-30");
+  expect(pinAttempts).toEqual([]);
   expect(sales).toHaveLength(2);
   expect(sales[0]).toMatchObject({
+    possiblyDouble: false,
     id: saleA,
     method: "cash",
     totalCents: 360,
@@ -182,7 +184,7 @@ it("summarises today, this month, the cash box and stock", async () => {
   expect(before.today).toEqual({ date: today, cashCents: 0, pinCents: 0, totalCents: 0, saleCount: 0 });
   expect(before.month.month).toBe(monthOf(today));
   expect(before.cashExpectedCents).toBe(660);
-  expect(before).toMatchObject({ reorderCount: 0, openOrderCount: 0 });
+  expect(before).toMatchObject({ reorderCount: 0, openOrderCount: 0, pinAttention: [] });
 
   await postSales(token, [cashSale()]);
   await api("/api/admin/products/bosfruit", { method: "PATCH", cookie, json: { reorderAt: 5 } });
