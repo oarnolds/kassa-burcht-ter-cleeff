@@ -91,7 +91,7 @@ De penningmeester koos uit drie aanklikbare schetsen **variant A**. De schets st
 - Geen internet: de Pin-knop is uitgeschakeld met de reden erbij. Contant blijft werken.
 - Uitkomst onbekend (de iPad verliest de verbinding terwijl de betaling loopt): de kassa meldt dat en vraagt de beheerder op de betaalterminal te kijken. De bon wordt geparkeerd als "wacht op bevestiging" en de kassa is direct vrij voor de volgende klant. Zodra er weer verbinding is haalt de kassa de uitkomst op. Is de betaling gelukt, dan is de verkoop al vastgelegd en verdwijnt de geparkeerde bon. Is hij niet gelukt, dan krijgt de beheerder een melding met het bedrag. Kiest de beheerder intussen "toch contant" en blijkt de pinbetaling later toch gelukt, dan staan beide verkopen in het overzicht met de markering "mogelijk dubbel betaald". *(Eigen keuze, zie 14.)*
 
-**Na een verkoop.** De laatste contante verkoop kan de beheerder vijf minuten lang terugdraaien via een kleine regel "Laatste verkoop". Teruggedraaide verkopen blijven zichtbaar in het overzicht van de penningmeester, gemarkeerd als teruggedraaid. *(Eigen keuze, zie 14.)*
+**Na een verkoop.** Een afgerekende verkoop is op de iPad niet terug te draaien. Een vergissing meldt de beheerder aan de penningmeester, die de verkoop terugdraait in beheer (zie 9). Teruggedraaide verkopen blijven zichtbaar in het overzicht van de penningmeester, gemarkeerd als teruggedraaid. *(Gewijzigd op 21 november 2026 door de penningmeester, zie 14: eerst stond hier vijf minuten lang een regel "Laatste verkoop" met een knop om terug te draaien.)*
 
 **Voorraad op de tegel.** Een product waarvan de voorraad op of onder de bestelgrens staat toont het resterende aantal op de tegel ("nog 5"), en bij nul "op?". De tegel blijft altijd werken; de kassa blokkeert nooit een verkoop vanwege de voorraad (zie 17).
 
@@ -110,7 +110,7 @@ Bereikbaar op hetzelfde adres onder `/beheer`, achter een eigen login. Werkt op 
 - **Vandaag en deze maand.** Omzet, aantal verkopen, verdeling pin en contant, en wat er in het kluisje hoort te liggen.
 - **Overzicht per dag en per maand.** Omzet per categorie en per product, gesplitst in pin en contant. Statiegeld en entree staan als eigen categorie. Te downloaden als CSV, per maand, in twee vormen: dagtotalen en losse verkopen.
 - **Pin-controle.** Het pintotaal per dag, om naast de uitbetalingen van Mollie te leggen. Het automatisch afstemmen met Mollie-uitbetalingen hoort bij fase 3.
-- **Verkopen.** Lijst van losse verkopen met regels. Een verkoop terugdraaien kan met een verplichte reden en werkt als tegenboeking: de oorspronkelijke verkoop blijft staan op zijn eigen dag en de tegenboeking komt op de dag van terugdraaien. Een maand die al is gedownload verandert daardoor niet meer. Het terugdraaien op de iPad (zie 8) gebruikt dezelfde tegenboeking.
+- **Verkopen.** Lijst van losse verkopen met regels. Een verkoop terugdraaien kan met een verplichte reden en werkt als tegenboeking: de oorspronkelijke verkoop blijft staan op zijn eigen dag en de tegenboeking komt op de dag van terugdraaien. Een maand die al is gedownload verandert daardoor niet meer. Terugdraaien kan alleen hier, niet op de iPad (zie 8).
   - Contante verkopen zijn alleen terug te draaien zolang ze na de laatste afdracht vallen. Wat daarvoor ligt zit al in het verschil van die afdracht.
   - Bij pinverkopen is terugdraaien bedoeld om een terugbetaling vast te leggen die in het Mollie-dashboard is gedaan, altijd voor het hele bedrag. De kassa betaalt zelf niets terug en controleert dit niet bij Mollie.
 - **Kluisje.** Zie 10.
@@ -185,7 +185,7 @@ De tegels houden een eigen kleur per categorie, omdat de beheerder daarmee snell
 
 Deze zijn niet met de penningmeester besproken en kunnen worden teruggedraaid:
 
-- De laatste contante verkoop is vijf minuten terug te draaien op de iPad. Reden: zonder die mogelijkheid komt elke vergissing als kasverschil bij de afdracht terecht.
+- Vervallen op 21 november 2026: "de laatste contante verkoop is vijf minuten terug te draaien op de iPad". De penningmeester heeft de knop na de eerste proef van de kassa laten halen: het is te gevaarlijk dat iemand erop tikt en zo een goede verkoop ongedaan maakt. Een vergissing loopt nu via de penningmeester, die in beheer terugdraait. De prijs daarvan: een vergissing die niet vóór de afdracht is gemeld, blijft een kasverschil met een toelichting. De server neemt een terugboeking van een kassa nog wel aan (eigen contante verkoop, binnen vijf minuten), zodat een iPad met de oude versie niet vastloopt; de kassa stuurt er geen meer.
 - De kassa is niet vergrendeld met een pincode. Reden: elke extra handeling kost snelheid, en iZettle is nu ook niet vergrendeld.
 - Geen losse kasmutaties; uitzonderingen gaan via het verschil bij de afdracht.
 - Eén beheerdersaccount.

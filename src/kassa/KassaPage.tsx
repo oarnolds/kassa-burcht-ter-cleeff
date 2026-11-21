@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router";
-import type { CashSaleInput, OutboxItem, ReversalInput } from "../../shared/schemas";
+import type { CashSaleInput } from "../../shared/schemas";
 import type { Catalog } from "../../shared/types";
 import { kassaApi } from "../lib/api";
 import { Logo } from "../ui/Logo";
 import { useToast } from "../ui/Toast";
 import { DeliveryBar } from "./DeliveryBar";
 import { KassaScreen } from "./KassaScreen";
-import { LastSaleBar } from "./LastSaleBar";
 import { StatusBadge } from "./StatusBadge";
 import { stockLabel } from "./stock-label";
 import { loadCatalog, noteSold, soldSinceFetch } from "./store/catalog";
@@ -15,18 +14,11 @@ import { getMeta } from "./store/db";
 import { enqueue } from "./store/outbox";
 import { startSync, type SyncState } from "./store/sync";
 
-/** How long the last sale can be taken back on the kassa. The server holds a reversal to the same five minutes. */
-const REVERSE_FOR_MS = 5 * 60_000;
-
-/** Time left to take a sale back, by the clock: a sleeping iPad pauses timers, not the time. */
-const reversibleFor = (sale: CashSaleInput) => Date.parse(sale.soldAt) + REVERSE_FOR_MS - Date.now();
-
 /** The kassa as it runs on the iPad: the screen, wired to the iPad's own storage and to the server. */
 export function KassaPage() {
   const [boot, setBoot] = useState<"starting" | "unpaired" | "ready">("starting");
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [sync, setSync] = useState<SyncState>({ online: navigator.onLine, pending: 0, rejected: 0, paired: true });
-  const [lastSale, setLastSale] = useState<CashSaleInput | null>(null);
   // Pieces sold per product since the catalog was fetched: the stock on the tiles is the server's minus these.
   const [sold, setSold] = useState<Record<string, number>>({});
   const kick = useRef<() => void>(() => {});
@@ -61,36 +53,23 @@ export function KassaPage() {
     };
   }, []);
 
-  // The offer to take the last sale back ends by itself, also when the iPad slept through the moment.
-  useEffect(() => {
-    if (!lastSale) return;
-    const check = () => {
-      if (reversibleFor(lastSale) <= 0) setLastSale(null);
-    };
-    const timer = setTimeout(() => setLastSale(null), Math.max(0, reversibleFor(lastSale)));
-    document.addEventListener("visibilitychange", check);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("visibilitychange", check);
-    };
-  }, [lastSale]);
-
-  /** Puts a sale or a reversal in the queue. Storing can fail (no space left, storage switched off); then paper is the only record. */
-  const store = async (item: OutboxItem, pieces: { productId: string; qty: number }[], what: string): Promise<boolean> => {
+  /**
+   * Puts a sale in the queue. Storing can fail (no space left, storage switched off); then paper is the only record.
+   * A paid sale cannot be taken back here: that is the penningmeester's work in beheer, where it asks for a reason.
+   */
+  const store = async (sale: CashSaleInput) => {
     try {
-      await enqueue(item);
+      await enqueue(sale);
     } catch {
-      setLastSale(null);
-      toast.show(`Opslaan mislukt. Noteer deze ${what} op papier en meld het aan de penningmeester.`, { ms: 30_000 });
-      return false;
+      toast.show("Opslaan mislukt. Noteer deze verkoop op papier en meld het aan de penningmeester.", { ms: 30_000 });
+      return;
     }
     // The count only feeds the stock shown on the tiles: a failure here must not look like a lost sale.
-    await noteSold(pieces)
+    await noteSold(sale.lines)
       .then(soldSinceFetch)
       .then(setSold)
       .catch(() => {});
     kick.current();
-    return true;
   };
 
   const receive = async (orderId: string): Promise<"ok" | "offline" | "error"> => {
@@ -100,25 +79,6 @@ export function KassaPage() {
     const received = answer.ok || (answer.status === 409 && answer.error === "not_open");
     if (received) kick.current(); // fetch the catalog with the new stock
     return received ? "ok" : answer.status === 0 ? "offline" : "error";
-  };
-
-  const onSale = (sale: CashSaleInput) => {
-    setLastSale(sale);
-    void store(sale, sale.lines, "verkoop");
-  };
-
-  const reverse = (sale: CashSaleInput) => {
-    setLastSale(null);
-    // The server refuses a reversal of an older sale; saying "teruggedraaid" here would be untrue.
-    if (reversibleFor(sale) < 0) {
-      toast.show("Terugdraaien kan tot vijf minuten na de verkoop. Meld het aan de penningmeester.", { ms: 15_000 });
-      return;
-    }
-    const reversal: ReversalInput = { id: crypto.randomUUID(), kind: "reversal", soldAt: new Date().toISOString(), reversesSaleId: sale.id };
-    const back = sale.lines.map((line) => ({ productId: line.productId, qty: -line.qty }));
-    void store(reversal, back, "terugboeking").then((stored) => {
-      if (stored) toast.show("Verkoop teruggedraaid");
-    });
   };
 
   const products = useMemo(() => new Map((catalog?.products ?? []).map((product) => [product.id, product])), [catalog]);
@@ -148,13 +108,12 @@ export function KassaPage() {
   return (
     <KassaScreen
       catalog={catalog}
-      onSale={onSale}
+      onSale={(sale) => void store(sale)}
       tileNote={tileNote}
       header={<DeliveryBar orders={catalog.openOrders} online={sync.online && sync.paired} onReceive={receive} />}
       footer={
-        <footer className="flex min-h-14 shrink-0 items-center justify-between gap-4 border-t-2 border-sand bg-white px-4 py-1">
+        <footer className="flex min-h-14 shrink-0 items-center border-t-2 border-sand bg-white px-4 py-1">
           <StatusBadge state={sync} onRejectedChange={() => kick.current()} />
-          <LastSaleBar sale={lastSale} onReverse={() => lastSale && reverse(lastSale)} />
         </footer>
       }
     />

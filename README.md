@@ -45,7 +45,7 @@ De iPad blijft gekoppeld tot de penningmeester hem in beheer ontkoppelt. De kass
 
 **Statiegeld.** Tik op de tegel **Statiegeld**, typ het aantal ingeleverde stuks en tik op **Toevoegen**. Reken daarna af met **Contant**. Statiegeld telt als inkomst en gaat het kluisje in.
 
-**Verkeerd aangeslagen en al afgerekend.** Onder in beeld staat vijf minuten lang "Laatste verkoop" met de knop **Terugdraaien**. De verkoop blijft zichtbaar voor de penningmeester, met de terugboeking erbij. Later dan vijf minuten: meld het aan de penningmeester, die draait de verkoop terug in beheer.
+**Verkeerd aangeslagen en al afgerekend.** Op de kassa kun je een afgerekende verkoop niet terugdraaien: één verkeerde tik zou een goede verkoop ongedaan maken. Geef de klant zo nodig het geld terug, schrijf de tijd en het bedrag op en meld het dezelfde dag aan de penningmeester. Die draait de verkoop terug in beheer onder **Verkopen**. Dat kan alleen vóór de volgende afdracht; daarna blijft het een kasverschil met een toelichting.
 
 **Levering van ijsjes.** Staat er boven in beeld een gele balk **Levering onderweg**, dan heeft de penningmeester een bestelling ingevoerd. Staan de dozen in de vriezer? Tik op de balk, kijk of het klopt en tik op **Ontvangen**. De voorraad wordt bijgewerkt. Klopt de levering niet, bevestig dan toch en geef de afwijking door aan de penningmeester.
 
@@ -83,7 +83,7 @@ Vanaf dat moment staat bij Instellingen sinds wanneer de kassa in gebruik is en 
 
 **Geen internet.** De kassa werkt door met contant. Onderaan staat hoeveel verkopen wachten op verzending. Ze worden vanzelf verstuurd als er weer verbinding is, en komen één keer in het overzicht. De levering bevestigen en een prijswijziging ophalen kunnen pas weer met internet.
 
-**"Verkoop afgekeurd".** Dat hoort niet voor te komen: de server heeft een verkoop of een terugboeking niet geboekt. Tik op de rode knop **… afgekeurd · bekijken**. Je ziet per regel de tijd, het bedrag, wat er is verkocht en waarom het is afgekeurd. Geef dat door aan de penningmeester (een foto van het scherm is genoeg) en tik daarna op **Doorgegeven**; daarmee verdwijnt de regel van de iPad. Een afgekeurde verkoop staat niet in de boeken terwijl het geld wel in het kluisje zit: de penningmeester ziet dat bedrag bij de volgende afdracht als "meer dan verwacht" en zet het in de toelichting. Een afgekeurde terugboeking draait de penningmeester zelf terug onder **Verkopen**.
+**"Verkoop afgekeurd".** Dat hoort niet voor te komen: de server heeft een verkoop niet geboekt. Tik op de rode knop **… afgekeurd · bekijken**. Je ziet per regel de tijd, het bedrag, wat er is verkocht en waarom het is afgekeurd. Geef dat door aan de penningmeester (een foto van het scherm is genoeg) en tik daarna op **Doorgegeven**; daarmee verdwijnt de regel van de iPad. Een afgekeurde verkoop staat niet in de boeken terwijl het geld wel in het kluisje zit: de penningmeester ziet dat bedrag bij de volgende afdracht als "meer dan verwacht" en zet het in de toelichting.
 
 **"Opslaan mislukt. Noteer deze verkoop op papier".** De iPad kon de verkoop niet bewaren (bijvoorbeeld geen opslagruimte). Schrijf de verkoop op en meld het aan de penningmeester.
 

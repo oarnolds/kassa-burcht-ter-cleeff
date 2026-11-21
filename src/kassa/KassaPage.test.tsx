@@ -5,7 +5,6 @@ import { loadCatalog, saveCatalog, soldSinceFetch } from "./store/catalog";
 import { getDb, setMeta } from "./store/db";
 import { pendingCount, rejectedCount } from "./store/outbox";
 
-const NBSP = String.fromCharCode(160);
 const paired = async () => {
   await setMeta("deviceToken", "tok");
   await saveCatalog(catalog);
@@ -53,107 +52,18 @@ it("starts by itself once the connection is there", async () => {
   expect(await loadCatalog()).toEqual(catalog);
 });
 
-it("queues a sale and offers to reverse it", async () => {
+it("queues a sale and does not offer to take it back on the kassa", async () => {
   await paired();
   mockOffline();
   renderAt("/");
   await sellOne();
   await waitFor(async () => expect(await pendingCount()).toBe(1));
   expect(await screen.findByText("1 verkoop wacht op verzending")).toBeInTheDocument();
-  expect(screen.getByText("Laatste verkoop: € 1,10 contant")).toBeInTheDocument();
   await waitFor(async () => expect(await soldSinceFetch()).toEqual({ aardbeitje: 1 }));
-  await tap("Terugdraaien");
-  expect(screen.getByRole("dialog", { name: `Laatste verkoop van €${NBSP}1,10 terugdraaien?` })).toBeInTheDocument();
-  await tap("Ja, terugdraaien");
-  await waitFor(async () => expect(await pendingCount()).toBe(2));
+  expect(await queued()).toMatchObject([{ kind: "sale", totalCents: 110 }]);
+  // Taking a paid sale back is the penningmeester's work, in beheer: one wrong tap here would undo a sale.
   expect(screen.queryByText(/Laatste verkoop/)).not.toBeInTheDocument();
-  expect(await screen.findByText("Verkoop teruggedraaid")).toBeInTheDocument();
-  const [sale, reversal] = await queued();
-  expect(reversal).toMatchObject({ kind: "reversal", reversesSaleId: sale.id });
-  expect(reversal.id).toMatch(/^[0-9a-f-]{36}$/);
-  expect(reversal.id).not.toBe(sale.id);
-  expect(await soldSinceFetch()).toEqual({});
-  expect(await screen.findByText("2 verkopen wachten op verzending")).toBeInTheDocument();
-});
-
-it("keeps the sale when the reversal is not confirmed", async () => {
-  await paired();
-  mockOffline();
-  renderAt("/");
-  await sellOne();
-  await tap("Terugdraaien");
-  await tap("Nee");
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  expect(screen.getByText("Laatste verkoop: € 1,10 contant")).toBeInTheDocument();
-  expect(await pendingCount()).toBe(1);
-});
-
-it("offers to reverse only the last sale", async () => {
-  await paired();
-  mockOffline();
-  renderAt("/");
-  await sellOne();
-  await tap(/Koffie/);
-  await tap("Contant");
-  await tap("Gepast");
-  expect(await screen.findByText("Laatste verkoop: € 1,40 contant")).toBeInTheDocument();
-  expect(screen.queryByText("Laatste verkoop: € 1,10 contant")).not.toBeInTheDocument();
-  await tap("Terugdraaien");
-  await tap("Ja, terugdraaien");
-  await waitFor(async () => expect(await pendingCount()).toBe(3));
-  const [, second, reversal] = await queued();
-  expect(reversal).toMatchObject({ kind: "reversal", reversesSaleId: second.id });
-});
-
-it("hides the reversal offer after five minutes", async () => {
-  vi.useFakeTimers({ shouldAdvanceTime: true });
-  await paired();
-  mockOffline();
-  renderAt("/");
-  await sellOne();
-  expect(await screen.findByText(/Laatste verkoop/)).toBeInTheDocument();
-  act(() => {
-    vi.advanceTimersByTime(5 * 60_000 - 1000);
-  });
-  expect(screen.getByText(/Laatste verkoop/)).toBeInTheDocument();
-  act(() => {
-    vi.advanceTimersByTime(1000);
-  });
-  expect(screen.queryByText(/Laatste verkoop/)).not.toBeInTheDocument();
-});
-
-const TOO_LATE = "Terugdraaien kan tot vijf minuten na de verkoop. Meld het aan de penningmeester.";
-
-it("does not reverse a sale of more than five minutes ago, also when the offer is still on screen", async () => {
-  vi.useFakeTimers({ shouldAdvanceTime: true });
-  await paired();
-  mockOffline();
-  renderAt("/");
-  await sellOne();
-  expect(await screen.findByText(/Laatste verkoop/)).toBeInTheDocument();
-  // The iPad slept: the clock went on, the timers did not.
-  vi.setSystemTime(Date.now() + 5 * 60_000 + 1000);
-  await tap("Terugdraaien");
-  await tap("Ja, terugdraaien");
-  // The server would refuse it; saying "teruggedraaid" would leave the books and the cash box apart.
-  expect(await screen.findByText(TOO_LATE)).toBeInTheDocument();
-  expect(screen.queryByText("Verkoop teruggedraaid")).not.toBeInTheDocument();
-  expect(screen.queryByText(/Laatste verkoop/)).not.toBeInTheDocument();
-  expect(await pendingCount()).toBe(1);
-});
-
-it("takes the reversal offer away when the iPad wakes up after five minutes", async () => {
-  vi.useFakeTimers({ shouldAdvanceTime: true });
-  await paired();
-  mockOffline();
-  renderAt("/");
-  await sellOne();
-  expect(await screen.findByText(/Laatste verkoop/)).toBeInTheDocument();
-  vi.setSystemTime(Date.now() + 5 * 60_000 + 1000);
-  act(() => {
-    document.dispatchEvent(new Event("visibilitychange"));
-  });
-  expect(screen.queryByText(/Laatste verkoop/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /terugdraaien/i })).not.toBeInTheDocument();
 });
 
 it("sends a sale and then has nothing waiting", async () => {
@@ -288,7 +198,6 @@ it("says so when a sale could not be stored on the iPad", async () => {
   try {
     await sellOne();
     expect(await screen.findByText("Opslaan mislukt. Noteer deze verkoop op papier en meld het aan de penningmeester.")).toBeInTheDocument();
-    expect(screen.queryByText(/Laatste verkoop/)).not.toBeInTheDocument();
   } finally {
     add.mockRestore();
   }
@@ -307,9 +216,6 @@ it("shows what is left on a tile and counts down with every sale, also offline",
   expect((await tile(/Koffie/)).queryByText(/nog|op\?/)).not.toBeInTheDocument();
   await sellOne();
   expect(await screen.findByText("nog 2")).toBeInTheDocument();
-  await tap("Terugdraaien");
-  await tap("Ja, terugdraaien");
-  expect(await screen.findByText("nog 3")).toBeInTheDocument();
 });
 
 it("remembers what was sold since the last catalog when the kassa is opened again", async () => {
