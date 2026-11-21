@@ -54,3 +54,16 @@ it("passes on the server's error code", async () => {
   fetchMock.mockResolvedValueOnce(new Response("<html>", { status: 502 }));
   expect(await adminApi("/api/admin/me")).toEqual({ ok: false, status: 502, error: "server" });
 });
+
+it("gives up after the time it was given", async () => {
+  // A server that never answers: the request ends only when it is called off.
+  fetchMock.mockImplementation(
+    (_input, init) =>
+      new Promise((_resolve, reject) => {
+        init!.signal!.addEventListener("abort", () => reject(init!.signal!.reason));
+      }),
+  );
+  const started = Date.now();
+  expect(await kassaApi("/api/kassa/pin/x", "tok", { timeoutMs: 50 })).toEqual({ ok: false, status: 0, error: "offline" });
+  expect(Date.now() - started).toBeLessThan(2000);
+});

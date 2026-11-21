@@ -2,7 +2,8 @@
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; error: string };
 
-export type ApiInit = { method?: string; json?: unknown };
+/** `timeoutMs`: how long the call may take before it counts as unanswered. */
+export type ApiInit = { method?: string; json?: unknown; timeoutMs?: number };
 
 // A request that hangs on bad wifi counts as offline after this long.
 const TIMEOUT_MS = 15_000;
@@ -17,7 +18,7 @@ async function request<T>(path: string, init: ApiInit, headers: Record<string, s
       headers,
       body: init.json === undefined ? undefined : JSON.stringify(init.json),
       credentials: "same-origin",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(init.timeoutMs ?? TIMEOUT_MS),
     });
   } catch {
     return { ok: false, status: 0, error: "offline" };
