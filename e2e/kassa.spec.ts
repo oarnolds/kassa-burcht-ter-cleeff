@@ -40,6 +40,22 @@ test("the kassa shows the revenue of today and of the week, to look at only", as
   await expect(receipt(page).getByText("Tik op een product om te beginnen.")).toBeVisible();
 });
 
+test("a double tap on Sluiten closes Omzet and leaves the receipt as it was", async ({ page, request }) => {
+  const { code } = await prepare(request);
+  await pair(page, code);
+  await tile(page, /Koffie/).click();
+  await tap(page, "Omzet");
+  const omzet = page.getByRole("dialog", { name: "Omzet" });
+  await expect(omzet.getByRole("heading", { name: /^Vandaag · / })).toBeVisible();
+  // Sluiten sits right above "Wis alles": the second tap of a double tap must not reach it.
+  await omzet.getByRole("button", { name: "Sluiten", exact: true }).dblclick();
+  await expect(omzet).toBeHidden();
+  await expect(receipt(page).getByText("Koffie")).toBeVisible();
+  // And the kassa goes on: the shield steps aside.
+  await tile(page, /Thee/).click();
+  await expect(receipt(page).getByText("Thee")).toBeVisible();
+});
+
 test("a sale made offline arrives once when the connection returns", async ({ page, context, request }) => {
   const { code, beheer } = await prepare(request);
   await pair(page, code);
