@@ -15,10 +15,10 @@ export type FakeEnableBanking = {
   /** What /accounts/:uid/transactions pages through (2 per page). Includes one pending line. */
   transactions: FakeTransaction[];
   balances: Record<string, unknown>[];
-  /** From now on every call answers 401 with `error: "EXPIRED_SESSION"`. */
-  expireSession(): void;
-  /** The next `times` API requests get this: an HTTP status, or "timeout" (the call rejects). */
-  failNext(what: Failure, times?: number): void;
+  /** From now on every call answers with this status (401) and `error` (EXPIRED_SESSION). */
+  expireSession(status?: number, error?: string): void;
+  /** The next `times` API requests get this: an HTTP status with an `error` code, or "timeout" (the call rejects). */
+  failNext(what: Failure, error?: string, times?: number): void;
   reset(): void;
 };
 
@@ -102,19 +102,19 @@ const freshBalances = () => [
 
 /** `appId` is the application id the JWT's kid must carry; `publicKey` the public half of the test key. */
 export function createFakeEnableBanking(opts: { appId: string; publicKey: CryptoKey; origin: string }): FakeEnableBanking {
-  let failures: Failure[] = [];
-  let expired = false;
+  let failures: { what: Failure; error: string }[] = [];
+  let expired: { status: number; error: string } | null = null;
 
   const fake: FakeEnableBanking = {
     requests: [],
     aspsps: freshAspsps(),
     transactions: freshTransactions(),
     balances: freshBalances(),
-    expireSession() {
-      expired = true;
+    expireSession(status = 401, error = "EXPIRED_SESSION") {
+      expired = { status, error };
     },
-    failNext(what, times = 1) {
-      for (let i = 0; i < times; i++) failures.push(what);
+    failNext(what, error = "ERROR", times = 1) {
+      for (let i = 0; i < times; i++) failures.push({ what, error });
     },
     reset() {
       fake.requests = [];
@@ -122,7 +122,7 @@ export function createFakeEnableBanking(opts: { appId: string; publicKey: Crypto
       fake.transactions = freshTransactions();
       fake.balances = freshBalances();
       failures = [];
-      expired = false;
+      expired = null;
     },
     async handle(request) {
       const url = new URL(request.url);
@@ -132,10 +132,10 @@ export function createFakeEnableBanking(opts: { appId: string; publicKey: Crypto
       fake.requests.push({ method, path: url.pathname, query: Object.fromEntries(url.searchParams), body, jwt: jwt === "bad" ? null : jwt });
 
       const failure = failures.shift();
-      if (failure === "timeout") throw new Error("fake enable banking: no answer");
-      if (typeof failure === "number") return problem(failure, "ERROR", `fake enable banking: answered ${failure}`);
+      if (failure?.what === "timeout") throw new Error("fake enable banking: no answer");
+      if (failure) return problem(failure.what as number, failure.error, `fake enable banking: answered ${failure.what}`);
       if (jwt === "bad") return problem(401, "UNAUTHORIZED", "Invalid or missing token");
-      if (expired) return problem(401, "EXPIRED_SESSION", "The session has expired");
+      if (expired) return problem(expired.status, expired.error, "The session is gone");
       return route(method, url, body);
     },
   };

@@ -17,8 +17,9 @@ const MAX_PAGES = 20;
 /**
  * Why a call gave nothing to work with. `unauthorized`: the key is wrong or the consent is gone (expired,
  * revoked, closed). `refused`: Enable Banking said no. `not_found`: no such thing. `unreachable`: no usable answer.
+ * `unreadable`: an answer with a booked line this client cannot read, so nothing is returned rather than less.
  */
-export type EbFailure = "unauthorized" | "refused" | "not_found" | "unreachable";
+export type EbFailure = "unauthorized" | "refused" | "not_found" | "unreachable" | "unreadable";
 export type EbResult<T> = { ok: true; data: T } | { ok: false; failure: EbFailure; status: number };
 
 export type EbClient = {
@@ -99,7 +100,7 @@ const GONE = new Set(["EXPIRED_SESSION", "REVOKED_SESSION", "CLOSED_SESSION"]);
 
 /** Whole cents from a decimal string such as "12.50", "-3", "0.5". No floating point. */
 function centsOf(raw: unknown): number | null {
-  const m = typeof raw === "string" ? /^(-)?(\d+)(?:\.(\d{1,2}))?$/.exec(raw.trim()) : null;
+  const m = typeof raw === "string" ? /^(-)?(\d+)(?:\.(\d{1,2})0*)?$/.exec(raw.trim()) : null;
   if (!m) return null;
   const cents = Number(m[2]) * 100 + Number((m[3] ?? "").padEnd(2, "0") || "0");
   return m[1] ? -cents : cents;
@@ -107,10 +108,11 @@ function centsOf(raw: unknown): number | null {
 
 const datePart = (value: unknown): string | null => (typeof value === "string" ? (/^\d{4}-\d{2}-\d{2}/.exec(value)?.[0] ?? null) : null);
 
-function lineOf(raw: Raw): CamtLine | null {
-  if (raw.status !== "BOOK") return null; // a pending line can still change or vanish
+/** A booked line as a bank line; "skip" for a line that is not booked; null for a booked line that cannot be read. */
+function lineOf(raw: Raw): CamtLine | null | "skip" {
+  if (raw.status !== "BOOK") return "skip"; // a pending line can still change or vanish
   const amount = isRecord(raw.transaction_amount) ? centsOf(raw.transaction_amount.amount) : null;
-  const bookingDate = datePart(raw.booking_date);
+  const bookingDate = datePart(raw.booking_date) ?? datePart(raw.value_date) ?? datePart(raw.transaction_date);
   const indicator = raw.credit_debit_indicator;
   if (amount === null || !bookingDate || (indicator !== "CRDT" && indicator !== "DBIT")) return null;
   const credit = indicator === "CRDT";
@@ -223,7 +225,8 @@ export function enableBankingFor(env: Env): EbClient | null {
         if (!isRecord(raw) || !Array.isArray(raw.transactions)) return unreadable;
         for (const item of raw.transactions) {
           const line = isRecord(item) ? lineOf(item) : null;
-          if (!line) continue;
+          if (line === "skip") continue;
+          if (line === null) return { ok: false, failure: "unreadable", status: 0 }; // never lose a booked line silently
           if (line.bankRef !== null) {
             if (seen.has(line.bankRef)) continue; // the doubles rule relies on one line per reference
             seen.add(line.bankRef);

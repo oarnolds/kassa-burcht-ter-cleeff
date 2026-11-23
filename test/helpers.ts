@@ -89,6 +89,31 @@ export function useFakeEnableBanking(): { current: FakeEnableBanking } {
   return holder;
 }
 
+/**
+ * For a test file that needs both fakes: routes each `fetch` by host (api.enablebanking.com to the fake
+ * Enable Banking, api.mollie.com to the fake Mollie). Any other host throws, so nothing reaches the network.
+ */
+export function useFakeBoth(): { eb: { current: FakeEnableBanking }; mollie: { current: FakeMollie } } {
+  const eb = {} as { current: FakeEnableBanking };
+  const mollie = {} as { current: FakeMollie };
+  beforeEach(async () => {
+    const { publicKey } = await testRsaKey();
+    eb.current = createFakeEnableBanking({ appId: TEST_EB_APP_ID, publicKey, origin: "https://fake.enablebanking.test" });
+    mollie.current = createFakeMollie({ key: "*", origin: "https://fake.mollie.test" });
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      const host = new URL(request.url).hostname;
+      if (host === "api.enablebanking.com") return eb.current.handle(request);
+      if (host === "api.mollie.com") return mollie.current.handle(request);
+      throw new Error(`test fetch to an unexpected host: ${host}`);
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+  return { eb, mollie };
+}
+
 // Children before parents, so no foreign key is left dangling.
 const TABLES = [
   "category_accounts",

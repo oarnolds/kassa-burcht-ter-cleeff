@@ -149,3 +149,55 @@ it("fails the whole call when a later page fails", async () => {
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => (++calls === 2 ? Promise.reject(new Error("down")) : inner(input, init)));
   expect(await c.transactions("acc-1", "2027-01-01")).toEqual({ ok: false, failure: "unreachable", status: 0 });
 });
+
+it("treats a gone consent as unauthorized, whatever the status", async () => {
+  const c = await client();
+  eb.current.failNext(403, "REVOKED_SESSION");
+  expect(await c.transactions("acc-1", "2027-01-01")).toEqual({ ok: false, failure: "unauthorized", status: 403 });
+  eb.current.failNext(422, "CLOSED_SESSION");
+  expect(await c.balance("acc-1")).toEqual({ ok: false, failure: "unauthorized", status: 422 });
+  eb.current.expireSession(408);
+  expect(await c.balance("acc-1")).toEqual({ ok: false, failure: "unauthorized", status: 408 });
+});
+
+it("keeps another 422 a refusal", async () => {
+  eb.current.failNext(422, "WRONG_REQUEST_PARAMETERS");
+  expect(await (await client()).balance("acc-1")).toEqual({ ok: false, failure: "refused", status: 422 });
+});
+
+const booked = (over: Record<string, unknown>) => ({
+  entry_reference: "x1",
+  status: "BOOK",
+  booking_date: "2027-03-01",
+  transaction_amount: { currency: "EUR", amount: "1.00" },
+  credit_debit_indicator: "CRDT",
+  ...over,
+});
+
+it("falls back from booking_date to value_date, then transaction_date", async () => {
+  eb.current.transactions = [
+    booked({ entry_reference: "a", booking_date: null, value_date: "2027-04-01", transaction_date: "2027-05-01" }),
+    booked({ entry_reference: "b", booking_date: null, transaction_date: "2027-05-02" }),
+  ];
+  const result = await (await client()).transactions("acc-1", "2027-01-01");
+  expect(result.ok && result.data.map((line) => line.bookingDate)).toEqual(["2027-04-01", "2027-05-02"]);
+});
+
+it("accepts trailing zero decimals but not extra digits", async () => {
+  eb.current.transactions = [booked({ transaction_amount: { currency: "EUR", amount: "12.500" } })];
+  const ok = await (await client()).transactions("acc-1", "2027-01-01");
+  expect(ok.ok && ok.data[0]!.amountCents).toBe(1250);
+  eb.current.transactions = [booked({ transaction_amount: { currency: "EUR", amount: "12.505" } })];
+  expect(await (await client()).transactions("acc-1", "2027-01-01")).toEqual({ ok: false, failure: "unreadable", status: 0 });
+});
+
+it("fails the call on a booked line it cannot read, instead of losing it", async () => {
+  for (const bad of [
+    booked({ booking_date: null, value_date: null, transaction_date: null }),
+    booked({ credit_debit_indicator: undefined }),
+    booked({ transaction_amount: undefined }),
+  ]) {
+    eb.current.transactions = [booked({ entry_reference: "fine" }), bad];
+    expect(await (await client()).transactions("acc-1", "2027-01-01")).toEqual({ ok: false, failure: "unreadable", status: 0 });
+  }
+});
