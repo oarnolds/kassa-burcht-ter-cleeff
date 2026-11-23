@@ -38,6 +38,13 @@ const UNREADABLE = { ok: false, failure: "unreachable", status: 0 } as const;
 
 /** Thrown while mapping an answer that cannot be read; the call then fails as `unreachable`, it never guesses. */
 class Unreadable extends Error {}
+/** A read inside a page that failed; its result is the call's result. */
+class Failed extends Error {
+  constructor(readonly result: { ok: false; failure: MollieFailure; status: number }) {
+    super("failed");
+  }
+}
+type Budget = { left: number };
 const need = <T>(value: T | null | undefined): T => {
   if (value === null || value === undefined) throw new Unreadable();
   return value;
@@ -109,11 +116,13 @@ export function mollieReadFor(env: Env): MollieRead | null {
    * Where the next page lives, as a path under the base: only the path and query of `_links.next.href` are used,
    * so the token goes to the same host as before whatever the link says.
    */
-  function nextPath(raw: Raw): string | null {
+  function nextPath(raw: Raw, profile: string | null): string | null {
     const href = isRecord(raw._links) && isRecord(raw._links.next) ? text(raw._links.next.href) : null;
     if (!href) return null;
     try {
       const url = new URL(href);
+      // Mollie's own link may leave `profileId` out; the lists that need it get it back.
+      if (profile && !url.searchParams.has("profileId")) url.searchParams.set("profileId", profile);
       return `${url.pathname.replace(/^\/v2(?=\/)/, "")}${url.search}`;
     } catch {
       throw new Unreadable();
@@ -121,23 +130,26 @@ export function mollieReadFor(env: Env): MollieRead | null {
   }
 
   /**
-   * Reads pages of `_embedded[key]` from `first`, at most MAX_PAGES. `onPage` takes a page's items and says whether to go on.
+   * Reads pages of `_embedded[key]` from `first`; `budget` is the calls this list may still make (pages and the
+   * extra reads of `onPage` alike). `onPage` takes a page's items and says whether to go on.
    */
-  async function pages(first: string, key: string, onPage: (items: Raw[]) => boolean): Promise<MollieResult<null>> {
+  async function pages(first: string, key: string, onPage: (items: Raw[]) => boolean | Promise<boolean>, budget: Budget = { left: MAX_PAGES }, profile: string | null = null): Promise<MollieResult<null>> {
     let path: string | null = first;
     try {
-      for (let page = 0; path && page < MAX_PAGES; page++) {
+      while (path && budget.left > 0) {
+        budget.left--;
         const result = await call(path);
         if (!result.ok) return result;
         const raw = result.data;
         const list = isRecord(raw) && isRecord(raw._embedded) && Array.isArray(raw._embedded[key]) ? raw._embedded[key] : null;
         if (!list || !list.every(isRecord)) return UNREADABLE;
-        if (!onPage(list)) break;
-        path = isRecord(raw) ? nextPath(raw) : null;
+        if (!(await onPage(list))) break;
+        path = isRecord(raw) ? nextPath(raw, profile) : null;
       }
       return { ok: true, data: null };
     } catch (error) {
       if (error instanceof Unreadable) return UNREADABLE;
+      if (error instanceof Failed) return error.result;
       throw error;
     }
   }
@@ -164,13 +176,19 @@ export function mollieReadFor(env: Env): MollieRead | null {
     const profile = await profileId();
     if (!profile.ok) return profile;
     const rows: T[] = [];
-    const result = await pages(`/${resource}?limit=250&profileId=${encodeURIComponent(profile.data)}`, key, (items) => {
-      for (const item of items) {
-        if (moment(item.createdAt) < from) return false;
-        rows.push(toRow(item));
-      }
-      return true;
-    });
+    const result = await pages(
+      `/${resource}?limit=250&profileId=${encodeURIComponent(profile.data)}`,
+      key,
+      (items) => {
+        for (const item of items) {
+          if (moment(item.createdAt) < from) return false;
+          rows.push(toRow(item));
+        }
+        return true;
+      },
+      { left: MAX_PAGES },
+      profile.data,
+    );
     return result.ok ? { ok: true, data: rows } : result;
   }
 
@@ -208,23 +226,33 @@ export function mollieReadFor(env: Env): MollieRead | null {
       if (Number.isNaN(from)) return UNREADABLE;
       const rows: MollieSettlementRow[] = [];
       // No order is documented: go on while a page holds an open payout or one settled since `fromIso`.
-      const result = await pages("/settlements?limit=250", "settlements", (items) => {
+      const budget: Budget = { left: MAX_PAGES };
+      const result = await pages("/settlements?limit=250", "settlements", async (items) => {
         let relevant = false;
         for (const item of items) {
           const settledAt = text(item.settledAt);
           if (settledAt !== null && moment(settledAt) < from) continue;
           relevant = true;
+          // The list may leave `periods` out (the docs do not say): then the payout is read on its own, never costed as 0.
+          let periods = item.periods;
+          if (!isRecord(periods)) {
+            if (budget.left <= 0) return false; // out of calls: this and the rest wait for the next run
+            budget.left--;
+            const one = await call(`/settlements/${encodeURIComponent(need(text(item.id)))}`);
+            if (!one.ok) throw new Failed(one);
+            periods = need(isRecord(one.data) && isRecord(one.data.periods) ? one.data.periods : null);
+          }
           rows.push({
             id: need(text(item.id)),
             reference: text(item.reference) ?? "",
             status: need(text(item.status)),
             settledAt,
             amountCents: cents(units(item.amount)),
-            costsCents: cents(costsOf(item.periods)),
+            costsCents: cents(costsOf(periods)),
           });
         }
         return relevant;
-      });
+      }, budget);
       return result.ok ? { ok: true, data: rows } : result;
     },
 

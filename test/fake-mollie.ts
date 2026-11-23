@@ -16,7 +16,8 @@ export type FakePayment = {
   mode: "test" | "live";
 };
 
-type Failure = number | "timeout" | "lost";
+/** "garbled": a 200 that cannot be read. "pass": this request is answered normally (to fail a later one). */
+type Failure = number | "timeout" | "lost" | "garbled" | "pass";
 
 /** The organisation token the fake accepts for the read-only routes (never the kassa's key, and vice versa). */
 export const FAKE_ORG_TOKEN = "org_fake";
@@ -52,6 +53,12 @@ export type FakeMollie = {
   profileId: string | null;
   /** Items per page, whatever `limit` asks; null follows `limit`. Pages link on with `_links.next`. */
   pageSize: number | null;
+  /** The origin `_links.next.href` names; null is the fake's own. A foreign one proves the client never follows it. */
+  nextOrigin: string | null;
+  /** Whether the next link drops `profileId` from its query, as the real one may. */
+  dropProfileOnNext: boolean;
+  /** Whether the settlements list carries `periods` (else only `GET /v2/settlements/{id}` does). */
+  periodsInList: boolean;
   /** Payments of any method, as `GET /v2/payments` lists them (newest first by `createdAt`). */
   orgPayments: FakeOrgPayment[];
   refunds: FakeRefund[];
@@ -101,6 +108,9 @@ export function createFakeMollie(opts: { key: string; origin: string }): FakeMol
   const fake: FakeMollie = {
     profileId: "pfl_fake",
     pageSize: null,
+    nextOrigin: null,
+    dropProfileOnNext: false,
+    periodsInList: true,
     orgPayments: [],
     refunds: [],
     chargebacks: [],
@@ -156,6 +166,9 @@ export function createFakeMollie(opts: { key: string; origin: string }): FakeMol
       orgMade = 0;
       fake.profileId = "pfl_fake";
       fake.pageSize = null;
+      fake.nextOrigin = null;
+      fake.dropProfileOnNext = false;
+      fake.periodsInList = true;
       fake.orgPayments = [];
       fake.refunds = [];
       fake.chargebacks = [];
@@ -201,7 +214,10 @@ export function createFakeMollie(opts: { key: string; origin: string }): FakeMol
 
     const failure = failures.shift();
     if (failure === "timeout") throw new Error("fake mollie: no answer");
-    if (typeof failure === "number") return problem(failure, "Error", `fake mollie: answered ${failure}`);
+    // Like a careless server, a failing answer repeats the credential it was sent: the client must not pass that on.
+    const echo = authorization ?? "";
+    if (typeof failure === "number") return problem(failure, `Error for ${echo}`, `fake mollie: answered ${failure} to ${echo}`);
+    if (failure === "garbled") return json({ title: `Odd answer for ${echo}`, detail: echo, availableAmount: null, _embedded: { payments: "?" } });
     const answer = route(method, path, authorization, idempotencyKey, body, new URL(request.url));
     if (failure === "lost") throw new Error("fake mollie: the answer was lost");
     return answer;
@@ -209,7 +225,7 @@ export function createFakeMollie(opts: { key: string; origin: string }): FakeMol
 
   function route(method: string, path: string, authorization: string | null, idempotencyKey: string | null, body: any, url: URL): Response {
     const key = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
-    if (method === "GET" && ORG_PATHS.includes(path)) {
+    if (method === "GET" && (ORG_PATHS.includes(path) || /^\/v2\/settlements\/[^/]+$/.test(path))) {
       // These routes belong to the organisation token; the kassa's key gets 401, as it would at Mollie.
       if (key !== FAKE_ORG_TOKEN) return problem(401, "Unauthorized Request", "Missing authentication, or failed to authenticate");
       return orgRoute(path, url);
@@ -276,7 +292,8 @@ export function createFakeMollie(opts: { key: string; origin: string }): FakeMol
       const href = new URL(url);
       href.searchParams.set("from", rest.id);
       href.searchParams.set("limit", String(size));
-      next = { href: `${opts.origin}${href.pathname}${href.search}`, type: "application/hal+json" };
+      if (fake.dropProfileOnNext) href.searchParams.delete("profileId");
+      next = { href: `${fake.nextOrigin ?? opts.origin}${href.pathname}${href.search}`, type: "application/hal+json" };
     }
     return json({ count: slice.length, _embedded: { [key]: slice.map(view) }, _links: { self: { href: url.toString(), type: "application/hal+json" }, next } });
   }
@@ -289,15 +306,26 @@ export function createFakeMollie(opts: { key: string; origin: string }): FakeMol
     if (path === "/v2/balances/primary") {
       return json({ resource: "balance", id: "bal_fake", currency: "EUR", availableAmount: eur(fake.balance.available), pendingAmount: eur(fake.balance.pending) });
     }
+    const detail = /^\/v2\/settlements\/([^/]+)$/.exec(path)?.[1];
+    if (detail) {
+      const found = fake.settlements.find((settlement) => settlement.id === detail);
+      return found ? json(settlementView(found, true)) : problem(404, "Not Found", "No settlement exists with this token");
+    }
     if (path === "/v2/settlements") {
-      return page(url, fake.settlements, "settlements", (settlement: FakeSettlement) => ({
+      return page(url, fake.settlements, "settlements", (settlement: FakeSettlement) => settlementView(settlement, fake.periodsInList));
+    }
+    return orgListRoute(path, url);
+  }
+
+  function settlementView(settlement: FakeSettlement, withPeriods: boolean) {
+    return ({
         resource: "settlement",
         id: settlement.id,
         reference: settlement.reference,
         status: settlement.status,
         settledAt: settlement.settledAt,
         amount: eur(settlement.amount),
-        periods: Object.fromEntries(
+        ...(withPeriods ? { periods: Object.fromEntries(
           Object.entries(settlement.costs).map(([year, months]) => [
             year,
             Object.fromEntries(
@@ -307,9 +335,11 @@ export function createFakeMollie(opts: { key: string; origin: string }): FakeMol
               ]),
             ),
           ]),
-        ),
-      }));
-    }
+        ) } : {}),
+    });
+  }
+
+  function orgListRoute(path: string, url: URL): Response {
     // Payments, refunds and chargebacks: an organisation token must name the profile.
     if (url.searchParams.get("profileId") !== fake.profileId || !fake.profileId) {
       return problem(422, "Unprocessable Entity", "The profileId parameter is required for organization-level credentials", "profileId");

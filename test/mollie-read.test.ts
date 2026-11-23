@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { beforeEach, expect, it } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 import { getLedgerSetting } from "../worker/db/ledger-settings";
 import { mollieFor } from "../worker/lib/mollie";
 import { mollieReadFor } from "../worker/lib/mollie-read";
@@ -168,4 +168,106 @@ it("never puts the token into a request URL, an error or the repository's copy o
   const result = await read().primaryBalance();
   expect(JSON.stringify(result)).not.toContain("org_fake");
   expect(mollie.current.requests.every((r) => !r.path.includes("org_fake"))).toBe(true);
+});
+
+// ---- fix round 1 ----
+
+/** Wraps the fake's fetch so every call's URL and Authorization header can be inspected. */
+function spyOnFetch() {
+  const seen: { url: string; authorization: string | null }[] = [];
+  const inner = globalThis.fetch;
+  vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = new Request(input, init);
+    seen.push({ url: request.url, authorization: request.headers.get("Authorization") });
+    return inner(request);
+  });
+  return seen;
+}
+
+it("keeps the token out of results, thrown errors and console output, even when Mollie echoes it", async () => {
+  const console_ = [vi.spyOn(console, "error"), vi.spyOn(console, "warn"), vi.spyOn(console, "log")];
+  const fake = mollie.current;
+  const outcomes: unknown[] = [];
+  try {
+    fake.failNext(422); // a refusal whose title and detail repeat the token
+    outcomes.push(await read().primaryBalance());
+    fake.failNext("garbled"); // a 200 that cannot be read, repeating the token
+    outcomes.push(await read().primaryBalance());
+    fake.failNext("garbled");
+    outcomes.push(await read().paymentsSince("2027-01-01T00:00:00.000Z"));
+    fake.failNext(422);
+    outcomes.push(await read().settlementsSince("2027-01-01T00:00:00.000Z"));
+  } catch (error) {
+    outcomes.push(String(error));
+  }
+  expect(outcomes).toHaveLength(4);
+  expect(outcomes[0]).toMatchObject({ ok: false, failure: "refused" });
+  expect(outcomes[1]).toMatchObject({ ok: false, failure: "unreachable" });
+  expect(outcomes[2]).toMatchObject({ ok: false, failure: "unreachable" });
+  expect(JSON.stringify(outcomes)).not.toContain("org_fake");
+  for (const spy of console_) expect(JSON.stringify(spy.mock.calls)).not.toContain("org_fake");
+  vi.restoreAllMocks();
+});
+
+it("fetches the next page from the pinned base even when the link names another host", async () => {
+  const fake = mollie.current;
+  fake.pageSize = 1;
+  fake.nextOrigin = "https://evil.example";
+  fake.addPayment({ id: "tr_1", method: "ideal", amount: "1.00", createdAt: "2027-03-01T10:00:00+00:00" });
+  fake.addPayment({ id: "tr_2", method: "ideal", amount: "1.00", createdAt: "2027-03-02T10:00:00+00:00" });
+  const seen = spyOnFetch();
+  const result = await read().paymentsSince("2027-01-01T00:00:00.000Z");
+  expect(result.ok && result.data.map((p) => p.id)).toEqual(["tr_2", "tr_1"]);
+  expect(seen.length).toBeGreaterThan(2);
+  expect(seen.every((call) => new URL(call.url).hostname === "api.mollie.com")).toBe(true);
+  expect(seen.every((call) => call.authorization === "Bearer org_fake")).toBe(true);
+  vi.restoreAllMocks();
+});
+
+it("puts profileId back on a next link that dropped it", async () => {
+  const fake = mollie.current;
+  fake.pageSize = 1;
+  fake.dropProfileOnNext = true;
+  for (const kind of ["addPayment", "addRefund", "addChargeback"] as const) {
+    for (const day of [1, 2]) (fake[kind] as any)({ id: `${kind}_${day}`, method: "ideal", paymentId: "tr_1", amount: "1.00", createdAt: `2027-03-0${day}T10:00:00+00:00` });
+  }
+  const r = read();
+  expect(await r.paymentsSince("2027-01-01T00:00:00.000Z")).toMatchObject({ ok: true });
+  expect(await r.refundsSince("2027-01-01T00:00:00.000Z")).toMatchObject({ ok: true });
+  expect(await r.chargebacksSince("2027-01-01T00:00:00.000Z")).toMatchObject({ ok: true });
+  const withFrom = lists().filter((request) => request.query.from);
+  expect(withFrom).toHaveLength(3);
+  expect(withFrom.every((request) => request.query.profileId === "pfl_fake")).toBe(true);
+});
+
+it("reads no extra call when the settlements list carries the periods", async () => {
+  mollie.current.addSettlement({ id: "stl_1", amount: "10.00", costs: { "2027": { "01": ["1.88"] } } });
+  const result = await read().settlementsSince("2027-01-01T00:00:00.000Z");
+  expect(result.ok && result.data[0]!.costsCents).toBe(188);
+  expect(mollie.current.requests.map((request) => request.path)).toEqual(["/v2/settlements"]);
+});
+
+it("reads a settlement's periods one by one when the list omits them, and fails if that read fails", async () => {
+  const fake = mollie.current;
+  fake.periodsInList = false;
+  fake.addSettlement({ id: "stl_1", amount: "10.00", costs: { "2027": { "01": ["1.88"], "02": ["0.29"] } } });
+  fake.addSettlement({ id: "stl_2", amount: "20.00", costs: { "2027": { "01": ["0.50"] } } });
+  const result = await read().settlementsSince("2027-01-01T00:00:00.000Z");
+  expect(result.ok && result.data.map((s) => [s.id, s.costsCents])).toEqual([["stl_1", 217], ["stl_2", 50]]);
+  expect(fake.requests.map((request) => request.path)).toEqual(["/v2/settlements", "/v2/settlements/stl_1", "/v2/settlements/stl_2"]);
+
+  fake.requests = [];
+  fake.failNext("pass"); // the list answers, then the first detail read fails
+  fake.failNext(500);
+  expect(await read().settlementsSince("2027-01-01T00:00:00.000Z")).toMatchObject({ ok: false, failure: "unreachable", status: 500 });
+});
+
+it("counts the settlement detail reads within the ten calls of the list", async () => {
+  const fake = mollie.current;
+  fake.periodsInList = false;
+  for (let i = 1; i <= 15; i++) fake.addSettlement({ id: `stl_${i}`, amount: "1.00", costs: { "2027": { "01": ["0.10"] } } });
+  const result = await read().settlementsSince("2027-01-01T00:00:00.000Z");
+  expect(result.ok).toBe(true);
+  expect(fake.requests).toHaveLength(10); // 1 list + 9 detail reads, the rest waits for the next run
+  expect(result.ok && result.data).toHaveLength(9);
 });
