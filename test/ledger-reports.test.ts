@@ -134,14 +134,15 @@ it("reads no more rows for a report as the years go by", async () => {
 
 it("works out the overview", async () => {
   const day = new Date("2027-06-10T10:00:00.000Z");
-  await env.DB.prepare("INSERT INTO bank_lines (id, account_code, booking_date, amount_cents, description, content_key, origin, status, imported_at) VALUES ('b1','1010','2027-06-01',100,'x','k1','typed','open','t'), ('b2','1010','2027-06-01',100,'x','k2','typed','waiting','t'), ('b3','1010','2027-06-01',100,'x','k3','typed','booked','t')").run();
+  await env.DB.prepare("INSERT INTO bank_lines (id, account_code, booking_date, amount_cents, description, content_key, origin, status, imported_at) VALUES ('b0','1010','2027-06-01',100,'x','k0','typed','open','t'), ('b1','1010','2027-06-01',100,'x','k1','typed','open','t'), ('b2','1010','2027-06-01',100,'x','k2','typed','waiting','t'), ('b3','1010','2027-06-01',100,'x','k3','typed','booked','t')").run();
   await book("2027-02-01", move("1010", "8010", 5000));
+  await book("2027-01-01", move("1010", "8010", 700)); // the first day of the year counts
   await book("2027-06-02", move("4301", "1010", 1200));
   await book("2027-06-09", move("1000", "8012", 3000)); // cash booked, the kassa knows nothing of it
   await book("2027-06-10", move("1000", "8012", 999)); // today: not in yesterday's figure
   await upsertSourced(env.DB, { date: "2027-06-09", description: "d", source: "kassa_day", sourceRef: "2027-06-09", lines: move("1000", "8012", 100) }, NOW);
   const result = await overview(env.DB, day);
-  expect(result).toMatchObject({ openLines: 1, waitingLines: 1, resultYearCents: 5000 - 1200 + 3000 + 999 + 100, cashDifferenceCents: 3100, consent: null, mollieDifferenceCents: null, lastNightly: null });
+  expect(result).toMatchObject({ openLines: 2, waitingLines: 1, resultYearCents: 700 + 5000 - 1200 + 3000 + 999 + 100, cashDifferenceCents: 3100, consent: null, mollieDifferenceCents: null, lastNightly: null });
   expect(result.moneyAccounts.map((account) => account.accountCode)).toContain("1030");
   const before = await overview(env.DB, new Date("2026-11-23T10:00:00.000Z"));
   expect(before).toMatchObject({ resultYearCents: 0, cashDifferenceCents: 0 });
@@ -226,6 +227,7 @@ it("types the opening and the comparison figures through the routes", async () =
   const put = await api(`${base}/opening?year=2027`, { method: "PUT", cookie, json: { lines: [{ accountCode: "1010", amountCents: 100000 }], eBoekhoudenEquityCents: 100000 } });
   expect(put.status).toBe(200);
   expect(await (await api(`${base}/opening?year=2027`, { cookie })).json()).toMatchObject({ year: 2027, equityCents: 100000, eBoekhoudenEquityCents: 100000 });
+  expect(await (await api(`${base}/opening?year=2028`, { cookie })).json()).toMatchObject({ year: 2028, lines: [] });
   expect((await api(`${base}/opening?year=2028`, { method: "PUT", cookie, json: { lines: [] } })).status).toBe(409);
   const figures = await api(`${base}/comparison?year=2026`, { method: "PUT", cookie, json: { figures: [{ accountCode: "8030", amountCents: 118440 }] } });
   expect(await figures.json()).toEqual({ year: 2026, figures: [{ accountCode: "8030", amountCents: 118440 }] });
