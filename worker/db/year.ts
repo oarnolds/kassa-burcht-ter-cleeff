@@ -152,25 +152,30 @@ const closingIdStatement = (db: D1Database, year: number) =>
   db.prepare("SELECT id FROM ledger_entries WHERE source = 'closing' AND source_ref = ?").bind(String(year));
 const idOf = (result: D1Result | undefined) => (result!.results[0] as { id: string } | undefined)?.id ?? null;
 
+/** Years from the first one (`?6`) up to the year before (`?1`) that are open: those are closed first (R34). */
+const EARLIER_OPEN = "SELECT year FROM ledger_years WHERE status = 'open' AND year >= ?6 AND year < ?1";
+
 /**
- * The year no longer closes when, between the reads and the write, a bank line of the year came in or something was
- * booked on an income or expense account in it: the closing entry would not bring that account to zero. The event
- * statement then gives its `kind` no value, which the database refuses, and so the whole batch is undone.
+ * The year no longer closes when, between the reads and the write, a bank line of the year came in, something was
+ * booked on an income or expense account in it (the closing entry would not bring that account to zero), or a year
+ * before it was reopened. The event statement then gives its `kind` no value, which the database refuses, and so
+ * the whole batch is undone.
  */
-const CHANGED_SINCE_READ = `(EXISTS (${OPEN_LINES}) OR EXISTS (
+const CHANGED_SINCE_READ = `(EXISTS (${OPEN_LINES}) OR EXISTS (${EARLIER_OPEN}) OR EXISTS (
     SELECT 1 FROM ledger_lines l JOIN ledger_entries e ON e.id = l.entry_id JOIN ledger_accounts a ON a.code = l.account_code
     WHERE e.year = ?1 AND a.kind IN ('income', 'expense') GROUP BY l.account_code HAVING SUM(l.amount_cents) <> 0))`;
 
 /**
- * "Jaar afsluiten": from 1 January of the next year (Amsterdam), when the required check holds, and with a
- * toelichting when another one fails. In one batch: the closing entry (written while the year is still open), the
+ * "Jaar afsluiten": from 1 January of the next year (Amsterdam), once every year before it is closed (R34), when the
+ * required check holds, and with a toelichting when another one fails. In one batch: the closing entry (written while the year is still open), the
  * year closed, the next year open when it has no row yet, and the event. Two calls to the database.
  */
 export async function closeYear(env: Env, year: number, note: string | null, now: Date): Promise<void> {
   if (year < FIRST_YEAR) throw new LedgerError("year_unknown", 400);
   const db = env.DB;
-  const [status, sums, existing, ...read] = await db.batch([
+  const [status, earlier, sums, existing, ...read] = await db.batch([
     statusStatement(db, year),
+    db.prepare("SELECT MIN(year) AS year FROM ledger_years WHERE status = 'open' AND year >= ?1 AND year < ?2").bind(FIRST_YEAR, year),
     // Per income and expense account its sum for the year, the closing entry left out, in the order of the accounts.
     db
       .prepare(
@@ -186,6 +191,7 @@ export async function closeYear(env: Env, year: number, note: string | null, now
   const current = statusOf(status);
   if (current === null) throw new LedgerError("year_unknown", 400);
   if (current === "closed") throw new LedgerError("year_closed", 409);
+  if ((earlier!.results[0] as { year: number | null }).year !== null) throw new LedgerError("earlier_year_open", 409);
   if (businessDate(now.toISOString()) < firstDay(year + 1)) throw new LedgerError("year_not_ended", 409);
   const checks = checksFrom(year, read);
   if (checks.some((one) => one.required && !one.ok)) throw new LedgerError("checks_failed", 409);
@@ -217,7 +223,7 @@ export async function closeYear(env: Env, year: number, note: string | null, now
            SELECT ?1, ?2, CASE WHEN ${CHANGED_SINCE_READ} THEN NULL ELSE 'closed' END, ?3
            WHERE EXISTS (SELECT 1 FROM ledger_years WHERE year = ?1 AND status = 'closed' AND closed_at = ?2)`,
         )
-        .bind(year, nowIso, toelichting, firstDay(year), lastDay(year)),
+        .bind(year, nowIso, toelichting, firstDay(year), lastDay(year), FIRST_YEAR),
     ]);
   } catch (error) {
     if (/NOT NULL constraint failed: ledger_year_events\.kind/.test(String(error))) throw new LedgerError("year_changed", 409);

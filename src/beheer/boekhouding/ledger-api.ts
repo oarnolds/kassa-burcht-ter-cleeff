@@ -114,6 +114,7 @@ export function explainWrite(status: number, error: string): string {
     checks_failed: "Er zijn nog bankregels van dit jaar te boeken. Boek die eerst.",
     note_required: "Niet alle controles kloppen. Schrijf in de toelichting waarom het jaar toch dicht kan.",
     year_not_ended: "Dit jaar is nog niet voorbij. Afsluiten kan vanaf 1 januari.",
+    earlier_year_open: "Sluit eerst het jaar ervoor af.",
     year_changed: "Er is net nog iets in dit jaar geboekt. Bekijk de controles en probeer het opnieuw.",
     reason_required: "Schrijf waarom het jaar weer open moet (minstens 3 tekens).",
     not_newest: "Alleen het laatst afgesloten jaar kan weer open.",

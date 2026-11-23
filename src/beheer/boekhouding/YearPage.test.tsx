@@ -153,6 +153,31 @@ it("offers closing only once the year has ended", async () => {
   expect(y2028.getByText("Afsluiten kan vanaf 1-1-2029.")).toBeInTheDocument();
 });
 
+it("closes the years in order (R34)", async () => {
+  inJanuary2029();
+  const open2027: LedgerYear = { year: 2027, status: "open", closedAt: null, closeNote: null, events: [] };
+  open([open2027, open2028], allGood, { [`${base}/year/2027/checks`]: allGood });
+  renderAt(page);
+  const y2028 = within(await region("2028"));
+  expect(await y2028.findByText("Sluit eerst 2027 af.")).toBeInTheDocument();
+  // The checks are still there; only closing waits.
+  expect(y2028.getAllByText("✓")).toHaveLength(7);
+  expect(y2028.getByRole("button", { name: "Jaar afsluiten" })).toBeDisabled();
+  const y2027 = within(await region("2027"));
+  expect(await y2027.findByRole("button", { name: "Jaar afsluiten" })).toBeEnabled();
+  expect(y2027.queryByText(/Sluit eerst/)).not.toBeInTheDocument();
+});
+
+it("explains a refusal because the year before is open", async () => {
+  inJanuary2029();
+  open([closed2027, open2028], allGood, { [`POST ${base}/year/2028/close`]: [409, { error: "earlier_year_open" }] });
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  renderAt(page);
+  await user().click(await within(await region("2028")).findByRole("button", { name: "Jaar afsluiten" }));
+  expect(await screen.findByText("Sluit eerst het jaar ervoor af.")).toBeInTheDocument();
+  confirm.mockRestore();
+});
+
 it("reopens the newest closed year with a reason, and only that one", async () => {
   inJanuary2029();
   const closed2028 = { ...open2028, status: "closed" as const, closedAt: "2029-01-05T10:00:00.000Z", events: [{ at: "2029-01-05T10:00:00.000Z", kind: "closed" as const, note: null }] };

@@ -45,11 +45,11 @@ function CheckList({ year, checks }: { year: number; checks: YearCheck[] }) {
 }
 
 /**
- * The checks of an open year and "Jaar afsluiten", from 1 January of the next year. Refused while a required check
- * fails; when another one fails, a toelichting is needed (it goes into the jaaroverzicht). Asked once more before it
- * is sent: after closing nothing in the year changes.
+ * The checks of an open year and "Jaar afsluiten", from 1 January of the next year and once the years before it are
+ * closed (`earlierOpen`, R34). Refused while a required check fails; when another one fails, a toelichting is needed
+ * (it goes into the jaaroverzicht). Asked once more before it is sent: after closing nothing in the year changes.
  */
-function OpenYear({ year, onClosed }: { year: number; onClosed(): void }) {
+function OpenYear({ year, earlierOpen, onClosed }: { year: number; earlierOpen: number | null; onClosed(): void }) {
   const checks = useAdminData<YearCheck[]>(ledgerPath.yearChecks(year));
   const api = useLedgerWrites();
   const toast = useToast();
@@ -84,6 +84,7 @@ function OpenYear({ year, onClosed }: { year: number; onClosed(): void }) {
             <>
               <CheckList year={year} checks={list} />
               {!ended && <p className="text-ink/70">{`Afsluiten kan vanaf 1-1-${year + 1}.`}</p>}
+              {ended && earlierOpen !== null && <p className="font-semibold">{`Sluit eerst ${earlierOpen} af.`}</p>}
               {ended && requiredFails && <p className="font-semibold">{`Boek eerst alle bankregels van ${year}; daarna kan het jaar dicht.`}</p>}
               {ended && needsNote && (
                 <>
@@ -98,7 +99,7 @@ function OpenYear({ year, onClosed }: { year: number; onClosed(): void }) {
               )}
               {ended && (
                 <div>
-                  <Button variant="primary" disabled={busy || requiredFails || (needsNote && note.trim() === "")} onClick={() => void close(needsNote)}>
+                  <Button variant="primary" disabled={busy || earlierOpen !== null || requiredFails || (needsNote && note.trim() === "")} onClick={() => void close(needsNote)}>
                     Jaar afsluiten
                   </Button>
                 </div>
@@ -147,12 +148,12 @@ function Reopen({ year, onReopened }: { year: number; onReopened(): void }) {
   );
 }
 
-function YearBlock({ year, reopenable, onChanged }: { year: LedgerYear; reopenable: boolean; onChanged(): void }) {
+function YearBlock({ year, earlierOpen, reopenable, onChanged }: { year: LedgerYear; earlierOpen: number | null; reopenable: boolean; onChanged(): void }) {
   const status = year.status === "open" ? "open" : year.closedAt ? `afgesloten op ${dayOf(year.closedAt)}` : "afgesloten";
   return (
     <Section title={String(year.year)} note={status}>
       <div className="flex flex-col gap-5 px-2 sm:px-3">
-        {year.status === "open" && <OpenYear year={year.year} onClosed={onChanged} />}
+        {year.status === "open" && <OpenYear year={year.year} earlierOpen={earlierOpen} onClosed={onChanged} />}
         {reopenable && <Reopen year={year.year} onReopened={onChanged} />}
         {year.events.length > 0 && (
           <div className="flex flex-col gap-1">
@@ -195,8 +196,18 @@ export function YearPage() {
         {(list) => {
           const closed = list.filter((year) => year.status === "closed").map((year) => year.year);
           const newestClosed = closed.length === 0 ? null : Math.max(...closed);
+          // The years are closed in order (R34): the first open year comes before any later one.
+          const firstOpen = list.find((year) => year.status === "open")?.year ?? null;
           // The newest year first: that is where the work is.
-          return [...list].reverse().map((year) => <YearBlock key={year.year} year={year} reopenable={year.year === newestClosed} onChanged={years.reload} />);
+          return [...list].reverse().map((year) => (
+            <YearBlock
+              key={year.year}
+              year={year}
+              earlierOpen={firstOpen !== null && firstOpen < year.year ? firstOpen : null}
+              reopenable={year.year === newestClosed}
+              onChanged={years.reload}
+            />
+          ));
         }}
       </Loaded>
     </div>

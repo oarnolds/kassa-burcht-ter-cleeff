@@ -268,6 +268,56 @@ it("closes a year only once it has ended", async () => {
   await expect(yearChecks(env, 2026, NOW)).rejects.toMatchObject({ code: "year_unknown", status: 400 });
 });
 
+it("closes the years in order (R34)", async () => {
+  await tidyYear();
+  await book("2028-03-01", move("1010", "8010", 5000), "Verhuur");
+  await mollieBalance("2028-12-31", 0);
+  const snapshot = async () => ({
+    years: (await env.DB.prepare("SELECT * FROM ledger_years ORDER BY year").all()).results,
+    events: (await env.DB.prepare("SELECT * FROM ledger_year_events ORDER BY id").all()).results,
+    entries: (await env.DB.prepare("SELECT * FROM ledger_entries ORDER BY id").all()).results,
+    lines: (await env.DB.prepare("SELECT * FROM ledger_lines ORDER BY id").all()).results,
+  });
+  const before = await snapshot();
+
+  // 2027 is still open: 2028 waits for it, with or without a toelichting.
+  await expect(closeYear(env, 2028, null, NEXT)).rejects.toMatchObject({ code: "earlier_year_open", status: 409 });
+  await expect(closeYear(env, 2028, "Toch alvast", NEXT)).rejects.toMatchObject({ code: "earlier_year_open", status: 409 });
+  expect(await snapshot()).toEqual(before);
+  // Its checks can still be read.
+  expect((await yearChecks(env, 2028, NEXT)).every((check) => check.ok)).toBe(true);
+
+  await closeYear(env, 2027, null, NEXT);
+  await closeYear(env, 2028, null, NEXT);
+  expect(await yearRow(2028)).toEqual({ status: "closed", closed_at: NEXT.toISOString(), close_note: null });
+  expect(await yearRow(2029)).toEqual({ status: "open", closed_at: null, close_note: null });
+});
+
+it("does not close a year when the year before is reopened between the checks and the close", async () => {
+  await tidyYear();
+  await closeYear(env, 2027, null, NOW);
+  await mollieBalance("2028-12-31", 0);
+  let batches = 0;
+  const racing = new Proxy(env.DB, {
+    get(target, prop) {
+      if (prop === "prepare") return (sql: string) => target.prepare(sql);
+      if (prop === "batch") {
+        return async (statements: D1PreparedStatement[]) => {
+          if (++batches === 2) await reopenYear(env.DB, 2027, "Kascommissie vond een fout", NEXT);
+          return target.batch(statements);
+        };
+      }
+      return Reflect.get(target, prop);
+    },
+  });
+  await expect(closeYear({ ...env, DB: racing } as Env, 2028, null, NEXT)).rejects.toMatchObject({ code: "year_changed", status: 409 });
+  expect(batches).toBe(2);
+  expect(await yearStatus(env.DB, 2027)).toBe("open");
+  expect(await yearStatus(env.DB, 2028)).toBe("open");
+  expect(await count("ledger_entries WHERE source = 'closing' AND source_ref = '2028'")).toBe(0);
+  expect((await events(2028)).length).toBe(0);
+});
+
 it("closes nothing when the books change between the checks and the close", async () => {
   await tidyYear();
   // Another window books interest on 31 December after the close has read the year, before it writes.
