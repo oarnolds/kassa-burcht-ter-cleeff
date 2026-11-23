@@ -67,3 +67,10 @@ CREATE TABLE ledger_year_events (
   kind TEXT NOT NULL CHECK (kind IN ('closed','reopened')),
   note TEXT
 );
+
+-- The boekhouding's own settings (never the kassa's `settings`): e.g. the equity e-Boekhouden shows, to display the difference.
+CREATE TABLE ledger_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
