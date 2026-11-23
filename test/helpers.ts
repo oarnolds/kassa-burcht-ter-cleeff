@@ -4,6 +4,7 @@ import type { CashSaleInput, PinSaleInput } from "../shared/schemas";
 import type { ItemResult, PinStatus } from "../shared/types";
 import { app } from "../worker/app";
 import type { Env } from "../worker/env";
+import { createFakeEnableBanking, type FakeEnableBanking } from "./fake-enable-banking";
 import { createFakeMollie, type FakeMollie } from "./fake-mollie";
 
 export const TEST_PASSWORD = "test-wachtwoord-123";
@@ -43,6 +44,43 @@ export function useFakeMollie(): { current: FakeMollie } {
   const holder = {} as { current: FakeMollie };
   beforeEach(() => {
     holder.current = createFakeMollie({ key: "*", origin: "https://fake.mollie.test" });
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => holder.current.handle(new Request(input, init)));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+  return holder;
+}
+
+/** A throwaway RSA key for the tests, made at runtime, once per test file, and never written anywhere. */
+let keyPromise: Promise<{ pem: string; publicKey: CryptoKey }> | undefined;
+export function testRsaKey(): Promise<{ pem: string; publicKey: CryptoKey }> {
+  keyPromise ??= (async () => {
+    const pair = (await crypto.subtle.generateKey(
+      { name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+      true,
+      ["sign", "verify"],
+    )) as CryptoKeyPair;
+    const der = new Uint8Array((await crypto.subtle.exportKey("pkcs8", pair.privateKey)) as ArrayBuffer);
+    let binary = "";
+    for (const byte of der) binary += String.fromCharCode(byte);
+    const lines = btoa(binary).match(/.{1,64}/g)!.join("\n");
+    return { pem: `-----BEGIN PRIVATE KEY-----\n${lines}\n-----END PRIVATE KEY-----\n`, publicKey: pair.publicKey };
+  })();
+  return keyPromise;
+}
+
+export const TEST_EB_APP_ID = "app-id-fake";
+
+/**
+ * Sends every `fetch` in this test file to a fresh fake Enable Banking, so no test can reach the real one.
+ * `key` is the PEM of the test key (see testRsaKey) the clients under test sign with.
+ */
+export function useFakeEnableBanking(): { current: FakeEnableBanking } {
+  const holder = {} as { current: FakeEnableBanking };
+  beforeEach(async () => {
+    const { publicKey } = await testRsaKey();
+    holder.current = createFakeEnableBanking({ appId: TEST_EB_APP_ID, publicKey, origin: "https://fake.enablebanking.test" });
     vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => holder.current.handle(new Request(input, init)));
   });
   afterEach(() => {

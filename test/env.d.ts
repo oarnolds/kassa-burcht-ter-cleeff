@@ -6,6 +6,9 @@ declare namespace Cloudflare {
     ATTACHMENTS: R2Bucket;
     MOLLIE_API_KEY?: string;
     MOLLIE_API_BASE?: string;
+    ENABLE_BANKING_APP_ID?: string;
+    ENABLE_BANKING_PRIVATE_KEY?: string;
+    ENABLE_BANKING_API_BASE?: string;
     TEST_MIGRATIONS: import("cloudflare:test").D1Migration[];
   }
 }
