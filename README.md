@@ -175,7 +175,7 @@ Het meeste boekt de app zelf, elke nacht: de omzet van de kassa, de afdrachten v
 
 ### Wat staat waar
 
-- **Overzicht.** Hoeveel regels er te boeken zijn. Per geldrekening het saldo in de boekhouding naast het saldo bij de bank; een verschil staat er in rood. De toestemming van ING, en het resultaat van dit jaar tot nu toe. Met **Nu bijwerken** doet de app meteen wat hij anders 's nachts doet.
+- **Overzicht.** Hoeveel regels er te boeken zijn. Per geldrekening het saldo in de boekhouding naast het saldo bij de bank; een verschil staat er in rood, met hoeveel regels daarvan nog te boeken zijn. Tot wanneer ING gekoppeld is, en het resultaat van dit jaar tot nu toe. Met **Nu bijwerken** doet de app meteen wat hij anders 's nachts doet.
 - **Te boeken.** De bankregels die op jou wachten. Per bankrekening staat er de knop **Bankbestand inlezen**, en met **Regel intypen** zet je er zelf een regel bij (met een datum tot en met vandaag).
 - **Boekingen.** Alle boekingen van een jaar. Zoeken kan op datum, rekening, bedrag of tekst. Hier maak je een **Nieuwe boeking**, bijvoorbeeld voor kosten die aan het eind van het jaar nog betaald moeten worden.
 - **Rapporten.** De **Balans** op een datum en **Winst en verlies** over een periode, naast hetzelfde jaar ervoor. Tik op een rekening om de regels ervan te zien.
@@ -184,7 +184,7 @@ Het meeste boekt de app zelf, elke nacht: de omzet van de kassa, de afdrachten v
 - **Jaar.** Per jaar de controles, **Jaar afsluiten**, heropenen, en het jaaroverzicht.
 - **Instellingen.** De rekeningen, per geldrekening het kenmerk en de bron, ING automatisch, de omzet van de kassa, de regels voor Mollie, en onder **Eenmalig** de schermen voor de eerste keer: **Beginbalans** en **Vergelijkingscijfers 2026**.
 
-Op het gewone **Overzicht** van beheer staat een regel zodra er iets te boeken is, een saldo afwijkt of de toestemming van ING bijna afloopt.
+Op het gewone **Overzicht** van beheer staat een regel zodra er iets te boeken is, een saldo afwijkt, de toestemming van ING bijna afloopt, een deel van de nachtelijke taak niet lukte, de boekhouding langer dan anderhalve dag niet is bijgewerkt, of de kas afwijkt van wat er volgens de kassa in het kluisje hoort.
 
 ### De eerste keer
 
@@ -196,7 +196,7 @@ Doe dit in januari 2027, nadat je 2026 in e-Boekhouden hebt afgesloten, met de a
 4. **Instellingen → Regels voor Mollie.** Deze regels zijn voor de betalingen via de website en de QR-code. De app begint met: "dagkaart" en "dagticket" naar 8012 Entree; "lidm", "lidmaatschap" en "verl" naar 8000 Contributie particulier; "reserver" en "verhuur" naar 8010 Verhuur. Een regel erbij: vul **Omschrijving bevat** in, kies de **Rekening** en tik op **Regel toevoegen**. De eerste regel die past, telt. Hoofdletters tellen niet.
 5. **Instellingen → Beginbalans.** Typ per rekening het saldo op 31 december 2026 uit de eindbalans van e-Boekhouden en tik op **Opslaan**. Drie rekeningen gaan anders:
    - **1000 Kas (kluisje).** Onder de lijst staat "Volgens de kassa hoort er op 31 december € … in het kluisje". Neem dat bedrag over.
-   - **1030 Mollie.** Het saldo bij Mollie op 31 december 2026 (in het Mollie-dashboard): wat Mollie toen nog niet had uitbetaald.
+   - **1030 Mollie.** Het saldo bij Mollie op 31 december 2026 (in het Mollie-dashboard): wat Mollie toen nog niet had uitbetaald. Heeft de app dat saldo zelf gelezen, dan staat naast 1030 "Mollie gaf op 31-12-2026: € … (beschikbaar plus nog uit te betalen)"; zo vergelijkt de app later ook met Mollie.
    - **1080 Kruisposten.** Een uitbetaling van Mollie uit december 2026 die pas in januari op ING binnenkomt, is op 31 december geld onderweg. Zet dat bedrag op 1080. Als hij in januari binnenkomt, staat hij in **Te boeken** met de melding "Uitbetaling … is van … (2026): boek hem tegen 1080 Kruisposten …". Boek hem dan op **1080 Kruisposten**.
 
    Het eigen vermogen (1400) rekent de app zelf uit. Typ ter vergelijking het eigen vermogen uit e-Boekhouden in; de app laat het verschil zien. 0130 en 0135 vult de app zelf zodra de toestellen erin staan (stap 7).
@@ -207,7 +207,7 @@ Doe dit in januari 2027, nadat je 2026 in e-Boekhouden hebt afgesloten, met de a
 ### Elke week of elke maand
 
 - **Te boeken.** Bij elke regel staat al een rekening als die tegenpartij eerder is geboekt. Klopt die, tik dan op **Boeken**. Klopt hij niet, kies dan een andere **Rekening**. Hoort een regel bij meer rekeningen, tik dan op **Verdelen** en vul per rij een rekening en een bedrag in; samen moeten ze het bedrag van de regel zijn.
-- **Nu bijwerken.** De app werkt elke nacht zelf bij. Onder de knop **Nu bijwerken** op het Overzicht staat wanneer dat voor het laatst gebeurde, bijvoorbeeld "Vannacht bijgewerkt om 03:00", en welk deel niet lukte. Wil je niet tot morgen wachten, tik dan op de knop.
+- **Nu bijwerken.** De app werkt elke nacht zelf bij. Onder de knop **Nu bijwerken** op het Overzicht staat wanneer dat voor het laatst gebeurde, bijvoorbeeld "Vannacht bijgewerkt om 03:00", en in rood elk deel dat niet lukte, bijvoorbeeld "ING is vannacht niet gelukt: unreachable". Staat er "De boekhouding is sinds … niet bijgewerkt", dan heeft de nachtelijke taak meer dan anderhalve dag niet gedraaid: tik op de knop, en meld het aan de bouwer als het blijft. Wil je niet tot morgen wachten, tik dan op de knop.
 - **Kasstorting.** Een afdracht die je onder **Kluisje** vastlegt, boekt de app zelf: het geld gaat van 1000 Kas naar 1080 Kruisposten (geld onderweg), een kasverschil naar 4515 Kasverschillen. Maak het bedrag daarna over van je eigen rekening naar ING betaal, met het woord **kasstorting** in de omschrijving. Die regel boekt de app zelf tegen 1080; dan staat 1080 weer op nul. Zonder dat woord komt de regel in Te boeken en boek je hem zelf op 1080 Kruisposten.
 - **Bijlagen.** Zet bij een uitgave de factuur of een foto van het bonnetje. In Te boeken: tik bij de regel op **Bijlage**, kies een PDF of maak met de telefoon een foto, en tik op **Boeken**. Later kan ook: open de boeking onder **Boekingen** en tik op **Bijlage toevoegen**. Een PDF, JPEG of PNG, hoogstens 10 MB. Een bijlage gaat nooit weg: **Verbergen** haalt hem uit beeld, het bestand blijft bewaard.
 - **Eigen overboekingen.** Geld tussen twee rekeningen van de vereniging boekt de app zelf, aan beide kanten tegen 1080 Kruisposten. Als beide kanten binnen zijn, staat 1080 weer op nul.

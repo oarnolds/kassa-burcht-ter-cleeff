@@ -178,3 +178,14 @@ it("gives the expected cash at the end of the year before", async () => {
   const opening = await setOpening(env.DB, 2027, { lines: [], eBoekhoudenEquityCents: null }, NOW);
   expect(opening.expectedCashCents).toBe(5250);
 });
+
+it("gives Mollie's balance of 31 December 2026 next to the opening, when the app read one", async () => {
+  expect((await getOpening(env.DB, 2027, NOW)).mollieBalanceCents).toBeNull();
+  // Another day of Mollie, or 31 December of another account, is not it.
+  await env.DB.prepare(
+    `INSERT INTO bank_balances (account_code, date, balance_cents, origin) VALUES ('1030', '2027-01-01', 999, 'mollie'), ('1010', '2026-12-31', 888, 'file')`,
+  ).run();
+  expect((await getOpening(env.DB, 2027, NOW)).mollieBalanceCents).toBeNull();
+  await env.DB.prepare("INSERT INTO bank_balances (account_code, date, balance_cents, origin) VALUES ('1030', '2026-12-31', 12345, 'mollie')").run();
+  expect((await getOpening(env.DB, 2027, NOW)).mollieBalanceCents).toBe(12345);
+});

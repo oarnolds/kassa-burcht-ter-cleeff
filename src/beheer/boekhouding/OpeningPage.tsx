@@ -13,6 +13,8 @@ const YEAR = 2027;
 const EQUITY = "1400";
 /** An asset that is shown the other way round: it is subtracted from the assets. */
 const DEPRECIATION = "0135";
+/** Mollie: what it gave for 31 December 2026 is shown beside it, as the comparison with Mollie counts it. */
+const MOLLIE = "1030";
 /** Once the toestellen are taken over from e-Boekhouden, these two are the totals of that list (spec §9). */
 const FROM_ASSET_LIST = ["0130", DEPRECIATION];
 
@@ -72,6 +74,9 @@ function OpeningForm({ accounts, opening }: { accounts: LedgerAccount[]; opening
                   onChange={(value) => setCents((before) => ({ ...before, [row.code]: value }))}
                   className="w-40 text-right tabular-nums"
                 />
+              )}
+              {row.code === MOLLIE && opening.mollieBalanceCents !== null && (
+                <span className="basis-full text-ink/70">{`Mollie gaf op 31-12-2026: ${formatEuro(opening.mollieBalanceCents)} (beschikbaar plus nog uit te betalen)`}</span>
               )}
             </li>
           ))}

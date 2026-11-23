@@ -35,6 +35,8 @@ export type Opening = {
   expectedCashCents: number;
   /** 0130 and 0135 are the totals of the toestellen pasted from e-Boekhouden, not typed. */
   fromAssetList: boolean;
+  /** What Mollie gave for 31 December 2026 (available plus still to pay out), when the app read it. */
+  mollieBalanceCents: number | null;
 };
 
 export type Figure = { accountCode: string; amountCents: number };

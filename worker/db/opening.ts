@@ -16,6 +16,8 @@ export type Opening = {
   expectedCashCents: number;
   /** 0130 and 0135 are the totals of the toestellen pasted from e-Boekhouden, not typed (spec §9, §12). */
   fromAssetList: boolean;
+  /** What Mollie gave for 31 December of the year before (available plus still to pay out), when the app read it. */
+  mollieBalanceCents: number | null;
 };
 
 const EQUITY = "1400";
@@ -83,7 +85,7 @@ const equityOf = (lines: Opening["lines"]) => lines.reduce((sum, line) => sum + 
 
 /** The opening entry of `year` (source "opening", ref = year, dated `${year}-01-01`), with 1400 worked out. */
 export async function getOpening(db: D1Database, year: number, _now: Date): Promise<Opening> {
-  const [entry, stored, expectedCashCents, fromList] = await Promise.all([
+  const [entry, stored, expectedCashCents, fromList, mollie] = await Promise.all([
     db
       .prepare(
         `SELECT l.account_code, l.amount_cents FROM ledger_entries e JOIN ledger_lines l ON l.entry_id = e.id
@@ -94,6 +96,10 @@ export async function getOpening(db: D1Database, year: number, _now: Date): Prom
     getLedgerSetting(db, equityKey(year)),
     expectedCashAt(db, endOfDay(`${year - 1}-12-31`)),
     assetListTotals(db, year),
+    db
+      .prepare("SELECT balance_cents FROM bank_balances WHERE account_code = '1030' AND date = ?")
+      .bind(`${year - 1}-12-31`)
+      .first<{ balance_cents: number }>(),
   ]);
   let lines: Opening["lines"] = [];
   let equityCents = 0;
@@ -107,7 +113,7 @@ export async function getOpening(db: D1Database, year: number, _now: Date): Prom
     equityCents = equityOf(lines);
   }
   const eBoekhoudenEquityCents = stored === null ? null : Number(stored);
-  return { year, lines, equityCents, eBoekhoudenEquityCents, expectedCashCents, fromAssetList: fromList !== null };
+  return { year, lines, equityCents, eBoekhoudenEquityCents, expectedCashCents, fromAssetList: fromList !== null, mollieBalanceCents: mollie?.balance_cents ?? null };
 }
 
 /**

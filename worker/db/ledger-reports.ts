@@ -12,6 +12,7 @@ import { LedgerError } from "./ledger";
 import { getLedgerSetting } from "./ledger-settings";
 import { moneyAccountsWithTransit } from "./bank";
 import { consentState } from "./bank-consent";
+import { inUseSince } from "./maintenance";
 import { endOfDay, expectedCashAt } from "./opening";
 
 export type { AccountLines, BalanceReport, LedgerOverview, ResultReport };
@@ -212,6 +213,9 @@ export async function setComparison(db: D1Database, year: number, figures: { acc
   ]);
 }
 
+/** The nightly run is every night: more than this since the last one (or since the kassa went into use) means it stopped. */
+const STALE_MS = 36 * 3_600_000;
+
 /** The stored report of the last nightly run; null when it never ran or the value cannot be read. */
 function parseNightly(value: string | null): NightlyReport | null {
   if (value === null) return null;
@@ -230,17 +234,29 @@ export async function overview(db: D1Database, now: Date): Promise<LedgerOvervie
   const today = businessDate(now.toISOString());
   const yesterday = shiftDate(today, -1);
   const year = Number(today.slice(0, 4));
-  const [counts, accounts, resultYearCents, cashDifferenceCents, lastNightly, consent] = await Promise.all([
+  const [counts, accounts, resultYearCents, cashDifferenceCents, lastNightly, consent, inUse] = await Promise.all([
+    // Per account and status; `in_difference`: dated up to the bank's newest balance of that account.
     db
-      .prepare(`SELECT status, COUNT(*) AS n FROM bank_lines WHERE status IN ('open','waiting') GROUP BY status`)
-      .all<{ status: string; n: number }>(),
+      .prepare(
+        `SELECT b.account_code, b.status, COUNT(*) AS n,
+           SUM(b.booking_date <= COALESCE((SELECT MAX(x.date) FROM bank_balances x WHERE x.account_code = b.account_code), '')) AS in_difference
+         FROM bank_lines b WHERE b.status IN ('open','waiting') GROUP BY b.account_code, b.status`,
+      )
+      .all<{ account_code: string; status: string; n: number; in_difference: number }>(),
     moneyAccountsWithTransit(db, now),
     year < firstYear ? Promise.resolve(0) : resultOf(db, `${year}-01-01`, today),
     cashDifference(db, yesterday),
     getLedgerSetting(db, "ledger_nightly_last"),
     consentState(db, now),
+    inUseSince(db),
   ]);
-  const count = (status: string) => counts.results.find((row) => row.status === status)?.n ?? 0;
+  const count = (status: string) => counts.results.reduce((sum, row) => sum + (row.status === status ? row.n : 0), 0);
+  const toBookByAccount: Record<string, number> = {};
+  for (const row of counts.results) {
+    if (row.in_difference > 0) toBookByAccount[row.account_code] = (toBookByAccount[row.account_code] ?? 0) + row.in_difference;
+  }
+  const report = parseNightly(lastNightly);
+  const since = report?.at ?? inUse;
   return {
     openLines: count("open"),
     waitingLines: count("waiting"),
@@ -250,7 +266,9 @@ export async function overview(db: D1Database, now: Date): Promise<LedgerOvervie
     consent: consent.status === "active" || consent.status === "expired" ? { validUntil: consent.validUntil!, daysLeft: consent.daysLeft! } : null,
     mollieDifferenceCents: accounts.accounts.find((account) => account.accountCode === "1030")?.differenceCents ?? null,
     mollieInTransitCents: accounts.inTransitCents,
-    lastNightly: parseNightly(lastNightly),
+    lastNightly: report,
+    notUpdatedSince: since !== null && now.getTime() - Date.parse(since) > STALE_MS ? since : null,
+    toBookByAccount,
   };
 }
 

@@ -15,6 +15,8 @@ const overview = (extra = {}) => ({
   mollieDifferenceCents: null,
   mollieInTransitCents: 0,
   lastNightly: null,
+  notUpdatedSince: null,
+  toBookByAccount: {},
   ...extra,
 });
 
@@ -41,13 +43,16 @@ it("says when the cash box is off", async () => {
 const report = (at: string, steps: Record<string, string>) => ({ at, steps });
 const sync = `${base}/sync`;
 
-it("tells when the last run was and which steps failed", async () => {
+it("tells when the last run was, and each step that failed in red with its code", async () => {
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2027-03-07T07:00:00.000Z") });
   try {
     mockLoggedIn();
-    mockApi({ [`${base}/overview`]: overview({ lastNightly: report("2027-03-07T01:00:00.000Z", { kassa: "ok", ing: "skipped", mollie: "error" }) }) });
+    mockApi({ [`${base}/overview`]: overview({ lastNightly: report("2027-03-07T01:00:00.000Z", { kassa: "ok", ing: "ing_cut_short", mollie: "error" }) }) });
     renderAt("/beheer/boekhouding");
-    expect(await screen.findByText("Vannacht bijgewerkt om 02:00 (Mollie niet gelukt)")).toBeInTheDocument();
+    expect(await screen.findByText("Vannacht bijgewerkt om 02:00")).toBeInTheDocument();
+    expect(screen.getByText("ING is vannacht niet gelukt: ing_cut_short")).toHaveClass("text-redbrown");
+    expect(screen.getByText("Mollie is vannacht niet gelukt: error")).toHaveClass("text-redbrown");
+    expect(screen.queryByText(/Kassa is/)).not.toBeInTheDocument();
   } finally {
     vi.useRealTimers();
   }
@@ -57,7 +62,22 @@ it("names the day when the last run was not last night", async () => {
   mockLoggedIn();
   mockApi({ [`${base}/overview`]: overview({ lastNightly: report("2027-03-05T14:30:00.000Z", { kassa: "unbalanced", ing: "no_access", mollie: "skipped" }) }) });
   renderAt("/beheer/boekhouding");
-  expect(await screen.findByText("Bijgewerkt op 5-3-2027 om 15:30 (kassa niet gelukt) (ING niet gelukt)")).toBeInTheDocument();
+  expect(await screen.findByText("Bijgewerkt op 5-3-2027 om 15:30")).toBeInTheDocument();
+  expect(screen.getByText("Kassa is op 5-3-2027 om 15:30 niet gelukt: unbalanced")).toHaveClass("text-redbrown");
+  expect(screen.getByText("ING is op 5-3-2027 om 15:30 niet gelukt: no_access")).toHaveClass("text-redbrown");
+  expect(screen.queryByText(/Mollie is/)).not.toBeInTheDocument();
+});
+
+it("says in red since when the books were not brought up to date", async () => {
+  mockLoggedIn();
+  mockApi({ [`${base}/overview`]: overview({ notUpdatedSince: "2027-03-05T14:30:00.000Z" }) });
+  const first = renderAt("/beheer/boekhouding");
+  expect(await screen.findByText("De boekhouding is sinds 5-3-2027 15:30 niet bijgewerkt")).toHaveClass("text-redbrown");
+  first.unmount();
+  mockApi({ [`${base}/overview`]: overview() });
+  renderAt("/beheer/boekhouding");
+  await screen.findByRole("link", { name: "Te boeken: 3" });
+  expect(screen.queryByText(/niet bijgewerkt/)).not.toBeInTheDocument();
 });
 
 it("brings the books up to date on a click and shows how it went", async () => {
@@ -169,4 +189,37 @@ it("shows a payout on its way to ING with Mollie, and only the rest as a differe
   renderAt("/beheer/boekhouding");
   expect(await screen.findByRole("listitem", { name: "Mollie" })).toHaveTextContent("Onderweg naar ING € 100,00");
   expect(screen.getByRole("link", { name: `Mollie wijkt ${formatEuro(250)} af van de boekhouding` })).toBeInTheDocument();
+});
+
+it("shows until when ING is linked, always while ING betaal is automatic", async () => {
+  mockLoggedIn();
+  mockApi({ [`${base}/overview`]: withSource("enable_banking", soon(90)) });
+  const first = renderAt("/beheer/boekhouding");
+  expect(await screen.findByRole("listitem", { name: "ING betaalrekening" })).toHaveTextContent("ING gekoppeld tot 1-6-2027");
+  expect(screen.queryByRole("link", { name: "Vernieuwen" })).not.toBeInTheDocument();
+  first.unmount();
+
+  for (const other of [withSource("file", soon(90)), withSource("enable_banking", soon(-1)), withSource("enable_banking")]) {
+    mockApi({ [`${base}/overview`]: other });
+    const page = renderAt("/beheer/boekhouding");
+    await screen.findByRole("listitem", { name: "ING betaalrekening" });
+    expect(screen.queryByText(/ING gekoppeld tot/)).not.toBeInTheDocument();
+    page.unmount();
+  }
+});
+
+it("says how many lines still to book are part of a difference", async () => {
+  mockLoggedIn();
+  mockApi({ [`${base}/overview`]: overview({ toBookByAccount: { "1020": 3, "1010": 2 } }) });
+  const first = renderAt("/beheer/boekhouding");
+  const kwartaal = await screen.findByRole("listitem", { name: "ING kwartaalrekening" });
+  expect(kwartaal).toHaveTextContent("verschil € 10,00");
+  expect(kwartaal).toHaveTextContent("waarvan nog te boeken: 3 regels");
+  // No difference on ING betaal: nothing to explain.
+  expect(screen.getByRole("listitem", { name: "ING betaalrekening" })).not.toHaveTextContent("waarvan");
+  first.unmount();
+
+  mockApi({ [`${base}/overview`]: overview({ toBookByAccount: { "1020": 1 } }) });
+  renderAt("/beheer/boekhouding");
+  expect(await screen.findByRole("listitem", { name: "ING kwartaalrekening" })).toHaveTextContent("waarvan nog te boeken: 1 regel");
 });

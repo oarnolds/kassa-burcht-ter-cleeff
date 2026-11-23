@@ -153,6 +153,13 @@ export type LedgerOverview = {
   /** Payouts that have left Mollie but are not on ING yet, on the date of Mollie's newest balance (amount plus costs). */
   mollieInTransitCents: number;
   lastNightly: NightlyReport | null;
+  /**
+   * When the books were last brought up to date (the last run, or without one the moment the kassa went into use),
+   * when that is more than 36 hours ago: the nightly run stopped happening. Null while all is well, or on trial.
+   */
+  notUpdatedSince: string | null;
+  /** Per money account (only those with any), the lines still to book dated up to the bank's newest balance: part of its difference. */
+  toBookByAccount: Record<string, number>;
 };
 
 /**

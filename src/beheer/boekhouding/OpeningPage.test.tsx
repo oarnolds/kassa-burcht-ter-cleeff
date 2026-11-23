@@ -124,3 +124,21 @@ it("shows 0130 and 0135 from the list of speeltoestellen, not to be typed", asyn
   await waitFor(() => expect(calls("PUT")).toHaveLength(1));
   expect(calls("PUT")[0]!.body).toEqual({ lines: [{ accountCode: "1010", amountCents: 100000 }], eBoekhoudenEquityCents: null });
 });
+
+it("shows what Mollie gave for 31 December 2026 next to 1030", async () => {
+  mockLoggedIn();
+  const opening = { year: 2027, lines: [], equityCents: 0, eBoekhoudenEquityCents: null, expectedCashCents: 0, fromAssetList: false };
+  mockApi({
+    [`${base}/accounts`]: [...accounts, account("1030", "Mollie", "asset", { money: true })],
+    [`${base}/opening`]: { ...opening, mollieBalanceCents: 123456 },
+  });
+  const first = renderAt("/beheer/boekhouding/beginbalans");
+  const mollie = (await screen.findByLabelText("Mollie")).closest("li")!;
+  expect(mollie).toHaveTextContent("Mollie gaf op 31-12-2026: € 1.234,56 (beschikbaar plus nog uit te betalen)");
+  first.unmount();
+
+  mockApi({ [`${base}/opening`]: { ...opening, mollieBalanceCents: null } });
+  renderAt("/beheer/boekhouding/beginbalans");
+  await screen.findByLabelText("Mollie");
+  expect(screen.queryByText(/Mollie gaf op/)).not.toBeInTheDocument();
+});

@@ -1,5 +1,6 @@
 import { screen } from "@testing-library/react";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
+import { formatEuro } from "../../shared/money";
 import { mockApi, mockLoggedIn, renderAt } from "../test-utils";
 import { base, moneyAccount } from "./boekhouding/ledger-test-data";
 
@@ -20,6 +21,8 @@ const overview = (extra = {}) => ({
   consent: null,
   mollieDifferenceCents: null,
   lastNightly: null,
+  notUpdatedSince: null,
+  toBookByAccount: {},
   ...extra,
 });
 const open = (answer: unknown) => {
@@ -72,4 +75,33 @@ it("warns on the dashboard at once when the consent ended early", async () => {
   open(overview({ moneyAccounts: [moneyAccount({ accountCode: "1010", name: "ING betaalrekening", source: "enable_banking" })], consent: { validUntil: "2027-03-02T02:00:00.000Z", daysLeft: -1 } }));
   const link = await screen.findByRole("link", { name: "Vernieuwen" });
   expect(link.parentElement).toHaveTextContent("ING haalt geen regels meer op: toestemming verlopen. Vernieuwen of upload een bankbestand.");
+});
+
+it("gives a line for each step that failed, for books not brought up to date, and for the kas", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date("2027-03-07T07:00:00.000Z") });
+  try {
+    open(
+      overview({
+        lastNightly: { at: "2027-03-07T01:00:00.000Z", steps: { kassa: "ok", ing: "unreachable", mollie: "error" } },
+        notUpdatedSince: "2027-03-05T14:30:00.000Z",
+        cashDifferenceCents: -250,
+      }),
+    );
+    for (const text of [
+      "ING is vannacht niet gelukt: unreachable",
+      "Mollie is vannacht niet gelukt: error",
+      "De boekhouding is sinds 5-3-2027 15:30 niet bijgewerkt",
+      `Kas wijkt ${formatEuro(250)} af van wat er volgens de kassa in het kluisje hoort`,
+    ]) {
+      expect(await screen.findByRole("link", { name: text })).toHaveAttribute("href", "/beheer/boekhouding");
+    }
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("says nothing of the nightly run or the kas when all is well", async () => {
+  open(overview({ lastNightly: { at: "2027-03-07T01:00:00.000Z", steps: { kassa: "ok", ing: "skipped", mollie: "ok" } } }));
+  expect(await screen.findByText("In het kluisje hoort")).toBeInTheDocument();
+  expect(screen.queryByText(/niet gelukt|niet bijgewerkt|Kas wijkt/)).not.toBeInTheDocument();
 });

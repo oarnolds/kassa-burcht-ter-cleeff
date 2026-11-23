@@ -5,6 +5,7 @@ import type { LedgerOverview } from "../../shared/ledger-types";
 import type { PinAttention, Summary } from "../../shared/types";
 import { Card, Loaded, PageTitle, TotalsBlock, count, pillLink, textLink } from "./parts";
 import { ConsentWarning, consentWarning } from "./boekhouding/ConsentWarning";
+import { ledgerAlerts } from "./boekhouding/ledger-alerts";
 import { ledgerPath } from "./boekhouding/ledger-api";
 import { useAdminData } from "./useAdmin";
 
@@ -13,24 +14,28 @@ const attentionText = ({ kind, date, totalCents }: PinAttention): string =>
     ? `Pinbetaling van ${formatEuro(totalCents)} wacht op bevestiging (${formatDateNl(date)})`
     : `Mogelijk dubbel betaald: ${formatEuro(totalCents)} (${formatDateNl(date)})`;
 
-/** One line when the boekhouding wants attention; nothing when all is well or when it cannot be read. */
+/**
+ * A line for each thing the boekhouding wants attention for: what is to book or a balance that is off, a step of the
+ * nightly run that failed, a nightly run that stopped happening, the kas; nothing when all is well or when it cannot be read.
+ */
 function LedgerLine() {
   const { data } = useAdminData<LedgerOverview>(ledgerPath.overview);
   if (!data) return null;
   const toBook = data.openLines + data.waitingLines;
   const off = data.moneyAccounts.find((account) => account.differenceCents !== null && account.differenceCents !== 0);
   const text = toBook > 0 ? `Boekhouding: ${toBook} te boeken` : off ? `Saldo wijkt af bij ${off.name}` : null;
-  if (!text && !consentWarning(data)) return null;
+  const lines = [...(text ? [text] : []), ...ledgerAlerts(data)];
+  if (lines.length === 0 && !consentWarning(data)) return null;
   return (
     <>
       <ConsentWarning overview={data} />
-      {text && (
-        <p className="mt-3">
+      {lines.map((line) => (
+        <p key={line} className="mt-3">
           <Link className={`${textLink} inline-flex min-h-11 items-center text-lg`} to="/beheer/boekhouding">
-            {text}
+            {line}
           </Link>
         </p>
-      )}
+      ))}
     </>
   );
 }

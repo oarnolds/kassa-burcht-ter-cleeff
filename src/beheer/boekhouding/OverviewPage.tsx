@@ -1,30 +1,31 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import type { LedgerOverview, NightlyReport, NightlyStep } from "../../../shared/ledger-types";
+import type { LedgerOverview, MoneyAccount, NightlyReport } from "../../../shared/ledger-types";
 import { formatEuro } from "../../../shared/money";
-import { businessDate, formatDateNl, localTime } from "../../../shared/time";
+import { formatDateNl, localTime } from "../../../shared/time";
 import { Button } from "../../ui/Button";
-import { Loaded, PageTitle, Problem, Section, textLink, today } from "../parts";
+import { Loaded, PageTitle, Problem, Section, count, textLink, today } from "../parts";
 import { useAdminData } from "../useAdmin";
 import { ConsentWarning } from "./ConsentWarning";
+import { cashText, dayOf, failedSteps, notUpdatedText, ranTonight } from "./ledger-alerts";
 import { ledgerPath, useLedgerWrites } from "./ledger-api";
 
-const STEP_NAMES: Record<NightlyStep, string> = { kassa: "kassa", ing: "ING", mollie: "Mollie" };
-
-/** "Vannacht bijgewerkt om 02:00" for a run between midnight and six this morning, else the day; then each step that failed. */
+/** "Vannacht bijgewerkt om 02:00" for a run between midnight and six this morning, else the day. */
 function lastRun(report: NightlyReport): string {
   const time = localTime(report.at);
-  const night = businessDate(report.at) === today() && time < "06:00";
-  const [year, month, day] = businessDate(report.at).split("-");
-  const when = night ? `Vannacht bijgewerkt om ${time}` : `Bijgewerkt op ${Number(day)}-${Number(month)}-${year} om ${time}`;
-  const failed = (Object.keys(STEP_NAMES) as NightlyStep[])
-    .filter((step) => report.steps[step] !== undefined && report.steps[step] !== "ok" && report.steps[step] !== "skipped")
-    .map((step) => ` (${STEP_NAMES[step]} niet gelukt)`);
-  return when + failed.join("");
+  return ranTonight(report) ? `Vannacht bijgewerkt om ${time}` : `Bijgewerkt op ${dayOf(report.at)} om ${time}`;
 }
 
-/** The button that brings the books up to date now, and when that last happened. */
-function Update({ last, reload }: { last: NightlyReport | null; reload: () => void }) {
+const red = "font-semibold text-redbrown";
+
+/** Until when ING may be read, while ING betaal takes its lines from Enable Banking and the consent still holds. */
+function ingUntil(o: LedgerOverview, account: MoneyAccount): string | null {
+  if (account.accountCode !== "1010" || account.source !== "enable_banking" || !o.consent || o.consent.daysLeft < 0) return null;
+  return `ING gekoppeld tot ${dayOf(o.consent.validUntil)}`;
+}
+
+/** The button that brings the books up to date now, when that last happened, each step that failed, and a run that stopped happening. */
+function Update({ last, notUpdatedSince, reload }: { last: NightlyReport | null; notUpdatedSince: string | null; reload: () => void }) {
   const writes = useLedgerWrites();
   const [running, setRunning] = useState(false);
   const [ran, setRan] = useState<NightlyReport | null>(null);
@@ -46,6 +47,12 @@ function Update({ last, reload }: { last: NightlyReport | null; reload: () => vo
       </Button>
       {problem && <Problem>Bijwerken is niet gelukt. Probeer het opnieuw.</Problem>}
       {shown && <p className="text-ink/70">{lastRun(shown)}</p>}
+      {failedSteps(shown).map((text) => (
+        <p key={text} className={red}>
+          {text}
+        </p>
+      ))}
+      {!ran && notUpdatedSince && <p className={red}>{notUpdatedText(notUpdatedSince)}</p>}
     </div>
   );
 }
@@ -60,7 +67,7 @@ export function OverviewPage() {
         {(o) => (
           <>
             <ConsentWarning overview={o} />
-            <Update last={o.lastNightly} reload={overview.reload} />
+            <Update last={o.lastNightly} notUpdatedSince={o.notUpdatedSince} reload={overview.reload} />
             <Section title="Te boeken">
               <p className="flex flex-wrap items-baseline gap-x-4 px-2 text-lg sm:px-3">
                 <Link className={`${textLink} inline-flex min-h-11 items-center`} to="/beheer/boekhouding/te-boeken">{`Te boeken: ${o.openLines}`}</Link>
@@ -86,8 +93,14 @@ export function OverviewPage() {
                       <span className="text-ink/70">{`Onderweg naar ING ${formatEuro(o.mollieInTransitCents)}`}</span>
                     )}
                     {account.differenceCents !== null && account.differenceCents !== 0 && (
-                      <span className="font-semibold text-redbrown">{`verschil ${formatEuro(account.differenceCents)}`}</span>
+                      <span className="flex flex-wrap gap-x-2">
+                        <span className={red}>{`verschil ${formatEuro(account.differenceCents)}`}</span>
+                        {(o.toBookByAccount[account.accountCode] ?? 0) > 0 && (
+                          <span className="text-ink/70">{`waarvan nog te boeken: ${count(o.toBookByAccount[account.accountCode]!, "regel", "regels")}`}</span>
+                        )}
+                      </span>
                     )}
+                    {ingUntil(o, account) && <span className="text-ink/70">{ingUntil(o, account)}</span>}
                   </li>
                 ))}
               </ul>
@@ -104,9 +117,7 @@ export function OverviewPage() {
                 <span>{`Resultaat ${today().slice(0, 4)} tot nu toe`}</span>
                 <strong className="tabular-nums">{formatEuro(o.resultYearCents)}</strong>
               </p>
-              {o.cashDifferenceCents !== 0 && (
-                <p className="mt-3 px-2 font-semibold text-redbrown sm:px-3">{`Kas wijkt ${formatEuro(Math.abs(o.cashDifferenceCents))} af van wat er volgens de kassa in het kluisje hoort`}</p>
-              )}
+              {o.cashDifferenceCents !== 0 && <p className={`mt-3 px-2 sm:px-3 ${red}`}>{cashText(o.cashDifferenceCents)}</p>}
             </Section>
           </>
         )}

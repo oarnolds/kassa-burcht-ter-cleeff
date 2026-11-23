@@ -261,3 +261,34 @@ it("hands back one entry by its id, and says when there is none", async () => {
   expect(await found.json()).toMatchObject({ id: entry.id, number: entry.number, description: "Inkoop", editable: true });
   expect((await api(`${base}/entries/onbekend`, { cookie })).status).toBe(404);
 });
+
+it("counts per money account the lines still to book up to the bank's balance", async () => {
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO bank_lines (id, account_code, booking_date, amount_cents, description, content_key, origin, status, imported_at) VALUES
+         ('a','1010','2027-03-01',100,'x','ka','file','open','t'), ('b','1010','2027-03-02',100,'x','kb','file','waiting','t'),
+         ('c','1010','2027-03-05',100,'x','kc','file','open','t'), ('d','1010','2027-03-01',100,'x','kd','file','booked','t'),
+         ('e','1011','2027-03-01',100,'x','ke','file','open','t')`,
+    ),
+    // ING gave its balance on 2 March: the line of 5 March is not in that difference. 1011 has no balance from the bank.
+    env.DB.prepare("INSERT INTO bank_balances (account_code, date, balance_cents, origin) VALUES ('1010', '2027-03-02', 500, 'file')"),
+  ]);
+  const result = await overview(env.DB, new Date("2027-03-10T10:00:00.000Z"));
+  expect(result.toBookByAccount).toEqual({ "1010": 2 });
+  expect([result.openLines, result.waitingLines]).toEqual([3, 1]);
+});
+
+it("says since when the books were not brought up to date: 36 hours after the last run, or after the kassa went into use", async () => {
+  const at = (iso: string) => overview(env.DB, new Date(iso));
+  // On trial and never run: nothing to say.
+  expect((await at("2027-03-10T10:00:00.000Z")).notUpdatedSince).toBeNull();
+  await env.DB.prepare("INSERT INTO settings (key, value) VALUES ('in_use_since', '2027-03-01T09:00:00.000Z')").run();
+  expect((await at("2027-03-02T20:00:00.000Z")).notUpdatedSince).toBeNull();
+  expect((await at("2027-03-02T21:00:01.000Z")).notUpdatedSince).toBe("2027-03-01T09:00:00.000Z");
+  // A run: from then on it counts from that run.
+  await env.DB.prepare("INSERT INTO ledger_settings (key, value, updated_at) VALUES ('ledger_nightly_last', ?1, ?2)")
+    .bind(JSON.stringify({ at: "2027-03-05T02:00:00.000Z", steps: { kassa: "ok", ing: "skipped", mollie: "skipped" } }), "2027-03-05T02:00:00.000Z")
+    .run();
+  expect((await at("2027-03-06T14:00:00.000Z")).notUpdatedSince).toBeNull();
+  expect((await at("2027-03-06T14:00:01.000Z")).notUpdatedSince).toBe("2027-03-05T02:00:00.000Z");
+});
