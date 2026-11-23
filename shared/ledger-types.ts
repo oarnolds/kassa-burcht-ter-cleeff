@@ -89,3 +89,7 @@ export type BankLine = {
 
 /** `known`: lines that were already there. `beforeStart`: lines before LEDGER_START, not kept. */
 export type ImportResult = { added: number; known: number; beforeStart: number; autoBooked: number };
+
+export type NightlyStep = "kassa" | "ing" | "mollie";
+/** What the nightly run did, step by step; a string other than ok/skipped is the error code of a step that failed. */
+export type NightlyReport = { at: string; steps: Partial<Record<NightlyStep, "ok" | "skipped" | string>> };

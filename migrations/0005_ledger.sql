@@ -37,6 +37,10 @@ CREATE TABLE ledger_entries (
   UNIQUE (source, source_ref)
 );
 
+-- Reports read one period without reading the years around it.
+CREATE INDEX ledger_entries_by_year_date ON ledger_entries(year, date);
+CREATE INDEX ledger_entries_by_date ON ledger_entries(date);
+
 CREATE TABLE ledger_lines (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   entry_id TEXT NOT NULL REFERENCES ledger_entries(id),
@@ -131,4 +135,19 @@ CREATE TABLE bank_balances (
   balance_cents INTEGER NOT NULL,
   origin TEXT NOT NULL,
   PRIMARY KEY (account_code, date)
+);
+
+-- The figures of the years before the ledger starts (2026), typed as the result report shows them (income and costs
+-- both positive), to lay next to the first year. Only for income and expense accounts.
+CREATE TABLE comparison_figures (
+  year INTEGER NOT NULL,
+  account_code TEXT NOT NULL REFERENCES ledger_accounts(code),
+  amount_cents INTEGER NOT NULL,
+  PRIMARY KEY (year, account_code)
+);
+
+-- Which income account a kassa category books on (no row: 8011). `categories` itself is the kassa's and is only read.
+CREATE TABLE category_accounts (
+  category_id TEXT PRIMARY KEY,
+  account_code TEXT NOT NULL REFERENCES ledger_accounts(code)
 );

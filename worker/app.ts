@@ -6,6 +6,7 @@ import { requireDevice } from "./middleware/device";
 import { adminAuth, adminAuthPublic } from "./routes/admin-auth";
 import { adminCash } from "./routes/admin-cash";
 import { adminDevices } from "./routes/admin-devices";
+import { adminLedger } from "./routes/admin-ledger";
 import { adminLedgerBank } from "./routes/admin-ledger-bank";
 import { adminMaintenance } from "./routes/admin-maintenance";
 import { adminPin } from "./routes/admin-pin";
@@ -54,5 +55,6 @@ app.route("/api/admin", adminMaintenance);
 app.route("/api/admin", adminPin);
 // Boekhouding: its own prefix, behind the same login.
 app.route("/api/admin/boekhouding", adminLedgerBank);
+app.route("/api/admin/boekhouding", adminLedger);
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));

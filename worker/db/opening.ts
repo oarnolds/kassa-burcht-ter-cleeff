@@ -26,7 +26,7 @@ const equityKey = (year: number) => `ledger_opening_eb_equity_${year}`;
 const firstYear = () => Number(LEDGER_START.slice(0, 4));
 
 /** The last moment of a `YYYY-MM-DD` day in Amsterdam (23:59:59.999 local time), as a UTC ISO string. */
-function endOfDay(date: string): string {
+export function endOfDay(date: string): string {
   const [y, m, d] = date.split("-").map(Number);
   for (const offsetHours of [1, 2]) {
     const iso = new Date(Date.UTC(y!, m! - 1, d!, 23 - offsetHours, 59, 59, 999)).toISOString();

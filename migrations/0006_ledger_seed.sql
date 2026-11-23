@@ -57,3 +57,12 @@ INSERT INTO money_accounts (account_code, identifier, source) VALUES
   ('1020', NULL, 'file'),
   ('1021', NULL, 'file'),
   ('1030', NULL, 'mollie');
+
+-- The kassa's categories and the income account each books on: the entrance on 8012, the kiosk's on 8011.
+INSERT INTO category_accounts (category_id, account_code) VALUES
+  ('entree', '8012'),
+  ('ijs', '8011'),
+  ('koud', '8011'),
+  ('warm', '8011'),
+  ('snacks', '8011'),
+  ('statiegeld', '8011');
