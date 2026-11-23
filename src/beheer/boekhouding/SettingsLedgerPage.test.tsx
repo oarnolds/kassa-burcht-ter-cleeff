@@ -1,7 +1,10 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import type { LedgerAccount, MoneyAccount } from "../../../shared/ledger-types";
+import { leavePage } from "../../lib/leave";
 import { calls, mockApi, mockLoggedIn, renderAt, tap, user } from "../../test-utils";
+
+vi.mock("../../lib/leave", () => ({ leavePage: vi.fn() }));
 
 const base = "/api/admin/boekhouding";
 const account = (code: string, name: string, kind: LedgerAccount["kind"], extra: Partial<LedgerAccount> = {}): LedgerAccount => ({
@@ -38,6 +41,7 @@ const open = async (extra: Record<string, unknown> = {}) => {
   mockApi({
     [`${base}/accounts`]: accounts,
     [`${base}/money-accounts`]: moneyAccounts,
+    [`${base}/bank/ing`]: { status: "none", validUntil: null, daysLeft: null },
     [`${base}/category-accounts`]: [
       { categoryId: "ijs", categoryName: "IJs", accountCode: "8011" },
       { categoryId: "entree", categoryName: "Entree", accountCode: "8011" },
@@ -124,4 +128,47 @@ it("links to the opening balance and the 2026 figures", async () => {
   expect(screen.getByRole("link", { name: "Beginbalans" })).toHaveAttribute("href", "/beheer/boekhouding/beginbalans");
   expect(screen.getByRole("link", { name: "Vergelijkingscijfers 2026" })).toHaveAttribute("href", "/beheer/boekhouding/vergelijking");
   void tap;
+});
+
+const ing = () => screen.getByRole("region", { name: "ING automatisch" });
+
+it("shows where the ING connection stands", async () => {
+  await open({ [`${base}/bank/ing`]: { status: "active", validUntil: "2027-06-01T12:00:00.000Z", daysLeft: 92 } });
+  await waitFor(() => expect(within(ing()).getByText("Gekoppeld tot 01-06-2027")).toBeInTheDocument());
+  expect(within(ing()).getByRole("button", { name: "Vernieuwen" })).toBeInTheDocument();
+});
+
+it("says not linked, expired and busy in words", async () => {
+  await open();
+  await waitFor(() => expect(within(ing()).getByText("Niet gekoppeld")).toBeInTheDocument());
+  expect(within(ing()).getByRole("button", { name: "ING koppelen" })).toBeInTheDocument();
+});
+
+it("says expired with the day", async () => {
+  await open({ [`${base}/bank/ing`]: { status: "expired", validUntil: "2027-06-01T12:00:00.000Z", daysLeft: -3 } });
+  await waitFor(() => expect(within(ing()).getByText("Verlopen op 01-06-2027")).toBeInTheDocument());
+  expect(within(ing()).getByRole("button", { name: "Vernieuwen" })).toBeInTheDocument();
+});
+
+it("says busy while a consent is under way", async () => {
+  await open({ [`${base}/bank/ing`]: { status: "pending", validUntil: null, daysLeft: null } });
+  await waitFor(() => expect(within(ing()).getByText("Bezig met koppelen")).toBeInTheDocument());
+});
+
+it("sends the browser to ING", async () => {
+  await open({ [`POST ${base}/bank/ing/connect`]: { url: "https://ing.example/auth?x=1" } });
+  await user().click(await within(ing()).findByRole("button", { name: "ING koppelen" }));
+  await waitFor(() => expect(leavePage).toHaveBeenCalledWith("https://ing.example/auth?x=1"));
+});
+
+it("explains a refusal to connect", async () => {
+  await open({ [`POST ${base}/bank/ing/connect`]: [503, { error: "enable_banking_off" }] });
+  await user().click(await within(ing()).findByRole("button", { name: "ING koppelen" }));
+  expect(await within(ing()).findByText("De koppeling met Enable Banking is nog niet ingesteld (de sleutel ontbreekt).")).toBeInTheDocument();
+});
+
+it("asks for the identifier first", async () => {
+  await open({ [`POST ${base}/bank/ing/connect`]: [409, { error: "identifier_missing" }] });
+  await user().click(await within(ing()).findByRole("button", { name: "ING koppelen" }));
+  expect(await within(ing()).findByText("Vul eerst het kenmerk (IBAN) van ING betaal in.")).toBeInTheDocument();
 });

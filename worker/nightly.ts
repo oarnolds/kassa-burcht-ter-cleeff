@@ -1,5 +1,6 @@
 import type { NightlyReport, NightlyStep } from "../shared/ledger-types";
 import type { Env } from "./env";
+import { fetchIng } from "./db/bank-consent";
 import { syncKassa } from "./db/kassa-ledger";
 import { LedgerError } from "./db/ledger";
 import { setLedgerSetting } from "./db/ledger-settings";
@@ -7,18 +8,18 @@ import { setLedgerSetting } from "./db/ledger-settings";
 /** In `ledger_settings`: how the last run went, as JSON. */
 export const NIGHTLY_KEY = "ledger_nightly_last";
 
-/** A step answers "ok" or "skipped", or throws. */
-export type StepRunner = (env: Env, now: Date) => Promise<"ok" | "skipped">;
+/** A step answers "ok" or "skipped", or the code of what went wrong (or throws). */
+export type StepRunner = (env: Env, now: Date) => Promise<"ok" | "skipped" | string>;
 
 const ORDER: NightlyStep[] = ["kassa", "ing", "mollie"];
 
-/** The steps of the nightly run. `ing` and `mollie` are filled in by the bank and Mollie work. */
+/** The steps of the nightly run. `mollie` is filled in by the Mollie work. */
 const STEPS: Record<NightlyStep, StepRunner> = {
   kassa: async (env, now) => {
     await syncKassa(env.DB, now);
     return "ok";
   },
-  ing: async () => "skipped",
+  ing: fetchIng,
   mollie: async () => "skipped",
 };
 

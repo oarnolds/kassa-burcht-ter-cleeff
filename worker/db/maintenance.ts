@@ -14,7 +14,8 @@ export type ExportFile = {
 };
 
 /** The boekhouding's tables and the order each is written in the copy. */
-const LEDGER_TABLES: [table: string, order: string][] = [
+/** `columns` leaves a secret out of the copy: the bank consent's session id. */
+const LEDGER_TABLES: [table: string, order: string, columns?: string][] = [
   ["ledger_accounts", "sort, code"],
   ["ledger_years", "year"],
   ["ledger_entries", "date, id"],
@@ -26,6 +27,7 @@ const LEDGER_TABLES: [table: string, order: string][] = [
   ["money_accounts", "account_code"],
   ["bank_lines", "id"],
   ["bank_balances", "account_code, date"],
+  ["bank_consents", "created_at, id", "id, state, status, account_uid, valid_until, created_at, used_at"],
   ["category_accounts", "category_id"],
   ["comparison_figures", "year, account_code"],
 ];
@@ -69,7 +71,7 @@ export async function exportAll(db: D1Database, now: Date): Promise<ExportFile> 
     db.prepare("SELECT * FROM stock_orders ORDER BY created_at, id"),
     db.prepare("SELECT * FROM stock_order_lines ORDER BY id"),
     db.prepare("SELECT * FROM stock_movements ORDER BY id"),
-    ...LEDGER_TABLES.map(([table, order]) => db.prepare(`SELECT * FROM ${table} ORDER BY ${order}`)),
+    ...LEDGER_TABLES.map(([table, order, columns]) => db.prepare(`SELECT ${columns ?? "*"} FROM ${table} ORDER BY ${order}`)),
   ]);
   return {
     exportedAt: now.toISOString(),

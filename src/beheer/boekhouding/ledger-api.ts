@@ -3,7 +3,7 @@
 
 import { useMemo } from "react";
 import type { CamtStatement } from "../../../shared/camt";
-import type { AccountKind, Attachment, BankLine, Entry, ImportResult, LedgerAccount, MoneyAccount, MoneySource, NightlyReport } from "../../../shared/ledger-types";
+import type { AccountKind, Attachment, BankLine, ConsentState, Entry, ImportResult, LedgerAccount, MoneyAccount, MoneySource, NightlyReport } from "../../../shared/ledger-types";
 import type { ApiResult } from "../../lib/api";
 import { useAdminWrite } from "../useAdmin";
 
@@ -52,6 +52,7 @@ export const ledgerPath = {
   overview: `${LEDGER}/overview`,
   accounts: `${LEDGER}/accounts`,
   moneyAccounts: `${LEDGER}/money-accounts`,
+  ingConsent: `${LEDGER}/bank/ing`,
   categoryAccounts: `${LEDGER}/category-accounts`,
   opening: (year: number) => `${LEDGER}/opening?year=${year}`,
   comparison: (year: number) => `${LEDGER}/comparison?year=${year}`,
@@ -72,6 +73,8 @@ export function explainWrite(status: number, error: string): string {
     wrong_type: "Dit soort bestand kan niet worden bewaard. Kies een PDF of een foto.",
     attachments_off: "Bijlagen zijn nog niet aangezet.",
     not_found: "Dit bestaat niet meer. Ververs de pagina.",
+    enable_banking_off: "De koppeling met Enable Banking is nog niet ingesteld (de sleutel ontbreekt).",
+    identifier_missing: "Vul eerst het kenmerk (IBAN) van ING betaal in.",
     invalid: "Controleer de invoer en probeer het opnieuw.",
   };
   return known[error] ?? "Dat is niet gelukt. Probeer het opnieuw.";
@@ -96,6 +99,10 @@ export function useLedgerWrites() {
         write(ledgerPath.comparison(year), "PUT", { figures }),
       patchMoneyAccount: (code: string, body: { identifier?: string | null; source?: MoneySource }): Promise<ApiResult<MoneyAccount>> =>
         write(`${LEDGER}/money-accounts/${code}`, "PATCH", body),
+      /** Asks for a consent at ING: the answer holds the page of the bank to send the browser to. */
+      connectIng: (): Promise<ApiResult<{ url: string }>> => write(`${LEDGER}/bank/ing/connect`, "POST"),
+      /** The bank sent the browser back: trades the code for a connection. The state may be used once. */
+      finishIng: (body: { code: string; state: string }): Promise<ApiResult<ConsentState>> => write(`${LEDGER}/bank/ing/callback`, "POST", body),
       importStatement: (accountCode: string, statement: CamtStatement): Promise<ApiResult<ImportResult>> =>
         write(`${LEDGER}/bank/import`, "POST", { accountCode, statement }),
       addBankLine: (body: {

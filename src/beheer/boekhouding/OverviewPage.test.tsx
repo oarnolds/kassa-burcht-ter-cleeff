@@ -76,3 +76,44 @@ it("brings the books up to date on a click and shows how it went", async () => {
   expect(calls("GET").filter((call) => call.url === `${base}/overview`)).toHaveLength(2);
   expect(screen.getByRole("button", { name: "Nu bijwerken" })).toBeEnabled();
 });
+
+const withSource = (source: "file" | "enable_banking", extra = {}) =>
+  overview({ moneyAccounts: [moneyAccount({ accountCode: "1010", name: "ING betaalrekening", source })], ...extra });
+const soon = (daysLeft: number) => ({ consent: { validUntil: "2027-06-01T12:00:00.000Z", daysLeft } });
+
+it("warns two weeks before the consent of ING ends", async () => {
+  mockLoggedIn();
+  mockApi({ [`${base}/overview`]: withSource("enable_banking", soon(14)) });
+  renderAt("/beheer/boekhouding");
+  const link = await screen.findByRole("link", { name: "Vernieuwen" });
+  expect(link).toHaveAttribute("href", "/beheer/boekhouding/instellingen");
+  expect(link.parentElement).toHaveTextContent("De toestemming van ING verloopt over 14 dagen. Vernieuwen");
+});
+
+it("says 1 dag, and warns after the end, and says nothing before the two weeks", async () => {
+  mockLoggedIn();
+  mockApi({ [`${base}/overview`]: withSource("enable_banking", soon(1)) });
+  const first = renderAt("/beheer/boekhouding");
+  expect((await screen.findByRole("link", { name: "Vernieuwen" })).parentElement).toHaveTextContent("De toestemming van ING verloopt over 1 dag. Vernieuwen");
+  first.unmount();
+
+  mockApi({ [`${base}/overview`]: withSource("enable_banking", soon(-2)) });
+  const second = renderAt("/beheer/boekhouding");
+  expect((await screen.findByRole("link", { name: "Vernieuwen" })).parentElement).toHaveTextContent(
+    "ING haalt geen regels meer op: toestemming verlopen. Vernieuwen of upload een bankbestand.",
+  );
+  second.unmount();
+
+  mockApi({ [`${base}/overview`]: withSource("enable_banking", soon(15)) });
+  renderAt("/beheer/boekhouding");
+  await screen.findByRole("link", { name: "Te boeken: 3" });
+  expect(screen.queryByRole("link", { name: "Vernieuwen" })).not.toBeInTheDocument();
+});
+
+it("does not warn when ING betaal works from files", async () => {
+  mockLoggedIn();
+  mockApi({ [`${base}/overview`]: withSource("file", soon(3)) });
+  renderAt("/beheer/boekhouding");
+  await screen.findByRole("link", { name: "Te boeken: 3" });
+  expect(screen.queryByRole("link", { name: "Vernieuwen" })).not.toBeInTheDocument();
+});

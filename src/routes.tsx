@@ -9,6 +9,7 @@ import { SalesPage } from "./beheer/SalesPage";
 import { SettingsPage } from "./beheer/SettingsPage";
 import { SetupPage } from "./beheer/SetupPage";
 import { StockPage } from "./beheer/StockPage";
+import { BankReturnPage } from "./beheer/boekhouding/BankReturnPage";
 import { ComparisonPage } from "./beheer/boekhouding/ComparisonPage";
 import { EntriesPage } from "./beheer/boekhouding/EntriesPage";
 import { EntryPage } from "./beheer/boekhouding/EntryPage";
@@ -61,6 +62,7 @@ export function AppRoutes() {
           <Route path="beginbalans" element={<OpeningPage />} />
           <Route path="vergelijking" element={<ComparisonPage />} />
         </Route>
+        <Route path="bank" element={<BankReturnPage />} />
         <Route path="instellingen" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Placeholder title="Pagina niet gevonden" />} />

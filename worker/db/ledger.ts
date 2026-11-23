@@ -4,7 +4,7 @@ import { type Attachment, type Entry, type EntryChange, type EntryLine, type Ent
 export class LedgerError extends Error {
   constructor(
     public code: string,
-    public status: 400 | 404 | 409 | 503,
+    public status: 400 | 404 | 409 | 502 | 503,
   ) {
     super(code);
   }

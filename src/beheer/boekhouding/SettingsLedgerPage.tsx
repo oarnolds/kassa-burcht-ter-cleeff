@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router";
-import type { AccountKind, LedgerAccount, MoneyAccount, MoneySource } from "../../../shared/ledger-types";
+import type { AccountKind, ConsentState, LedgerAccount, MoneyAccount, MoneySource } from "../../../shared/ledger-types";
+import { businessDate, formatDateNl } from "../../../shared/time";
+import { leavePage } from "../../lib/leave";
 import { Button } from "../../ui/Button";
 import { useToast } from "../../ui/Toast";
 import { Loaded, PageTitle, Problem, Section, field, textLink } from "../parts";
 import { useAdminData } from "../useAdmin";
-import { ledgerPath, useLedgerWrites, type CategoryAccount } from "./ledger-api";
+import { explainWrite, ledgerPath, useLedgerWrites, type CategoryAccount } from "./ledger-api";
 
 const label = "flex flex-col gap-1 font-semibold";
 const kindName: Record<AccountKind, string> = { asset: "bezit", liability: "schuld", equity: "vermogen", expense: "kosten", income: "opbrengst" };
@@ -185,6 +187,50 @@ function MoneyRow({ initial }: { initial: MoneyAccount }) {
   );
 }
 
+/** The consent for ING in words. */
+function consentText(state: ConsentState): string {
+  const day = state.validUntil ? formatDateNl(businessDate(state.validUntil)) : "";
+  if (state.status === "active") return `Gekoppeld tot ${day}`;
+  if (state.status === "expired") return `Verlopen op ${day}`;
+  if (state.status === "pending") return "Bezig met koppelen";
+  return "Niet gekoppeld";
+}
+
+/** ING betaal's automatic connection: where it stands, and the way to make or renew it at the bank. */
+function IngBlock() {
+  const api = useLedgerWrites();
+  const consent = useAdminData<ConsentState>(ledgerPath.ingConsent);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const connect = async () => {
+    setBusy(true);
+    setProblem(null);
+    const answer = await api.connectIng();
+    if (!answer.ok) {
+      setBusy(false);
+      return setProblem(explainWrite(answer.status, answer.error));
+    }
+    leavePage(answer.data.url);
+  };
+
+  return (
+    <Section title="ING automatisch" note="De betaalrekening van ING haalt zijn regels zelf op, met jouw toestemming bij de bank.">
+      <Loaded from={consent}>
+        {(state) => (
+          <div className="flex flex-col items-start gap-3 px-2 sm:px-3">
+            <p className="text-lg font-semibold">{consentText(state)}</p>
+            <Button variant="primary" disabled={busy} onClick={() => void connect()}>
+              {state.status === "none" ? "ING koppelen" : "Vernieuwen"}
+            </Button>
+            {problem && <Problem>{problem}</Problem>}
+          </div>
+        )}
+      </Loaded>
+    </Section>
+  );
+}
+
 function CategoryForm({ categories, accounts }: { categories: CategoryAccount[]; accounts: LedgerAccount[] }) {
   const api = useLedgerWrites();
   const toast = useToast();
@@ -261,6 +307,7 @@ export function SettingsLedgerPage() {
           )}
         </Loaded>
       </Section>
+      <IngBlock />
       <Section title="Omzet van de kassa" note="Op welke opbrengstrekening de omzet van elke kassa-categorie komt.">
         <Loaded from={categories}>
           {(list) => (accounts.data ? <CategoryForm categories={list} accounts={accounts.data} /> : null)}

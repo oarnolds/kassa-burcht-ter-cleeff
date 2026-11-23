@@ -4,6 +4,7 @@ import { formatDateNl } from "../../shared/time";
 import type { LedgerOverview } from "../../shared/ledger-types";
 import type { PinAttention, Summary } from "../../shared/types";
 import { Card, Loaded, PageTitle, TotalsBlock, count, pillLink, textLink } from "./parts";
+import { ConsentWarning, consentWarning } from "./boekhouding/ConsentWarning";
 import { ledgerPath } from "./boekhouding/ledger-api";
 import { useAdminData } from "./useAdmin";
 
@@ -19,13 +20,18 @@ function LedgerLine() {
   const toBook = data.openLines + data.waitingLines;
   const off = data.moneyAccounts.find((account) => account.differenceCents !== null && account.differenceCents !== 0);
   const text = toBook > 0 ? `Boekhouding: ${toBook} te boeken` : off ? `Saldo wijkt af bij ${off.name}` : null;
-  if (!text) return null;
+  if (!text && !consentWarning(data)) return null;
   return (
-    <p className="mt-3">
-      <Link className={`${textLink} inline-flex min-h-11 items-center text-lg`} to="/beheer/boekhouding">
-        {text}
-      </Link>
-    </p>
+    <>
+      <ConsentWarning overview={data} />
+      {text && (
+        <p className="mt-3">
+          <Link className={`${textLink} inline-flex min-h-11 items-center text-lg`} to="/beheer/boekhouding">
+            {text}
+          </Link>
+        </p>
+      )}
+    </>
   );
 }
 

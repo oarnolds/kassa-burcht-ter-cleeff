@@ -6,6 +6,7 @@ import { businessDate, formatDateNl, localTime } from "../../../shared/time";
 import { Button } from "../../ui/Button";
 import { Loaded, PageTitle, Problem, Section, textLink, today } from "../parts";
 import { useAdminData } from "../useAdmin";
+import { ConsentWarning } from "./ConsentWarning";
 import { ledgerPath, useLedgerWrites } from "./ledger-api";
 
 const STEP_NAMES: Record<NightlyStep, string> = { kassa: "kassa", ing: "ING", mollie: "Mollie" };
@@ -58,6 +59,7 @@ export function OverviewPage() {
       <Loaded from={overview}>
         {(o) => (
           <>
+            <ConsentWarning overview={o} />
             <Update last={o.lastNightly} reload={overview.reload} />
             <Section title="Te boeken">
               <p className="flex flex-wrap items-baseline gap-x-4 px-2 text-lg sm:px-3">

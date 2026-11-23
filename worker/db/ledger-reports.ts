@@ -11,6 +11,7 @@ import { businessDate, shiftDate } from "../../shared/time";
 import { LedgerError } from "./ledger";
 import { getLedgerSetting } from "./ledger-settings";
 import { moneyAccounts } from "./bank";
+import { consentState } from "./bank-consent";
 import { endOfDay, expectedCashAt } from "./opening";
 
 export type { AccountLines, BalanceReport, LedgerOverview, ResultReport };
@@ -185,12 +186,12 @@ function parseNightly(value: string | null): NightlyReport | null {
   }
 }
 
-/** What beheer's first page shows. `consent` and `mollieDifferenceCents` are filled by later work. */
+/** What beheer's first page shows. `mollieDifferenceCents` is filled by later work. */
 export async function overview(db: D1Database, now: Date): Promise<LedgerOverview> {
   const today = businessDate(now.toISOString());
   const yesterday = shiftDate(today, -1);
   const year = Number(today.slice(0, 4));
-  const [counts, accounts, resultYearCents, cashDifferenceCents, lastNightly] = await Promise.all([
+  const [counts, accounts, resultYearCents, cashDifferenceCents, lastNightly, consent] = await Promise.all([
     db
       .prepare(`SELECT status, COUNT(*) AS n FROM bank_lines WHERE status IN ('open','waiting') GROUP BY status`)
       .all<{ status: string; n: number }>(),
@@ -198,6 +199,7 @@ export async function overview(db: D1Database, now: Date): Promise<LedgerOvervie
     year < firstYear ? Promise.resolve(0) : resultOf(db, `${year}-01-01`, today),
     cashDifference(db, yesterday),
     getLedgerSetting(db, "ledger_nightly_last"),
+    consentState(db, now),
   ]);
   const count = (status: string) => counts.results.find((row) => row.status === status)?.n ?? 0;
   return {
@@ -206,7 +208,7 @@ export async function overview(db: D1Database, now: Date): Promise<LedgerOvervie
     moneyAccounts: accounts,
     resultYearCents,
     cashDifferenceCents,
-    consent: null,
+    consent: consent.status === "active" || consent.status === "expired" ? { validUntil: consent.validUntil!, daysLeft: consent.daysLeft! } : null,
     mollieDifferenceCents: null,
     lastNightly: parseNightly(lastNightly),
   };

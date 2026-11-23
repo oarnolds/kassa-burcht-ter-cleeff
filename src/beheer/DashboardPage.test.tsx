@@ -50,3 +50,20 @@ it("keeps the dashboard working when the overview fails", async () => {
   expect(await screen.findByText("In het kluisje hoort")).toBeInTheDocument();
   expect(screen.queryByRole("link", { name: /^Boekhouding: |^Saldo wijkt/ })).not.toBeInTheDocument();
 });
+
+it("warns on the dashboard when the consent of ING nears its end or has ended", async () => {
+  const ing = (daysLeft: number) => overview({ moneyAccounts: [moneyAccount({ accountCode: "1010", name: "ING betaalrekening", source: "enable_banking" })], consent: { validUntil: "2027-06-01T12:00:00.000Z", daysLeft } });
+  open(ing(10));
+  const link = await screen.findByRole("link", { name: "Vernieuwen" });
+  expect(link).toHaveAttribute("href", "/beheer/boekhouding/instellingen");
+  expect(link.parentElement).toHaveTextContent("De toestemming van ING verloopt over 10 dagen. Vernieuwen");
+});
+
+it("warns on the dashboard after the end, but not for a bank that works from files", async () => {
+  mockLoggedIn();
+  const gone = { consent: { validUntil: "2027-06-01T12:00:00.000Z", daysLeft: -1 } };
+  mockApi({ "/api/admin/summary": summary, [`${base}/overview`]: overview({ ...gone, moneyAccounts: [moneyAccount({ accountCode: "1010", source: "file" })] }) });
+  renderAt("/beheer");
+  await screen.findByText("In het kluisje hoort");
+  expect(screen.queryByRole("link", { name: "Vernieuwen" })).not.toBeInTheDocument();
+});

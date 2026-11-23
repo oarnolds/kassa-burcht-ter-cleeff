@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { addTypedLine, autoBook, bookLine, getBankLine, importStatement, moneyAccounts, openLines, setMoneyAccount } from "../db/bank";
+import { consentState, finishConsent, startConsent } from "../db/bank-consent";
 import { LedgerError } from "../db/ledger";
 import type { AppEnv } from "../env";
 
@@ -106,4 +107,18 @@ adminLedgerBank.post("/bank/lines/:id/book", async (c) => {
   const body = bookBody.safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: "invalid" }, 400);
   return c.json(await bookLine(c.env.DB, c.req.param("id"), body.data, new Date()));
+});
+
+// ---- ING through Enable Banking ----
+
+const callbackBody = z.object({ code: z.string().min(1).max(2000), state: z.string().min(1).max(200) });
+
+adminLedgerBank.get("/bank/ing", async (c) => c.json(await consentState(c.env.DB, new Date())));
+
+adminLedgerBank.post("/bank/ing/connect", async (c) => c.json(await startConsent(c.env, new URL(c.req.url).origin, new Date())));
+
+adminLedgerBank.post("/bank/ing/callback", async (c) => {
+  const body = callbackBody.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: "invalid" }, 400);
+  return c.json(await finishConsent(c.env, body.data, new Date()));
 });

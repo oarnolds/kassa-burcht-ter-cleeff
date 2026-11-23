@@ -90,6 +90,9 @@ export type BankLine = {
 /** `known`: lines that were already there. `beforeStart`: lines before LEDGER_START, not kept. */
 export type ImportResult = { added: number; known: number; beforeStart: number; autoBooked: number };
 
+/** Where the consent for ING (Enable Banking) stands. `daysLeft` is whole days until `validUntil`, 0 or less once it has passed. */
+export type ConsentState = { status: "none" | "pending" | "active" | "expired"; validUntil: string | null; daysLeft: number | null };
+
 export type NightlyStep = "kassa" | "ing" | "mollie";
 /** What the nightly run did, step by step; a string other than ok/skipped is the error code of a step that failed. */
 export type NightlyReport = { at: string; steps: Partial<Record<NightlyStep, "ok" | "skipped" | string>> };
