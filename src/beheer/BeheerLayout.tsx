@@ -14,6 +14,7 @@ const pages: [path: string, name: string][] = [
   ["/beheer/kluisje", "Kluisje"],
   ["/beheer/voorraad", "Voorraad"],
   ["/beheer/producten", "Producten"],
+  ["/beheer/boekhouding", "Boekhouding"],
   ["/beheer/instellingen", "Instellingen"],
 ];
 

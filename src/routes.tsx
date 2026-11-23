@@ -9,6 +9,11 @@ import { SalesPage } from "./beheer/SalesPage";
 import { SettingsPage } from "./beheer/SettingsPage";
 import { SetupPage } from "./beheer/SetupPage";
 import { StockPage } from "./beheer/StockPage";
+import { ComparisonPage } from "./beheer/boekhouding/ComparisonPage";
+import { LedgerLayout } from "./beheer/boekhouding/LedgerLayout";
+import { OpeningPage } from "./beheer/boekhouding/OpeningPage";
+import { LedgerPlaceholder, YearPlaceholder } from "./beheer/boekhouding/Placeholder";
+import { SettingsLedgerPage } from "./beheer/boekhouding/SettingsLedgerPage";
 import { KassaPage } from "./kassa/KassaPage";
 import { PairPage } from "./kassa/PairPage";
 import { Logo } from "./ui/Logo";
@@ -37,6 +42,20 @@ export function AppRoutes() {
         <Route path="kluisje" element={<CashPage />} />
         <Route path="voorraad" element={<StockPage />} />
         <Route path="producten" element={<ProductsPage />} />
+        <Route path="boekhouding" element={<LedgerLayout />}>
+          <Route index element={<LedgerPlaceholder title="Overzicht" />} />
+          <Route path="te-boeken" element={<LedgerPlaceholder title="Te boeken" />} />
+          <Route path="boekingen" element={<LedgerPlaceholder title="Boekingen" />} />
+          <Route path="boekingen/:id" element={<LedgerPlaceholder title="Boeking" />} />
+          <Route path="rapporten" element={<LedgerPlaceholder title="Rapporten" />} />
+          <Route path="mollie" element={<LedgerPlaceholder title="Mollie" />} />
+          <Route path="toestellen" element={<LedgerPlaceholder title="Toestellen" />} />
+          <Route path="jaar" element={<YearPlaceholder />} />
+          <Route path="jaar/:year/afdruk" element={<LedgerPlaceholder title="Afdruk" />} />
+          <Route path="instellingen" element={<SettingsLedgerPage />} />
+          <Route path="beginbalans" element={<OpeningPage />} />
+          <Route path="vergelijking" element={<ComparisonPage />} />
+        </Route>
         <Route path="instellingen" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Placeholder title="Pagina niet gevonden" />} />
