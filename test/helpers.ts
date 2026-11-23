@@ -53,6 +53,12 @@ export function useFakeMollie(): { current: FakeMollie } {
 
 // Children before parents, so no foreign key is left dangling.
 const TABLES = [
+  "ledger_lines",
+  "ledger_history",
+  "ledger_entries",
+  "ledger_year_events",
+  "ledger_years",
+  "ledger_accounts",
   "sale_lines",
   "stock_movements",
   "stock_order_lines",
@@ -69,13 +75,13 @@ const TABLES = [
   "admin",
 ];
 
-/** Empties every table and puts the start assortment back. */
+/** Empties every table and replays every seed migration: the start assortment, the accounts and the first year. */
 export async function resetData(): Promise<void> {
-  const seed = env.TEST_MIGRATIONS.find((migration) => migration.name === "0002_seed.sql");
-  if (!seed) throw new Error("migration 0002_seed.sql not found");
+  const seeds = env.TEST_MIGRATIONS.filter((migration) => migration.name.endsWith("_seed.sql"));
+  if (!seeds.some((migration) => migration.name === "0002_seed.sql")) throw new Error("migration 0002_seed.sql not found");
   await env.DB.batch([
     ...TABLES.map((table) => env.DB.prepare(`DELETE FROM ${table}`)),
-    ...seed.queries.map((query) => env.DB.prepare(query)),
+    ...seeds.flatMap((seed) => seed.queries.map((query) => env.DB.prepare(query))),
   ]);
 }
 
