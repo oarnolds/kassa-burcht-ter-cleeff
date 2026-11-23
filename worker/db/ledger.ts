@@ -32,32 +32,42 @@ type LineRow = { entry_id: string; account_code: string; amount_cents: number; n
 
 const yearOf = (date: string) => Number(date.slice(0, 4));
 
-/** What every write keeps before it reads anything: whole cents that sum to zero, on a date the ledger knows. Gives the year. */
+/** The accounts a line may name a toestel on: its cost and what is written off on it (spec §12). */
+const ASSET_ACCOUNTS = ["0130", "0135"];
+
+/**
+ * What every write keeps before it reads anything: whole cents that sum to zero, on a date the ledger knows, and a
+ * toestel only on 0130 or 0135. Gives the year.
+ */
 function checkContent(content: Content): number {
   if (!content.lines.every((line) => Number.isSafeInteger(line.amountCents))) throw new LedgerError("amount_invalid", 400);
   if (content.lines.reduce((sum, line) => sum + line.amountCents, 0) !== 0) throw new LedgerError("unbalanced", 400);
+  if (content.lines.some((line) => line.assetId && !ASSET_ACCOUNTS.includes(line.accountCode))) throw new LedgerError("asset_line_account", 400);
   if (content.date < LEDGER_START) throw new LedgerError("year_unknown", 400);
   return yearOf(content.date);
 }
 
 const codesOf = (lines: EntryLine[]) => [...new Set(lines.map((line) => line.accountCode))];
+const assetIdsOf = (lines: EntryLine[]) => [...new Set(lines.flatMap((line) => (line.assetId ? [line.assetId] : [])))];
 
-/** Reads what the checks of a write need: the status of its year and the accounts it books on. */
-function checkReads(db: D1Database, year: number, codes: string[]): D1PreparedStatement[] {
+/** Reads what the checks of a write need: the status of its year, the accounts it books on and the toestellen it names. */
+function checkReads(db: D1Database, year: number, lines: EntryLine[]): D1PreparedStatement[] {
   return [
     db.prepare("SELECT status FROM ledger_years WHERE year = ?").bind(year),
-    db.prepare("SELECT code, hidden FROM ledger_accounts WHERE code IN (SELECT value FROM json_each(?))").bind(JSON.stringify(codes)),
+    db.prepare("SELECT code, hidden FROM ledger_accounts WHERE code IN (SELECT value FROM json_each(?))").bind(JSON.stringify(codesOf(lines))),
+    db.prepare("SELECT id FROM assets WHERE id IN (SELECT value FROM json_each(?))").bind(JSON.stringify(assetIdsOf(lines))),
   ];
 }
 
 /** A year without a row is opened by the write (it is after LEDGER_START); a closed one refuses it. */
-function checkResults(years: D1Result, accounts: D1Result, codes: string[], refuseHidden: boolean): void {
-  if ((years.results as { status: string }[]).some((row) => row.status === "closed")) throw new LedgerError("year_closed", 409);
-  const hidden = new Map((accounts.results as { code: string; hidden: number }[]).map((row) => [row.code, row.hidden === 1]));
-  for (const code of codes) {
+function checkResults([years, accounts, assets]: D1Result[], lines: EntryLine[], refuseHidden: boolean): void {
+  if ((years!.results as { status: string }[]).some((row) => row.status === "closed")) throw new LedgerError("year_closed", 409);
+  const hidden = new Map((accounts!.results as { code: string; hidden: number }[]).map((row) => [row.code, row.hidden === 1]));
+  for (const code of codesOf(lines)) {
     if (!hidden.has(code)) throw new LedgerError("account_unknown", 400);
     if (refuseHidden && hidden.get(code)) throw new LedgerError("account_hidden", 400);
   }
+  if (assets!.results.length !== assetIdsOf(lines).length) throw new LedgerError("asset_unknown", 404);
 }
 
 function sameContent(a: Content, b: Content): boolean {
@@ -283,9 +293,7 @@ function replaceStatements(db: D1Database, key: Key, year: number, content: Cont
 
 export async function createEntry(db: D1Database, input: NewEntry, now: Date): Promise<Entry> {
   const year = checkContent(input);
-  const codes = codesOf(input.lines);
-  const [years, accounts] = await db.batch(checkReads(db, year, codes));
-  checkResults(years!, accounts!, codes, input.source === "manual");
+  checkResults(await db.batch(checkReads(db, year, input.lines)), input.lines, input.source === "manual");
   const id = crypto.randomUUID();
   try {
     await db.batch([openYear(db, year), insertEntry(db, id, year, input, now.toISOString(), false), ...lineStatements(db, byId(id), year, input.lines)]);
@@ -307,9 +315,7 @@ async function change(db: D1Database, id: string, content: (entry: Entry) => Con
   const next = content(entry);
   const year = checkContent(next);
   if (sameContent(entry, next)) return entry;
-  const codes = codesOf(next.lines);
-  const [years, accounts] = await db.batch(checkReads(db, year, codes));
-  checkResults(years!, accounts!, codes, entry.source === "manual");
+  checkResults(await db.batch(checkReads(db, year, next.lines)), next.lines, entry.source === "manual");
   const nowIso = now.toISOString();
   await db.batch([
     openYear(db, year),
@@ -334,14 +340,13 @@ export function emptyEntry(db: D1Database, id: string, now: Date): Promise<Entry
 /** By a sync: creates the entry for (source, sourceRef) or replaces its lines; no history; nothing when unchanged. */
 export async function upsertSourced(db: D1Database, input: NewEntry & { sourceRef: string }, now: Date): Promise<Entry> {
   const year = checkContent(input);
-  const codes = codesOf(input.lines);
-  const [entries, lines, attachments, years, accounts] = await db.batch([
+  const [entries, lines, attachments, ...checks] = await db.batch([
     ...entryReads(db, BY_SOURCE, [input.source, input.sourceRef]),
-    ...checkReads(db, year, codes),
+    ...checkReads(db, year, input.lines),
   ]);
   const existingRow = entries!.results[0] as EntryRow | undefined;
   if (existingRow && existingRow.year_status !== "open") throw new LedgerError("year_closed", 409);
-  checkResults(years!, accounts!, codes, false);
+  checkResults(checks, input.lines, false);
   const existing = toEntries(entries!, lines!, attachments!)[0];
   if (existing && sameContent(existing, input)) return existing;
   await db.batch(upsertSourcedStatements(db, input, existing ? { id: existing.id } : null, now));
@@ -351,9 +356,10 @@ export async function upsertSourced(db: D1Database, input: NewEntry & { sourceRe
 }
 
 /**
- * The same as statements, so a sync can write many entries in one batch. It checks the lines and the date, not
- * the accounts (the database refuses an unknown one) and not whether it changes anything: a closed year it
- * leaves alone without a word, so the caller looks at `yearStatus` first.
+ * The same as statements, so a sync can write many entries in one batch. It checks the lines and the date (a
+ * toestel only on 0130 or 0135), not the accounts (the database refuses an unknown one), not that a toestel it
+ * names exists (the caller's own) and not whether it changes anything: a closed year it leaves alone without a
+ * word, so the caller looks at `yearStatus` first.
  */
 export function upsertSourcedStatements(
   db: D1Database,

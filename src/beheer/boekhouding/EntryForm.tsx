@@ -8,9 +8,14 @@ import { explainWrite, type EntryBody } from "./ledger-api";
 import { useBusy } from "./useBusy";
 import type { ApiResult } from "../../lib/api";
 
-type Row = { accountCode: string; debit: number | null; credit: number | null; note: string };
+/** `assetId`: the toestel the line belongs to, carried along unseen so an edit keeps it (R32). */
+type Row = { accountCode: string; debit: number | null; credit: number | null; note: string; assetId: string | null };
 
-const blank = (): Row => ({ accountCode: "", debit: null, credit: null, note: "" });
+const blank = (): Row => ({ accountCode: "", debit: null, credit: null, note: "", assetId: null });
+/** The accounts a line may keep a toestel on. */
+const ASSET_ACCOUNTS = ["0130", "0135"];
+/** The toestel of a row, while the row is on 0130 or 0135. */
+const assetOf = (row: Row): string | null => (row.assetId && ASSET_ACCOUNTS.includes(row.accountCode) ? row.assetId : null);
 const amountOf = (row: Row) => (row.debit ?? 0) - (row.credit ?? 0);
 const isBlank = (row: Row) => row.accountCode === "" && amountOf(row) === 0 && row.note.trim() === "";
 const label = "flex flex-col gap-1 font-semibold";
@@ -22,18 +27,24 @@ const rowsOf = (body: EntryBody | undefined): Row[] =>
         debit: line.amountCents > 0 ? line.amountCents : null,
         credit: line.amountCents < 0 ? -line.amountCents : null,
         note: line.note ?? "",
+        assetId: line.assetId ?? null,
       }))
     : [blank(), blank()];
 
-/** The form of an entry: date, description and lines. It saves only when debit and credit are equal. */
+/**
+ * The form of an entry: date, description and lines. It saves only when debit and credit are equal. A line on 0130
+ * or 0135 that belongs to a toestel shows its name (`assetNames`) and keeps it.
+ */
 export function EntryForm({
   accounts,
   initial,
+  assetNames = new Map(),
   onSave,
   onCancel,
 }: {
   accounts: LedgerAccount[];
   initial?: EntryBody;
+  assetNames?: Map<string, string>;
   onSave(body: EntryBody): Promise<ApiResult<unknown>>;
   onCancel(): void;
 }) {
@@ -67,7 +78,10 @@ export function EntryForm({
       const answer = await onSave({
         date,
         description: description.trim(),
-        lines: filled.map((row) => ({ accountCode: row.accountCode, amountCents: amountOf(row), note: row.note.trim() || null })),
+        lines: filled.map((row) => {
+          const assetId = assetOf(row);
+          return { accountCode: row.accountCode, amountCents: amountOf(row), note: row.note.trim() || null, ...(assetId ? { assetId } : {}) };
+        }),
       });
       if (!answer.ok) setProblem(explainWrite(answer.status, answer.error));
     });
@@ -118,6 +132,7 @@ export function EntryForm({
                 value={row.note}
                 onChange={(event) => change(index, { note: event.target.value })}
               />
+              {assetOf(row) && <span className="basis-full px-1 text-ink/70">{`Toestel: ${assetNames.get(assetOf(row)!) ?? "onbekend"}`}</span>}
               {rows.length > 2 && (
                 <Button
                   aria-label={`Regel ${n} weghalen`}

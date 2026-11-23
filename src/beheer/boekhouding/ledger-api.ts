@@ -41,8 +41,8 @@ export type Figure = { accountCode: string; amountCents: number };
 export type SplitPart = Figure & { assetId?: string };
 export type Comparison = { year: number; figures: Figure[] };
 
-/** What the entry form sends: the lines add up to zero, debit positive. */
-export type EntryBody = { date: string; description: string; lines: { accountCode: string; amountCents: number; note: string | null }[] };
+/** What the entry form sends: the lines add up to zero, debit positive. A line on 0130 or 0135 keeps its toestel. */
+export type EntryBody = { date: string; description: string; lines: { accountCode: string; amountCents: number; note: string | null; assetId?: string | null }[] };
 
 /** What the filters of the entries page can ask for. */
 export type EntryFilter = { year: number; from?: string; to?: string; account?: string; amountCents?: number; text?: string };
@@ -103,6 +103,7 @@ export function explainWrite(status: number, error: string): string {
     asset_disposed: "Dit toestel is al afgevoerd.",
     asset_unknown: "Dit toestel bestaat niet meer. Ververs de pagina.",
     asset_wrong_account: "Een toestel hoort bij rekening 0130.",
+    asset_line_account: "Een toestel kan alleen op 0130 of 0135 staan.",
     asset_booked_later: "Op dit toestel is na die datum nog geboekt. Kies een latere datum.",
     depreciation_first: "Boek eerst de afschrijving van het jaar ervoor; daarna kan dit toestel worden afgevoerd.",
   };

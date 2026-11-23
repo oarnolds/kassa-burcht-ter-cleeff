@@ -4,7 +4,7 @@ import type { PastedAsset } from "../shared/asset-paste";
 import type { Asset, DepreciationPlan, Entry } from "../shared/ledger-types";
 import { importLines, openLines } from "../worker/db/bank";
 import { addPastedAssets, bookDepreciation, depreciationPlan, disposeAsset, listAssets, saveAsset } from "../worker/db/assets";
-import { balancesOn, getEntry } from "../worker/db/ledger";
+import { balancesOn, createEntry, getEntry, upsertSourced } from "../worker/db/ledger";
 import { exportAll } from "../worker/db/maintenance";
 import { getOpening, setOpening } from "../worker/db/opening";
 import { api, asAdmin, resetData } from "./helpers";
@@ -31,6 +31,7 @@ const path = "/api/admin/boekhouding";
 const get = (to: string) => api(`${path}${to}`, { cookie });
 const post = (to: string, json?: unknown) => api(`${path}${to}`, { method: "POST", cookie, json });
 const patch = (to: string, json: unknown) => api(`${path}${to}`, { method: "PATCH", cookie, json });
+const put = (to: string, json: unknown) => api(`${path}${to}`, { method: "PUT", cookie, json });
 
 async function entryOf(source: string, ref: string): Promise<Entry | null> {
   const row = await env.DB.prepare("SELECT id FROM ledger_entries WHERE source = ? AND source_ref = ?").bind(source, ref).first<{ id: string }>();
@@ -344,4 +345,61 @@ it("carries the toestellen in the copy", async () => {
   await addPastedAssets(env.DB, [STRAALJAGER], NOW);
   const file = await exportAll(env.DB, NOW);
   expect(file.ledger.assets).toEqual([expect.objectContaining({ name: "Straaljager", cost_cents: 949600, opening_written_off_cents: 902120, life_years: 20 })]);
+});
+
+// R32: a booking edited through Boekingen keeps its toestel.
+
+it("keeps a bought toestel's cost when its booking is edited through Boekingen", async () => {
+  const schommel = await (await post("/assets", { name: "Schommel", lifeYears: 10, residualCents: 0 })).json<Asset>();
+  const lineId = await bankLine("2027-07-15", -1_200_000, "Factuur schommel");
+  const booked = await (await post(`/bank/lines/${lineId}/book`, { split: [{ accountCode: "0130", amountCents: 1_200_000, assetId: schommel.id }] })).json<Entry>();
+
+  // What the entry form sends back: every line as it was, the toestel with it, and a new description.
+  const edited = await put(`/entries/${booked.id}`, {
+    date: booked.date,
+    description: "Schommel van Speelgoed BV",
+    lines: booked.lines.map((line) => ({ accountCode: line.accountCode, amountCents: line.amountCents, note: line.note, assetId: line.assetId })),
+  });
+  expect(edited.status).toBe(200);
+  const entry = await edited.json<Entry>();
+  expect(entry.description).toBe("Schommel van Speelgoed BV");
+  expect(entry.lines.find((line) => line.accountCode === "0130")!.assetId).toBe(schommel.id);
+  expect(byName(await listAssets(env.DB, "9999-12-31"), "Schommel")).toMatchObject({ costCents: 1_200_000, purchaseDate: "2027-07-15" });
+});
+
+it("refuses a toestel on a line of another account than 0130 or 0135, and one that does not exist", async () => {
+  const schommel = await saveAsset(env.DB, { name: "Schommel", lifeYears: 10, residualCents: 0 }, NOW);
+  const lines = (accountCode: string, assetId: string) => [
+    { accountCode, amountCents: 5000, note: null, assetId },
+    { accountCode: "1010", amountCents: -5000, note: null },
+  ];
+
+  const onCosts = await post("/entries", { date: "2027-03-01", description: "Bout", lines: lines("4501", schommel.id) });
+  expect(onCosts.status).toBe(400);
+  expect(await onCosts.json()).toEqual({ error: "asset_line_account" });
+  const unknown = await post("/entries", { date: "2027-03-01", description: "Bout", lines: lines("0130", "nope") });
+  expect(unknown.status).toBe(404);
+  expect(await unknown.json()).toEqual({ error: "asset_unknown" });
+
+  const made = await (await post("/entries", { date: "2027-03-01", description: "Bout", lines: lines("0130", schommel.id) })).json<Entry>();
+  expect(made.lines[0]).toMatchObject({ accountCode: "0130", assetId: schommel.id });
+  const moved = await put(`/entries/${made.id}`, { date: "2027-03-01", description: "Bout", lines: lines("4501", schommel.id) });
+  expect(moved.status).toBe(400);
+  expect(await moved.json()).toEqual({ error: "asset_line_account" });
+
+  // Every way into the ledger, not only the routes.
+  const wrong = { accountCode: "4501", amountCents: 100, note: null, assetId: schommel.id };
+  const other = { accountCode: "1010", amountCents: -100, note: null, assetId: null };
+  await expect(createEntry(env.DB, { date: "2027-03-02", description: "x", source: "manual", lines: [wrong, other] }, NOW)).rejects.toMatchObject({
+    code: "asset_line_account",
+    status: 400,
+  });
+  await expect(upsertSourced(env.DB, { date: "2027-03-02", description: "x", source: "kassa_day", sourceRef: "2027-03-02", lines: [wrong, other] }, NOW)).rejects.toMatchObject({
+    code: "asset_line_account",
+    status: 400,
+  });
+  await expect(
+    upsertSourced(env.DB, { date: "2027-03-02", description: "x", source: "kassa_day", sourceRef: "2027-03-02", lines: [{ ...wrong, accountCode: "0135", assetId: "nope" }, other] }, NOW),
+  ).rejects.toMatchObject({ code: "asset_unknown", status: 404 });
+  expect(await count("ledger_entries WHERE source IN ('manual', 'kassa_day')")).toBe(1);
 });

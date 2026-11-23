@@ -84,3 +84,32 @@ it("links attachments and hides one", async () => {
   await waitFor(() => expect(calls("POST")).toHaveLength(1));
   expect(calls("POST")[0]!.url).toBe(`${base}/attachments/a1/hide`);
 });
+
+it("keeps the toestel of a line on 0130 when the entry is changed, and names it", async () => {
+  const withToestellen = [...accounts, { code: "0130", name: "Speeltoestellen en inventaris", kind: "asset" as const, money: false, hidden: false, formerly: ["0130"] }];
+  const schommel = { id: "a9", name: "Schommel", purchaseDate: "2027-01-04", costCents: 41280, residualCents: 0, lifeYears: 10, writtenOffCents: 0, bookValueCents: 41280, disposedOn: null };
+  const bought = entry({
+    source: "bank",
+    lines: [
+      { accountCode: "1010", amountCents: -41280, note: null, assetId: null },
+      { accountCode: "0130", amountCents: 41280, note: null, assetId: "a9" },
+    ],
+  });
+  open(bought, [], { [`${base}/accounts`]: withToestellen, [`${base}/assets`]: [schommel], [`PUT ${base}/entries/e1`]: bought });
+  renderAt(page);
+  await tap("Wijzigen");
+  expect(await screen.findByText("Toestel: Schommel")).toBeInTheDocument();
+  const description = screen.getByLabelText("Omschrijving");
+  await user().clear(description);
+  await user().type(description, "Schommel van Goodoo");
+  await tap("Opslaan");
+  await waitFor(() => expect(calls("PUT")).toHaveLength(1));
+  expect(calls("PUT")[0]!.body).toEqual({
+    date: "2027-01-04",
+    description: "Schommel van Goodoo",
+    lines: [
+      { accountCode: "1010", amountCents: -41280, note: null },
+      { accountCode: "0130", amountCents: 41280, note: null, assetId: "a9" },
+    ],
+  });
+});

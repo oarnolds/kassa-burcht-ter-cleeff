@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams } from "react-router";
-import type { Entry, EntryChange, EntryLine, LedgerAccount } from "../../../shared/ledger-types";
+import type { Asset, Entry, EntryChange, EntryLine, LedgerAccount } from "../../../shared/ledger-types";
 import { formatEuro } from "../../../shared/money";
 import { businessDate, formatDateNl, localTime } from "../../../shared/time";
 import { Button } from "../../ui/Button";
@@ -33,6 +33,13 @@ function EntryView({ entry, accounts, history, reload }: { entry: Entry; account
   const [editing, setEditing] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const names = new Map(accounts.map((account) => [account.code, account.name]));
+  // The toestellen, only for an entry with a line that belongs to one.
+  const assets = useAdminData<Asset[]>(entry.lines.some((line) => line.assetId) ? ledgerPath.assets : null);
+  const assetNames = new Map(
+    entry.lines.flatMap((line) =>
+      line.assetId ? [[line.assetId, assets.data ? (assets.data.find((asset) => asset.id === line.assetId)?.name ?? "onbekend") : "…"] as const] : [],
+    ),
+  );
 
   const check = (answer: { ok: boolean; status?: number; error?: string }) => {
     if (answer.ok) return reload();
@@ -65,7 +72,12 @@ function EntryView({ entry, accounts, history, reload }: { entry: Entry; account
           <div className="px-2 sm:px-3">
             <EntryForm
               accounts={accounts}
-              initial={{ date: entry.date, description: entry.description, lines: entry.lines.map(({ accountCode, amountCents, note }) => ({ accountCode, amountCents, note })) }}
+              initial={{
+                date: entry.date,
+                description: entry.description,
+                lines: entry.lines.map(({ accountCode, amountCents, note, assetId }) => ({ accountCode, amountCents, note, assetId })),
+              }}
+              assetNames={assetNames}
               onCancel={() => setEditing(false)}
               onSave={async (body) => {
                 const answer = await api.saveEntry(entry.id, body);
@@ -86,6 +98,7 @@ function EntryView({ entry, accounts, history, reload }: { entry: Entry; account
               <li key={index} className="flex flex-wrap justify-between gap-x-4 border-t border-sand py-2 first:border-t-0">
                 <span className="text-lg">{`${line.accountCode} ${names.get(line.accountCode) ?? ""}`}</span>
                 {line.note && <span className="text-ink/70">{line.note}</span>}
+                {line.assetId && <span className="text-ink/70">{`Toestel: ${assetNames.get(line.assetId) ?? "onbekend"}`}</span>}
                 <span className="tabular-nums">{line.amountCents > 0 ? `debet ${formatEuro(line.amountCents)}` : `credit ${formatEuro(-line.amountCents)}`}</span>
               </li>
             ))}

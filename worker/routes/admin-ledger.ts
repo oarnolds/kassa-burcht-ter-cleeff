@@ -26,14 +26,15 @@ const entryBody = z.object({
   date: z.iso.date(),
   description: z.string().trim().min(1).max(200),
   lines: z
-    .array(z.object({ accountCode: z.string().max(10), amountCents: cents, note: z.string().max(200).nullish() }))
+    // `assetId`: the toestel a line on 0130 or 0135 belongs to, sent back as it came so an edit keeps it (R32).
+    .array(z.object({ accountCode: z.string().max(10), amountCents: cents, note: z.string().max(200).nullish(), assetId: z.string().max(64).nullish() }))
     .min(2)
     .max(50),
 });
 const toContent = (body: z.infer<typeof entryBody>) => ({
   date: body.date,
   description: body.description,
-  lines: body.lines.map((line) => ({ accountCode: line.accountCode, amountCents: line.amountCents, note: line.note ?? null, assetId: null })),
+  lines: body.lines.map((line) => ({ accountCode: line.accountCode, amountCents: line.amountCents, note: line.note ?? null, assetId: line.assetId || null })),
 });
 
 const openingBody = z.object({
