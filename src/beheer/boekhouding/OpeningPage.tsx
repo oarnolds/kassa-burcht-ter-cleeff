@@ -2,10 +2,10 @@ import { useState } from "react";
 import { formatEuro } from "../../../shared/money";
 import type { LedgerAccount } from "../../../shared/ledger-types";
 import { Button } from "../../ui/Button";
-import { EuroInput } from "../../ui/EuroInput";
 import { useToast } from "../../ui/Toast";
 import { Loaded, PageTitle, Problem, Section } from "../parts";
 import { useAdminData, useAdminWrite } from "../useAdmin";
+import { AmountField } from "./AmountField";
 import { LEDGER, type Opening } from "./ledger-api";
 
 const YEAR = 2027;
@@ -24,6 +24,14 @@ function OpeningForm({ accounts, opening }: { accounts: LedgerAccount[]; opening
   const [cents, setCents] = useState<Record<string, number | null>>(() => Object.fromEntries(rows.map((row) => [row.code, saved.get(row.code) || null])));
   const [eBoekhouden, setEBoekhouden] = useState<number | null>(opening.eBoekhoudenEquityCents);
   const [problem, setProblem] = useState<string | null>(null);
+  const [unreadable, setUnreadable] = useState<Set<string>>(new Set());
+  const mark = (key: string) => (bad: boolean) =>
+    setUnreadable((before) => {
+      const next = new Set(before);
+      if (bad) next.add(key);
+      else next.delete(key);
+      return next;
+    });
 
   // Assets (without 0135) minus 0135 minus liabilities: what is left for the club itself.
   const equity = rows.reduce((total, row) => {
@@ -48,8 +56,9 @@ function OpeningForm({ accounts, opening }: { accounts: LedgerAccount[]; opening
               <span className="text-lg">
                 <span className="tabular-nums">{row.code}</span> {row.name}
               </span>
-              <EuroInput
-                aria-label={row.name}
+              <AmountField
+                label={row.name}
+                onUnreadable={mark(row.code)}
                 valueCents={cents[row.code] ?? null}
                 onChange={(value) => setCents((before) => ({ ...before, [row.code]: value }))}
                 className="w-40 text-right tabular-nums"
@@ -69,7 +78,7 @@ function OpeningForm({ accounts, opening }: { accounts: LedgerAccount[]; opening
           </p>
           <label className="flex flex-wrap items-center justify-between gap-2 text-lg font-semibold">
             Eigen vermogen in e-Boekhouden (ter vergelijking)
-            <EuroInput valueCents={eBoekhouden} onChange={setEBoekhouden} className="w-40 text-right font-normal tabular-nums" />
+            <AmountField valueCents={eBoekhouden} onChange={setEBoekhouden} onUnreadable={mark("eb")} className="w-40 text-right font-normal tabular-nums" />
           </label>
           {eBoekhouden !== null && (
             <p className="flex flex-wrap justify-between gap-2 text-lg">
@@ -80,7 +89,7 @@ function OpeningForm({ accounts, opening }: { accounts: LedgerAccount[]; opening
         </div>
       </Section>
       <div className="mt-6 flex flex-col items-start gap-3">
-        <Button variant="primary" onClick={() => void save()}>
+        <Button variant="primary" disabled={unreadable.size > 0} onClick={() => void save()}>
           Opslaan
         </Button>
         {problem && <Problem>{problem}</Problem>}

@@ -1,10 +1,10 @@
 import { useState } from "react";
 import type { LedgerAccount } from "../../../shared/ledger-types";
 import { Button } from "../../ui/Button";
-import { EuroInput } from "../../ui/EuroInput";
 import { useToast } from "../../ui/Toast";
 import { Loaded, PageTitle, Problem, Section } from "../parts";
 import { useAdminData, useAdminWrite } from "../useAdmin";
+import { AmountField } from "./AmountField";
 import { LEDGER, type Comparison } from "./ledger-api";
 
 const YEAR = 2026;
@@ -19,6 +19,14 @@ function ComparisonForm({ accounts, comparison }: { accounts: LedgerAccount[]; c
   const typed = new Map(comparison.figures.map((figure) => [figure.accountCode, figure.amountCents]));
   const [cents, setCents] = useState<Record<string, number | null>>(() => Object.fromEntries(rows.map((row) => [row.code, typed.get(row.code) ?? null])));
   const [problem, setProblem] = useState<string | null>(null);
+  const [unreadable, setUnreadable] = useState<Set<string>>(new Set());
+  const mark = (key: string) => (bad: boolean) =>
+    setUnreadable((before) => {
+      const next = new Set(before);
+      if (bad) next.add(key);
+      else next.delete(key);
+      return next;
+    });
 
   const save = async () => {
     setProblem(null);
@@ -41,8 +49,9 @@ function ComparisonForm({ accounts, comparison }: { accounts: LedgerAccount[]; c
                   <span className="block text-sm text-ink/70">{`was ${joined(row.formerly)}`}</span>
                 )}
               </span>
-              <EuroInput
-                aria-label={row.name}
+              <AmountField
+                label={row.name}
+                onUnreadable={mark(row.code)}
                 valueCents={cents[row.code] ?? null}
                 onChange={(value) => setCents((before) => ({ ...before, [row.code]: value }))}
                 className="w-40 text-right tabular-nums"
@@ -58,7 +67,7 @@ function ComparisonForm({ accounts, comparison }: { accounts: LedgerAccount[]; c
       {part("income", "Opbrengsten")}
       {part("expense", "Kosten")}
       <div className="mt-6 flex flex-col items-start gap-3">
-        <Button variant="primary" onClick={() => void save()}>
+        <Button variant="primary" disabled={unreadable.size > 0} onClick={() => void save()}>
           Opslaan
         </Button>
         {problem && <Problem>{problem}</Problem>}

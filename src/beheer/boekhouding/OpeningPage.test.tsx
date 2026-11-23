@@ -77,3 +77,20 @@ it("fills in what was saved before", async () => {
   expect(await screen.findByLabelText("ING betaalrekening")).toHaveValue("2500,00");
   expect(screen.getByText("Eigen vermogen (uitgerekend)").parentElement).toHaveTextContent("€ 2.500,00");
 });
+
+it("refuses to save an amount that cannot be read", async () => {
+  mockLoggedIn();
+  mockApi({
+    [`${base}/accounts`]: accounts,
+    [`${base}/opening`]: { year: 2027, lines: [], equityCents: 0, eBoekhoudenEquityCents: null, expectedCashCents: 0 },
+  });
+  renderAt("/beheer/boekhouding/beginbalans");
+  const input = await screen.findByLabelText("ING betaalrekening");
+  await user().type(input, "12,3x");
+  expect(screen.getByText("Dit bedrag kan ik niet lezen.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Opslaan" })).toBeDisabled();
+  expect(calls("PUT")).toHaveLength(0);
+  await user().clear(input);
+  expect(screen.queryByText("Dit bedrag kan ik niet lezen.")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Opslaan" })).toBeEnabled();
+});

@@ -47,3 +47,13 @@ it("shows the old numbers next to the comparison figures", async () => {
   });
   expect(await screen.findByText("Opgeslagen.")).toBeInTheDocument();
 });
+
+it("refuses to save an amount that cannot be read", async () => {
+  mockLoggedIn();
+  mockApi({ [`${base}/accounts`]: accounts, [`${base}/comparison`]: { year: 2026, figures: [] } });
+  renderAt("/beheer/boekhouding/vergelijking");
+  await user().type(await screen.findByLabelText("Kantoorkosten"), "12,3x");
+  expect(screen.getByText("Dit bedrag kan ik niet lezen.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Opslaan" })).toBeDisabled();
+  expect(calls("PUT")).toHaveLength(0);
+});
