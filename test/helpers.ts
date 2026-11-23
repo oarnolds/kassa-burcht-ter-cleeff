@@ -54,6 +54,7 @@ export function useFakeMollie(): { current: FakeMollie } {
 // Children before parents, so no foreign key is left dangling.
 const TABLES = [
   "ledger_settings",
+  "ledger_attachments",
   "ledger_lines",
   "ledger_history",
   "ledger_entries",

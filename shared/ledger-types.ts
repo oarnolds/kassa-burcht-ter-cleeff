@@ -42,6 +42,8 @@ export type Entry = {
 
 export type EntryChange = {
   at: string;
+  /** Set when the change is not an edit, e.g. "bijlage verborgen: bon.pdf". */
+  note: string | null;
   before: { date: string; description: string; lines: EntryLine[] } | null;
   after: { date: string; description: string; lines: EntryLine[] };
 };

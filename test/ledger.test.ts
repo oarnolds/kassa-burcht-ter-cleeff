@@ -150,6 +150,7 @@ it("keeps the history of an edit", async () => {
   expect(await entryHistory(env.DB, entry.id)).toEqual([
     {
       at: LATER.toISOString(),
+      note: null,
       before: { date: "2027-01-10", description: "Bonnetje", lines: move("4514", "1010", 1250) },
       after: { date: "2027-01-11", description: "Pleisters", lines: move("4507", "1010", 1300) },
     },

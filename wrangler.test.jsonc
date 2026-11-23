@@ -6,5 +6,9 @@
   "d1_databases": [
     { "binding": "DB", "database_name": "kassa", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }
   ],
-  "r2_buckets": [{ "binding": "BACKUPS", "bucket_name": "kassa-backups" }]
+  "r2_buckets": [
+    { "binding": "BACKUPS", "bucket_name": "kassa-backups" },
+    // Receipts and photos of the boekhouding. Nothing in it is ever deleted (worker/db/attachments.ts).
+    { "binding": "ATTACHMENTS", "bucket_name": "boekhouding-bijlagen" }
+  ]
 }

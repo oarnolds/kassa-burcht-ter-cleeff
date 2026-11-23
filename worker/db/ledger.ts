@@ -1,4 +1,4 @@
-import { type Entry, type EntryChange, type EntryLine, type EntrySource, LEDGER_START } from "../../shared/ledger-types";
+import { type Attachment, type Entry, type EntryChange, type EntryLine, type EntrySource, LEDGER_START } from "../../shared/ledger-types";
 
 /** A refusal with a reason the beheer pages can show. */
 export class LedgerError extends Error {
@@ -27,6 +27,7 @@ type EntryRow = {
   year_status: "open" | "closed" | null;
   changed: number;
 };
+type AttachmentRow = { id: string; entry_id: string; filename: string; content_type: string; size_bytes: number; uploaded_at: string };
 type LineRow = { entry_id: string; account_code: string; amount_cents: number; note: string | null; asset_id: string | null };
 
 const yearOf = (date: string) => Number(date.slice(0, 4));
@@ -101,15 +102,28 @@ function entryReads(db: D1Database, where: string, values: unknown[]): D1Prepare
          WHERE l.entry_id IN (SELECT e.id FROM ledger_entries e WHERE ${where}) ORDER BY l.id`,
       )
       .bind(...values),
+    // The visible attachments of all those entries in one query, not one per entry.
+    db
+      .prepare(
+        `SELECT a.id, a.entry_id, a.filename, a.content_type, a.size_bytes, a.uploaded_at FROM ledger_attachments a
+         WHERE a.hidden_at IS NULL AND a.entry_id IN (SELECT e.id FROM ledger_entries e WHERE ${where}) ORDER BY a.uploaded_at, a.rowid`,
+      )
+      .bind(...values),
   ];
 }
 
-function toEntries(entries: D1Result, lines: D1Result): Entry[] {
+function toEntries(entries: D1Result, lines: D1Result, attachments: D1Result): Entry[] {
   const linesOf = new Map<string, EntryLine[]>();
   for (const row of lines.results as LineRow[]) {
     const list = linesOf.get(row.entry_id) ?? [];
     list.push({ accountCode: row.account_code, amountCents: row.amount_cents, note: row.note, assetId: row.asset_id });
     linesOf.set(row.entry_id, list);
+  }
+  const attachmentsOf = new Map<string, Attachment[]>();
+  for (const row of attachments.results as AttachmentRow[]) {
+    const list = attachmentsOf.get(row.entry_id) ?? [];
+    list.push({ id: row.id, filename: row.filename, contentType: row.content_type, sizeBytes: row.size_bytes, uploadedAt: row.uploaded_at });
+    attachmentsOf.set(row.entry_id, list);
   }
   return (entries.results as EntryRow[]).map((row) => ({
     id: row.id,
@@ -120,15 +134,15 @@ function toEntries(entries: D1Result, lines: D1Result): Entry[] {
     source: row.source,
     sourceRef: row.source_ref,
     lines: linesOf.get(row.id) ?? [],
-    attachments: [],
+    attachments: attachmentsOf.get(row.id) ?? [],
     editable: EDITABLE_SOURCES.includes(row.source) && row.year_status === "open",
     changed: row.changed === 1,
   }));
 }
 
 async function readEntries(db: D1Database, where: string, values: unknown[]): Promise<Entry[]> {
-  const [entries, lines] = await db.batch(entryReads(db, where, values));
-  return toEntries(entries!, lines!);
+  const [entries, lines, attachments] = await db.batch(entryReads(db, where, values));
+  return toEntries(entries!, lines!, attachments!);
 }
 
 const BY_SOURCE = "e.source = ? AND e.source_ref = ?";
@@ -169,15 +183,19 @@ export async function listEntries(
 
 export async function entryHistory(db: D1Database, id: string): Promise<EntryChange[]> {
   const { results } = await db
-    .prepare("SELECT at, before_json, after_json FROM ledger_history WHERE entry_id = ? ORDER BY id")
+    .prepare("SELECT at, before_json, after_json, note FROM ledger_history WHERE entry_id = ? ORDER BY id")
     .bind(id)
-    .all<{ at: string; before_json: string | null; after_json: string }>();
+    .all<{ at: string; before_json: string | null; after_json: string; note: string | null }>();
   return results.map((row) => ({
     at: row.at,
+    note: row.note,
     before: row.before_json === null ? null : (JSON.parse(row.before_json) as EntryChange["before"]),
     after: JSON.parse(row.after_json) as EntryChange["after"],
   }));
 }
+
+/** The content of an entry as the history keeps it; attachments.ts writes the line for a hidden attachment with it. */
+export const entrySnapshot = snapshot;
 
 export async function yearStatus(db: D1Database, year: number): Promise<"open" | "closed" | null> {
   const row = await db.prepare("SELECT status FROM ledger_years WHERE year = ?").bind(year).first<{ status: "open" | "closed" }>();
@@ -317,14 +335,14 @@ export function emptyEntry(db: D1Database, id: string, now: Date): Promise<Entry
 export async function upsertSourced(db: D1Database, input: NewEntry & { sourceRef: string }, now: Date): Promise<Entry> {
   const year = checkContent(input);
   const codes = codesOf(input.lines);
-  const [entries, lines, years, accounts] = await db.batch([
+  const [entries, lines, attachments, years, accounts] = await db.batch([
     ...entryReads(db, BY_SOURCE, [input.source, input.sourceRef]),
     ...checkReads(db, year, codes),
   ]);
   const existingRow = entries!.results[0] as EntryRow | undefined;
   if (existingRow && existingRow.year_status !== "open") throw new LedgerError("year_closed", 409);
   checkResults(years!, accounts!, codes, false);
-  const existing = toEntries(entries!, lines!)[0];
+  const existing = toEntries(entries!, lines!, attachments!)[0];
   if (existing && sameContent(existing, input)) return existing;
   await db.batch(upsertSourcedStatements(db, input, existing ? { id: existing.id } : null, now));
   const [entry] = await readEntries(db, BY_SOURCE, [input.source, input.sourceRef]);

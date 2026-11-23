@@ -55,7 +55,8 @@ CREATE TABLE ledger_history (
   entry_id TEXT NOT NULL REFERENCES ledger_entries(id),
   at TEXT NOT NULL,
   before_json TEXT,
-  after_json TEXT NOT NULL
+  after_json TEXT NOT NULL,
+  note TEXT
 );
 
 CREATE INDEX ledger_history_by_entry ON ledger_history(entry_id);
@@ -74,3 +75,17 @@ CREATE TABLE ledger_settings (
   value TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+-- A receipt or photo with an entry. The file lives in its own R2 bucket and is never deleted; hiding only sets `hidden_at`.
+CREATE TABLE ledger_attachments (
+  id TEXT PRIMARY KEY,
+  entry_id TEXT NOT NULL REFERENCES ledger_entries(id),
+  r2_key TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  uploaded_at TEXT NOT NULL,
+  hidden_at TEXT
+);
+
+CREATE INDEX ledger_attachments_by_entry ON ledger_attachments(entry_id);

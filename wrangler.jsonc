@@ -13,6 +13,10 @@
   // The weekly copy of everything: every Monday at 03:00 UTC, the 26 newest are kept (worker/backup.ts).
   // The day is written as MON on purpose: in Cloudflare's cron syntax 1 is Sunday, not Monday.
   // Without the bucket binding the Worker still runs; beheer then says that the weekly copy is not switched on.
-  "r2_buckets": [{ "binding": "BACKUPS", "bucket_name": "kassa-backups" }],
+  "r2_buckets": [
+    { "binding": "BACKUPS", "bucket_name": "kassa-backups" },
+    // Receipts and photos of the boekhouding. Nothing in it is ever deleted (worker/db/attachments.ts).
+    { "binding": "ATTACHMENTS", "bucket_name": "boekhouding-bijlagen" }
+  ],
   "triggers": { "crons": ["0 3 * * MON"] }
 }
