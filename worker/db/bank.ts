@@ -144,22 +144,29 @@ function insertLine(db: D1Database, accountCode: string, line: CamtLine, key: st
     );
 }
 
-/** Stores the new lines in one batch, after one lookup. Gives the result and each kept line's content key. */
+/**
+ * Stores the new lines in one batch, after one lookup, with `alongside` after them in that batch. Gives the result
+ * and each kept line's content key.
+ */
 async function storeLines(
   db: D1Database,
   accountCode: string,
   lines: CamtLine[],
   origin: LineOrigin,
   now: Date,
+  alongside: D1PreparedStatement[] = [],
 ): Promise<{ result: ImportResult; keys: string[] }> {
   const kept = lines.filter((line) => line.bookingDate >= LEDGER_START);
   const beforeStart = lines.length - kept.length;
-  if (kept.length === 0) return { result: { added: 0, known: 0, beforeStart, autoBooked: 0 }, keys: [] };
+  if (kept.length === 0) {
+    if (alongside.length > 0) await db.batch(alongside);
+    return { result: { added: 0, known: 0, beforeStart, autoBooked: 0 }, keys: [] };
+  }
   const occurrences = await occurrencesOf(db, accountCode, kept, origin);
   const keys = await Promise.all(kept.map((line, i) => sha256Hex(`${partsOf(accountCode, line)}|${occurrences[i]}`)));
   const nowIso = now.toISOString();
-  const written = await db.batch(kept.map((line, i) => insertLine(db, accountCode, line, keys[i]!, origin, nowIso)));
-  const added = written.reduce((sum, outcome) => sum + (outcome.meta.changes ?? 0), 0);
+  const written = await db.batch([...kept.map((line, i) => insertLine(db, accountCode, line, keys[i]!, origin, nowIso)), ...alongside]);
+  const added = written.slice(0, kept.length).reduce((sum, outcome) => sum + (outcome.meta.changes ?? 0), 0);
   return { result: { added, known: kept.length - added, beforeStart, autoBooked: 0 }, keys };
 }
 
@@ -168,9 +175,17 @@ async function storeLines(
  * account, or when an equal line (account, booking date, amount, the other party's IBAN) with the same count
  * is: the description does not count, as Enable Banking and a file may word it differently. Lines before
  * LEDGER_START are counted and left out. It does not check where the lines come from; `importStatement` does.
+ * `alongside` is written in the same batch, after the lines (e.g. what notes that they are in).
  */
-export async function importLines(db: D1Database, accountCode: string, lines: CamtLine[], origin: LineOrigin, now: Date): Promise<ImportResult> {
-  return (await storeLines(db, accountCode, lines, origin, now)).result;
+export async function importLines(
+  db: D1Database,
+  accountCode: string,
+  lines: CamtLine[],
+  origin: LineOrigin,
+  now: Date,
+  alongside: D1PreparedStatement[] = [],
+): Promise<ImportResult> {
+  return (await storeLines(db, accountCode, lines, origin, now, alongside)).result;
 }
 
 /**

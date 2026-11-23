@@ -21,8 +21,10 @@ const MOLLIE = "1030";
 const SOURCE = "mollie_other";
 /** A run reads from this many days before the newest payment it has, to catch one Mollie lists late. */
 const LOOK_BACK_DAYS = 3;
-/** Day entries written per database call. */
+/** Days written per database call. */
 const PER_BATCH = 20;
+/** Days taken up per run (ten calls of PER_BATCH); a run stays within its database calls, the rest comes next. */
+const MAX_DAYS = 200;
 /** Payments per insert statement, so that its one JSON parameter stays well below D1's limit on the size of a value. */
 const PER_INSERT = 500;
 /** In `ledger_settings`: the stretch of payments a run cut short by the page cap left unread (JSON `PaymentGap`). */
@@ -56,8 +58,10 @@ const kassaPayments = (db: D1Database, ids: string) =>
 
 /**
  * Nightly: Mollie's paid payments, refunds and chargebacks since a few days before the newest payment kept (or since
- * LEDGER_START), then Mollie's balance as that of 1030 at the end of yesterday. A failure of Mollie gives its name
- * ("unauthorized", "refused", "not_found", "unreachable"), a refusal of the ledger its code.
+ * LEDGER_START), then Mollie's balance as that of 1030 at the end of yesterday. All three lists are read before
+ * anything is stored, so a failure keeps nothing and the next run reads the same window. A failure of Mollie gives its
+ * name ("unauthorized", "refused", "not_found", "unreachable"), a list of reversals cut short by the page cap
+ * "mollie_list_cut_short", a refusal of the ledger its code.
  */
 export async function syncMolliePayments(env: Env, now: Date): Promise<"ok" | "skipped" | string> {
   const client = mollieReadFor(env);
@@ -68,30 +72,36 @@ export async function syncMolliePayments(env: Env, now: Date): Promise<"ok" | "s
   };
   const db = env.DB;
   try {
-    const [newestRows, noteRows] = await db.batch([
+    const [newestRows, noteRows, openRows] = await db.batch([
       db.prepare("SELECT MAX(paid_date) AS date FROM mollie_payments"),
       db.prepare("SELECT value FROM ledger_settings WHERE key = ?1").bind(RESUME_KEY),
+      // The days of payments not yet booked (a run stopped half way), oldest first.
+      db.prepare("SELECT DISTINCT paid_date AS date FROM mollie_payments WHERE booked = 0 ORDER BY paid_date LIMIT ?1").bind(MAX_DAYS),
     ]);
     const newest = (newestRows!.results[0] as { date: string | null } | undefined)?.date ?? null;
     const back = newest ? shiftDate(newest, -LOOK_BACK_DAYS) : LEDGER_START;
     const from = startOfDay(back < LEDGER_START ? LEDGER_START : back);
     // A stretch an earlier run left unread is read first; the newest follow once it is done.
     const kept = gapOf((noteRows!.results[0] as { value: string } | undefined)?.value);
+    const open = (openRows!.results as { date: string }[]).map((row) => row.date);
 
     const payments = await client.paymentsSince(from, kept);
     if (!payments.ok) return failed(payments.failure);
     // A paid payment without a moment that can be read is not guessed at: the run fails as the reader does.
     if (payments.data.rows.some((row) => row.status === "paid" && row.paidAt !== null && Number.isNaN(Date.parse(row.paidAt)))) return failed("unreachable");
-    // The note goes with the payments it follows, in one batch: what is stored and what is still to read never part.
-    const { gap } = payments.data;
-    const note = gap ? setLedgerSettingStatement(db, RESUME_KEY, JSON.stringify(gap), now) : kept ? deleteLedgerSettingStatement(db, RESUME_KEY) : null;
-    await storePayments(db, payments.data.rows, now, note);
-
     const refunds = await client.refundsSince(from);
     if (!refunds.ok) return failed(refunds.failure);
     const chargebacks = await client.chargebacksSince(from);
     if (!chargebacks.ok) return failed(chargebacks.failure);
-    await storeReversals(db, refunds.data, chargebacks.data, now);
+    // Reversals that do not reach back to `from` must not look complete: then nothing is kept.
+    if (refunds.data.cutShort || chargebacks.data.cutShort) return failed("mollie_list_cut_short");
+
+    // The reversals first: storing them leaves the window where it is, storing the payments moves it.
+    await storeReversals(db, refunds.data.rows, chargebacks.data.rows, payments.data.rows, now);
+    // The note goes with the payments it follows, in one batch: what is stored and what is still to read never part.
+    const { gap } = payments.data;
+    const note = gap ? setLedgerSettingStatement(db, RESUME_KEY, JSON.stringify(gap), now) : kept ? deleteLedgerSettingStatement(db, RESUME_KEY) : null;
+    await storePayments(db, payments.data.rows, open, now, note);
 
     const balance = await client.primaryBalance();
     if (!balance.ok) return failed(balance.failure);
@@ -108,61 +118,62 @@ export async function syncMolliePayments(env: Env, now: Date): Promise<"ok" | "s
 /**
  * Keeps each paid payment once, classified when it is first stored: `kassa` when it was paid at the terminal (only
  * the kassa uses it) or a sale of the kassa has it, else `rule` by the first rule whose keyword is in its
- * description, else `line`. Then, for every day the payments read fall on, the day entry is made equal to the rule
- * payments of that day, and the `line` payments of those days are read onto 1030. `note` is written with the
- * payments. In a few database calls, however many payments.
+ * description, else `line`. Then, for every day the payments read fall on and every day in `open` (payments not yet
+ * booked), at most MAX_DAYS oldest first: the day entry is made equal to the rule payments of that day, and the
+ * `line` payments of those days are read onto 1030. A payment is marked booked in the same batch that books it; a
+ * kassa payment at once. `note` is written with the payments.
  */
-async function storePayments(db: D1Database, rows: MolliePaymentRow[], now: Date, note: D1PreparedStatement | null): Promise<void> {
+async function storePayments(db: D1Database, rows: MolliePaymentRow[], open: string[], now: Date, note: D1PreparedStatement | null): Promise<void> {
   const paid: Paid[] = rows
     .flatMap((row) => (row.status === "paid" && row.paidAt !== null ? [{ ...row, paidAt: row.paidAt, paidDate: businessDate(row.paidAt) }] : []))
     .filter((row) => row.paidDate >= LEDGER_START)
     .sort((a, b) => byMoment({ at: a.paidAt, id: a.id }, { at: b.paidAt, id: b.id }));
-  if (paid.length === 0) {
+  if (paid.length === 0 && open.length === 0) {
     await note?.run();
     return;
   }
-  const ids = JSON.stringify(paid.map((row) => row.id));
-  const dateList = [...new Set(paid.map((row) => row.paidDate))].sort();
+  // The rest of the days, past MAX_DAYS, keep their payments unbooked: the next run takes them up.
+  const dateList = [...new Set([...paid.map((row) => row.paidDate), ...open])].sort().slice(0, MAX_DAYS);
   const dates = JSON.stringify(dateList);
-
-  const [ruleRows, kassaRows] = await db.batch([db.prepare("SELECT keyword, account_code FROM mollie_rules ORDER BY sort, id"), kassaPayments(db, ids)]);
-  const rules = (ruleRows!.results as { keyword: string; account_code: string }[]).map((rule) => ({ word: rule.keyword.toLowerCase(), code: rule.account_code }));
-  const kassa = new Set((kassaRows!.results as { id: string }[]).map((row) => row.id));
-  const classified = paid.map((row) => {
-    let kind: Kind = "line";
-    let account: string | null = null;
-    if (row.method === "pointofsale" || kassa.has(row.id)) kind = "kassa";
-    else {
-      const text = row.description.toLowerCase();
-      account = rules.find((rule) => text.includes(rule.word))?.code ?? null;
-      if (account !== null) kind = "rule";
-    }
-    return { id: row.id, method: row.method, amount: row.amountCents, description: row.description, date: row.paidDate, settlement: row.settlementId, kind, account };
-  });
 
   // A statement per 500 payments. A payment already kept keeps what it was classified as; only its payout is noted.
   const writes: D1PreparedStatement[] = [];
-  for (let i = 0; i < classified.length; i += PER_INSERT) {
-    writes.push(
-      db
-        .prepare(
-          `INSERT INTO mollie_payments (id, method, amount_cents, description, paid_date, settlement_id, kind, account_code)
-           SELECT json_extract(value, '$.id'), json_extract(value, '$.method'), json_extract(value, '$.amount'), json_extract(value, '$.description'),
-             json_extract(value, '$.date'), json_extract(value, '$.settlement'), json_extract(value, '$.kind'), json_extract(value, '$.account')
-           FROM json_each(?1) WHERE true
-           ON CONFLICT (id) DO UPDATE SET settlement_id = COALESCE(excluded.settlement_id, mollie_payments.settlement_id)`,
-        )
-        .bind(JSON.stringify(classified.slice(i, i + PER_INSERT))),
-    );
+  if (paid.length > 0) {
+    const ids = JSON.stringify(paid.map((row) => row.id));
+    const [ruleRows, kassaRows] = await db.batch([db.prepare("SELECT keyword, account_code FROM mollie_rules ORDER BY sort, id"), kassaPayments(db, ids)]);
+    const rules = (ruleRows!.results as { keyword: string; account_code: string }[]).map((rule) => ({ word: rule.keyword.toLowerCase(), code: rule.account_code }));
+    const kassa = new Set((kassaRows!.results as { id: string }[]).map((row) => row.id));
+    const classified = paid.map((row) => {
+      let kind: Kind = "line";
+      let account: string | null = null;
+      if (row.method === "pointofsale" || kassa.has(row.id)) kind = "kassa";
+      else {
+        const text = row.description.toLowerCase();
+        account = rules.find((rule) => text.includes(rule.word))?.code ?? null;
+        if (account !== null) kind = "rule";
+      }
+      return { id: row.id, method: row.method, amount: row.amountCents, description: row.description, date: row.paidDate, settlement: row.settlementId, kind, account, booked: kind === "kassa" ? 1 : 0 };
+    });
+    for (let i = 0; i < classified.length; i += PER_INSERT) {
+      writes.push(
+        db
+          .prepare(
+            `INSERT INTO mollie_payments (id, method, amount_cents, description, paid_date, settlement_id, kind, account_code, booked)
+             SELECT json_extract(value, '$.id'), json_extract(value, '$.method'), json_extract(value, '$.amount'), json_extract(value, '$.description'),
+               json_extract(value, '$.date'), json_extract(value, '$.settlement'), json_extract(value, '$.kind'), json_extract(value, '$.account'),
+               json_extract(value, '$.booked')
+             FROM json_each(?1) WHERE true
+             ON CONFLICT (id) DO UPDATE SET settlement_id = COALESCE(excluded.settlement_id, mollie_payments.settlement_id)`,
+          )
+          .bind(JSON.stringify(classified.slice(i, i + PER_INSERT))),
+      );
+    }
   }
   if (note) writes.push(note);
   const read = await db.batch([
     ...writes,
     db
-      .prepare(
-        `SELECT paid_date AS date, account_code AS code, SUM(amount_cents) AS cents FROM mollie_payments
-         WHERE kind = 'rule' AND paid_date IN (SELECT value FROM json_each(?1)) GROUP BY paid_date, account_code`,
-      )
+      .prepare(`SELECT id, paid_date AS date, account_code AS code, amount_cents AS cents, booked FROM mollie_payments WHERE kind = 'rule' AND paid_date IN (SELECT value FROM json_each(?1))`)
       .bind(dates),
     db
       .prepare(
@@ -181,23 +192,26 @@ async function storePayments(db: D1Database, rows: MolliePaymentRow[], now: Date
       .bind(dates),
     db.prepare("SELECT year FROM ledger_years WHERE status = 'closed'"),
   ]);
-  const [totalRows, entryRows, lineRows, closedRows] = read.slice(writes.length);
+  const [ruleRows, entryRows, lineRows, closedRows] = read.slice(writes.length);
 
-  // What the rules say per day: debit 1030 the total, credit each account its part.
+  // What the rules say per day: debit 1030 the total, credit each account its part; and which of them wait.
   const totals = new Map<string, Amounts>();
-  for (const row of totalRows!.results as { date: string; code: string; cents: number }[]) {
+  const waiting = new Map<string, string[]>();
+  for (const row of ruleRows!.results as { id: string; date: string; code: string; cents: number; booked: number }[]) {
     const day = totals.get(row.date) ?? totals.set(row.date, new Map()).get(row.date)!;
     add(day, MOLLIE, row.cents);
     add(day, row.code, -row.cents);
+    if (row.booked === 0) (waiting.get(row.date) ?? waiting.set(row.date, []).get(row.date)!).push(row.id);
   }
-  const booked = new Map<string, Booked>();
+  const entries = new Map<string, Booked>();
   for (const row of entryRows!.results as { id: string; ref: string; year: number; code: string | null; cents: number | null }[]) {
-    const entry = booked.get(row.ref) ?? booked.set(row.ref, { id: row.id, year: row.year, amounts: new Map() }).get(row.ref)!;
+    const entry = entries.get(row.ref) ?? entries.set(row.ref, { id: row.id, year: row.year, amounts: new Map() }).get(row.ref)!;
     if (row.code !== null) add(entry.amounts, row.code, row.cents!);
   }
   const closed = new Set((closedRows!.results as { year: number }[]).map((row) => row.year));
-  const work = dayWork(dateList, totals, booked, closed);
+  const work = new Map(dayWork(dateList, totals, entries, closed).map((item) => [item.date, item]));
 
+  // The lines, and in the same batch the note that their payments are booked (only where the line is really there).
   const lines: CamtLine[] = (lineRows!.results as { id: string; amount_cents: number; description: string; paid_date: string }[]).map((row) => ({
     bookingDate: row.paid_date,
     amountCents: row.amount_cents,
@@ -206,27 +220,41 @@ async function storePayments(db: D1Database, rows: MolliePaymentRow[], now: Date
     counterpartyIban: null,
     bankRef: row.id,
   }));
-  await importLines(db, MOLLIE, lines, "mollie", now);
-
-  // Each `line` payment remembers its line; it rides along with the first day entries.
-  const batches: D1PreparedStatement[][] = [];
   if (lines.length > 0) {
-    batches.push([
-      db
-        .prepare(
-          `UPDATE mollie_payments SET bank_line_id = (SELECT b.id FROM bank_lines b WHERE b.account_code = '${MOLLIE}' AND b.bank_ref = mollie_payments.id)
-           WHERE kind = 'line' AND bank_line_id IS NULL AND paid_date IN (SELECT value FROM json_each(?1))`,
-        )
-        .bind(dates),
-    ]);
+    const linked = db
+      .prepare(
+        `UPDATE mollie_payments SET booked = 1, bank_line_id = (SELECT b.id FROM bank_lines b WHERE b.account_code = '${MOLLIE}' AND b.bank_ref = mollie_payments.id)
+         WHERE kind = 'line' AND booked = 0 AND paid_date IN (SELECT value FROM json_each(?1))
+           AND EXISTS (SELECT 1 FROM bank_lines b WHERE b.account_code = '${MOLLIE}' AND b.bank_ref = mollie_payments.id)`,
+      )
+      .bind(dates);
+    await importLines(db, MOLLIE, lines, "mollie", now, [linked]);
   }
-  const openYear = work.some((item) => closed.has(yearOf(item.date))) ? await firstOpenYear(db) : 0;
-  for (let i = 0; i < work.length; i += PER_BATCH) {
-    const statements = work.slice(i, i + PER_BATCH).flatMap((item) => upsertSourcedStatements(db, item.entry(openYear), item.existing, now));
-    if (i === 0 && batches.length > 0) batches[0]!.push(...statements);
-    else batches.push(statements);
+
+  // Per day its entry, if it differs, and the note that its rule payments are booked, in the same batch. When the
+  // entry's year was closed in the meantime, the ledger writes nothing and the payments stay unbooked.
+  const openYear = [...work.values()].some((item) => closed.has(yearOf(item.date))) ? await firstOpenYear(db) : 0;
+  const perDay = dateList.map((date) => {
+    const item = work.get(date);
+    const entry = item?.entry(openYear);
+    const statements = entry ? upsertSourcedStatements(db, entry, item!.existing, now) : [];
+    const ids = waiting.get(date) ?? [];
+    if (ids.length > 0) {
+      statements.push(
+        db
+          .prepare(
+            `UPDATE mollie_payments SET booked = 1 WHERE id IN (SELECT value FROM json_each(?1))
+               AND (?2 IS NULL OR EXISTS (SELECT 1 FROM ledger_years WHERE year = ?2 AND status = 'open'))`,
+          )
+          .bind(JSON.stringify(ids), entry ? yearOf(entry.date) : null),
+      );
+    }
+    return statements;
+  });
+  for (let i = 0; i < perDay.length; i += PER_BATCH) {
+    const statements = perDay.slice(i, i + PER_BATCH).flat();
+    if (statements.length > 0) await db.batch(statements);
   }
-  for (const statements of batches) await db.batch(statements);
 }
 
 /**
@@ -270,10 +298,16 @@ function dayWork(dates: string[], totals: Map<string, Amounts>, booked: Map<stri
 
 /**
  * Refunds (not failed or called off) and chargebacks of a payment that is not the kassa's, each a line on 1030 with
- * the amount that left Mollie, on its Amsterdam day. One of a kassa payment (a sale has it, or it was kept as the
- * kassa's) is left to the kassa's own reversal.
+ * the amount that left Mollie, on its Amsterdam day. One of a kassa payment (a sale has it, or it was paid at the
+ * terminal) is left to the kassa's own reversal. `payments` are those read in the same run, not stored yet.
  */
-async function storeReversals(db: D1Database, refunds: MollieRefundRow[], chargebacks: MollieChargebackRow[], now: Date): Promise<void> {
+async function storeReversals(
+  db: D1Database,
+  refunds: MollieRefundRow[],
+  chargebacks: MollieChargebackRow[],
+  payments: MolliePaymentRow[],
+  now: Date,
+): Promise<void> {
   const items = [
     ...refunds.filter((refund) => refund.status !== "failed" && refund.status !== "canceled").map((refund) => ({ ...refund, word: "Terugbetaling" })),
     ...chargebacks.map((chargeback) => ({ ...chargeback, word: "Terugboeking" })),
@@ -288,9 +322,14 @@ async function storeReversals(db: D1Database, refunds: MollieRefundRow[], charge
     db.prepare("SELECT id, description, kind FROM mollie_payments WHERE id IN (SELECT value FROM json_each(?1))").bind(ids),
   ]);
   const known = knownRows!.results as { id: string; description: string; kind: Kind }[];
-  // The kassa's own: a sale has the payment, or it was paid at the terminal.
-  const kassa = new Set([...(kassaRows!.results as { id: string }[]).map((row) => row.id), ...known.filter((row) => row.kind === "kassa").map((row) => row.id)]);
-  const about = new Map(known.map((row) => [row.id, row.description.trim()]));
+  // The kassa's own: a sale has the payment, or it was paid at the terminal (kept as such, or read in this run).
+  const kassa = new Set([
+    ...(kassaRows!.results as { id: string }[]).map((row) => row.id),
+    ...known.filter((row) => row.kind === "kassa").map((row) => row.id),
+    ...payments.filter((row) => row.method === "pointofsale").map((row) => row.id),
+  ]);
+  // What the payment was for: as kept, or as read in this run (the payments are stored after the reversals).
+  const about = new Map([...known.map((row) => [row.id, row.description] as const), ...payments.map((row) => [row.id, row.description] as const)].map(([id, text]) => [id, text.trim()]));
   const lines: CamtLine[] = items
     .filter((item) => !kassa.has(item.paymentId))
     .map((item) => {

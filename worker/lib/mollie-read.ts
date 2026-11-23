@@ -14,6 +14,8 @@ const TIMEOUT_MS = 8000;
 // A cron run may make 50 external calls, ING's included: no list takes more than this many calls (pages and a payout's
 // own reads alike), the rest waits for the next run. Four lists, the profile and the balance stay within 26.
 const MAX_PAGES = 6;
+// Items per page: one run reads at most 600 of a list, which it can parse and store within its CPU time.
+const PAGE_LIMIT = 100;
 const PROFILE_KEY = "mollie_profile_id";
 
 export type MolliePaymentRow = { id: string; method: string; amountCents: number; description: string; status: string; paidAt: string | null; settlementId: string | null };
@@ -33,8 +35,9 @@ export type MollieRead = {
    * same page cap, and the newest only once it is done. `gap` in the answer is what is still left unread (null: nothing).
    */
   paymentsSince(fromIso: string, gap?: PaymentGap | null): Promise<MollieResult<{ rows: MolliePaymentRow[]; gap: PaymentGap | null }>>;
-  refundsSince(fromIso: string): Promise<MollieResult<MollieRefundRow[]>>;
-  chargebacksSince(fromIso: string): Promise<MollieResult<MollieChargebackRow[]>>;
+  /** `cutShort`: the page cap was reached before the list reached back to `fromIso`, so `rows` is not all of it. */
+  refundsSince(fromIso: string): Promise<MollieResult<{ rows: MollieRefundRow[]; cutShort: boolean }>>;
+  chargebacksSince(fromIso: string): Promise<MollieResult<{ rows: MollieChargebackRow[]; cutShort: boolean }>>;
   /** Payouts that are still open or were settled at or after `fromIso`. `costsCents` is the gross of all costs, as Mollie signs them. */
   settlementsSince(fromIso: string): Promise<MollieResult<MollieSettlementRow[]>>;
   primaryBalance(): Promise<MollieResult<{ availableCents: number; pendingCents: number }>>;
@@ -205,7 +208,7 @@ export function mollieReadFor(env: Env): MollieRead | null {
     if (!profile.ok) return profile;
     const rows: T[] = [];
     const result = await pages(
-      `/${resource}?limit=250&profileId=${encodeURIComponent(profile.data)}${startAt === null ? "" : `&from=${encodeURIComponent(startAt)}`}`,
+      `/${resource}?limit=${PAGE_LIMIT}&profileId=${encodeURIComponent(profile.data)}${startAt === null ? "" : `&from=${encodeURIComponent(startAt)}`}`,
       key,
       (items) => {
         for (const item of items) {
@@ -233,7 +236,8 @@ export function mollieReadFor(env: Env): MollieRead | null {
     paidAt: text(item.paidAt),
     settlementId: text(item.settlementId),
   });
-  const rowsOnly = <T>(result: MollieResult<{ rows: T[] }>): MollieResult<T[]> => (result.ok ? { ok: true, data: result.data.rows } : result);
+  const complete = <T>(result: MollieResult<{ rows: T[]; cursor: string | null }>): MollieResult<{ rows: T[]; cutShort: boolean }> =>
+    result.ok ? { ok: true, data: { rows: result.data.rows, cutShort: result.data.cursor !== null } } : result;
 
   return {
     async paymentsSince(fromIso, gap = null) {
@@ -255,7 +259,7 @@ export function mollieReadFor(env: Env): MollieRead | null {
     },
 
     refundsSince: async (fromIso) =>
-      rowsOnly(await newestFirst("refunds", "refunds", fromIso, (item) => ({
+      complete(await newestFirst("refunds", "refunds", fromIso, (item) => ({
         id: need(text(item.id)),
         paymentId: need(text(item.paymentId)),
         amountCents: cents(units(item.amount)),
@@ -265,7 +269,7 @@ export function mollieReadFor(env: Env): MollieRead | null {
       }))),
 
     chargebacksSince: async (fromIso) =>
-      rowsOnly(await newestFirst("chargebacks", "chargebacks", fromIso, (item) => ({
+      complete(await newestFirst("chargebacks", "chargebacks", fromIso, (item) => ({
         id: need(text(item.id)),
         paymentId: need(text(item.paymentId)),
         amountCents: cents(units(item.amount)),
@@ -278,7 +282,7 @@ export function mollieReadFor(env: Env): MollieRead | null {
       const rows: MollieSettlementRow[] = [];
       // No order is documented: go on while a page holds an open payout or one settled since `fromIso`.
       const budget: Budget = { left: MAX_PAGES };
-      const result = await pages("/settlements?limit=250", "settlements", async (items) => {
+      const result = await pages(`/settlements?limit=${PAGE_LIMIT}`, "settlements", async (items) => {
         let relevant = false;
         for (const item of items) {
           const settledAt = text(item.settledAt);

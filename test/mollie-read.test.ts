@@ -28,7 +28,7 @@ it("reads payments of every method since a moment", async () => {
   });
   const request = lists()[0]!;
   expect(request).toMatchObject({ method: "GET", path: "/v2/payments", authorization: "Bearer org_fake" });
-  expect(request.query).toMatchObject({ limit: "250", profileId: "pfl_fake" });
+  expect(request.query).toMatchObject({ limit: "100", profileId: "pfl_fake" });
 });
 
 it("adds up a payout's costs from its periods", async () => {
@@ -66,15 +66,32 @@ it("reads refunds and chargebacks", async () => {
   fake.addChargeback({ id: "chb_1", paymentId: "tr_3", amount: "20.00", createdAt: "2027-03-02T08:00:00+00:00" });
   expect(await read().refundsSince("2027-02-01T00:00:00.000Z")).toEqual({
     ok: true,
-    data: [{ id: "re_1", paymentId: "tr_2", amountCents: 450, createdAt: "2027-03-01T08:00:00+00:00", description: "Dubbel betaald", status: "refunded" }],
+    data: {
+      rows: [{ id: "re_1", paymentId: "tr_2", amountCents: 450, createdAt: "2027-03-01T08:00:00+00:00", description: "Dubbel betaald", status: "refunded" }],
+      cutShort: false,
+    },
   });
   expect(await read().chargebacksSince("2027-02-01T00:00:00.000Z")).toEqual({
     ok: true,
-    data: [{ id: "chb_1", paymentId: "tr_3", amountCents: 2000, createdAt: "2027-03-02T08:00:00+00:00" }],
+    data: { rows: [{ id: "chb_1", paymentId: "tr_3", amountCents: 2000, createdAt: "2027-03-02T08:00:00+00:00" }], cutShort: false },
   });
   const paths = lists().map((r) => r.path);
   expect(paths).toEqual(["/v2/refunds", "/v2/chargebacks"]);
-  expect(lists().every((r) => r.query.profileId === "pfl_fake")).toBe(true);
+  expect(lists().every((r) => r.query.profileId === "pfl_fake" && r.query.limit === "100")).toBe(true);
+});
+
+it("says when refunds or chargebacks were cut short by the cap", async () => {
+  const fake = mollie.current;
+  fake.pageSize = 1;
+  for (let i = 1; i <= 7; i++) {
+    fake.addRefund({ id: `re_${i}`, paymentId: "tr_1", amount: "1.00", createdAt: `2027-03-0${i}T10:00:00+00:00` });
+    fake.addChargeback({ id: `chb_${i}`, paymentId: "tr_1", amount: "1.00", createdAt: `2027-03-0${i}T10:00:00+00:00` });
+  }
+  const refunds = await read().refundsSince("2027-01-01T00:00:00.000Z");
+  expect(refunds.ok && [refunds.data.rows.length, refunds.data.cutShort]).toEqual([6, true]);
+  // Five pages, and the sixth holds an older one: read to the end of what was asked.
+  const chargebacks = await read().chargebacksSince("2027-03-03T00:00:00.000Z");
+  expect(chargebacks.ok && [chargebacks.data.rows.length, chargebacks.data.cutShort]).toEqual([5, false]);
 });
 
 it("reads the balance", async () => {
@@ -288,6 +305,7 @@ it("reads no extra call when the settlements list carries the periods", async ()
   const result = await read().settlementsSince("2027-01-01T00:00:00.000Z");
   expect(result.ok && result.data[0]!.costsCents).toBe(188);
   expect(mollie.current.requests.map((request) => request.path)).toEqual(["/v2/settlements"]);
+  expect(mollie.current.requests[0]!.query.limit).toBe("100");
 });
 
 it("reads a settlement's periods one by one when the list omits them, and fails if that read fails", async () => {

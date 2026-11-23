@@ -2,6 +2,9 @@
 -- `kind`: `kassa` (a pin sale of the kassa; already in its kassa day, only ticked off here), `rule` (booked by a rule
 -- on `account_code`, in the day's entry "Mollie overig"), or `line` (no rule fitted: a line on 1030 in Te boeken,
 -- `bank_line_id`). A payment is classified once, when it is first stored; changing a rule later does not move it.
+-- `booked`: 1 once the payment is in its day entry (rule) or its line is on 1030 (line), written in the same batch;
+-- a kassa payment is booked at once. Every run takes up the days of the payments still at 0, so a night that stops
+-- half way leaves nothing behind, whatever their date.
 CREATE TABLE mollie_payments (
   id TEXT PRIMARY KEY,
   method TEXT NOT NULL,
@@ -12,10 +15,12 @@ CREATE TABLE mollie_payments (
   kind TEXT NOT NULL CHECK (kind IN ('kassa','rule','line')),
   account_code TEXT REFERENCES ledger_accounts(code),
   bank_line_id TEXT REFERENCES bank_lines(id),
+  booked INTEGER NOT NULL DEFAULT 0 CHECK (booked IN (0, 1)),
   CHECK ((kind = 'rule') = (account_code IS NOT NULL))
 );
 
 CREATE INDEX mollie_payments_by_date ON mollie_payments(paid_date, kind);
+CREATE INDEX mollie_payments_open ON mollie_payments(paid_date) WHERE booked = 0;
 
 -- Mollie's payouts to ING, with the reference that is also on the bank statement and the costs Mollie kept.
 CREATE TABLE mollie_settlements (

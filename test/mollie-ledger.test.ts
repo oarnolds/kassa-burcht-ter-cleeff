@@ -155,8 +155,8 @@ it("ticks off a pin payment as the kassa's, also before its sale is known", asyn
   expect(await count("ledger_entries")).toBe(0);
 });
 
-it("reads a long backlog to the end over two nights, each payment once", async () => {
-  // 1.600 payments waiting since 4 January, 40 a day: more than the six pages of 250 one night reads.
+it("reads a long backlog to the end over three nights, each payment once", async () => {
+  // 1.600 payments waiting since 4 January, 40 a day: more than the six pages of 100 one night reads.
   for (let i = 0; i < 1600; i++) {
     const date = shiftDate("2027-01-04", Math.floor(i / 40));
     const at = `${date}T${String(8 + (i % 10)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}:00+00:00`;
@@ -164,13 +164,21 @@ it("reads a long backlog to the end over two nights, each payment once", async (
   }
   const resume = () => env.DB.prepare("SELECT value FROM ledger_settings WHERE key = 'mollie_payments_resume'").first<{ value: string }>();
 
-  // The first night reads the newest 1.500 and notes where it stopped, down to where it began.
+  // The first night reads the newest 600 and notes where it stopped, down to where it began.
   expect(await sync("2027-02-13T02:00:00.000Z")).toBe("ok");
-  expect(await count("mollie_payments")).toBe(1500);
-  expect(JSON.parse((await resume())!.value)).toEqual({ from: expect.stringMatching(/^tr_\d+$/), untilIso: "2026-12-31T23:00:00.000Z" });
+  expect(await count("mollie_payments")).toBe(600);
+  const first = JSON.parse((await resume())!.value);
+  expect(first).toEqual({ from: expect.stringMatching(/^tr_\d+$/), untilIso: "2026-12-31T23:00:00.000Z" });
 
-  // The second night reads the rest first, then the newest as always; the note goes.
+  // The second night goes on where the first stopped, and is cut short again.
   expect(await sync("2027-02-14T02:00:00.000Z")).toBe("ok");
+  expect(await count("mollie_payments")).toBe(1200);
+  const second = JSON.parse((await resume())!.value);
+  expect(second).toEqual({ from: expect.stringMatching(/^tr_\d+$/), untilIso: "2026-12-31T23:00:00.000Z" });
+  expect(second.from).not.toBe(first.from);
+
+  // The third night reads the rest first, then the newest with the calls left over; the note goes.
+  expect(await sync("2027-02-15T02:00:00.000Z")).toBe("ok");
   expect(await resume()).toBeNull();
   expect(await count("mollie_payments")).toBe(1600);
   expect(await count("mollie_payments WHERE kind = 'rule'")).toBe(1200);
@@ -186,18 +194,121 @@ it("reads a long backlog to the end over two nights, each payment once", async (
   // A note that cannot be read stops the step, out loud, rather than being dropped with the payments it stands for.
   await env.DB.prepare("INSERT INTO ledger_settings (key, value, updated_at) VALUES ('mollie_payments_resume', 'kapot', '2027-02-14T02:00:00.000Z')").run();
   const logged = vi.spyOn(console, "error").mockImplementation(() => {});
-  expect(await sync("2027-02-15T01:00:00.000Z")).toBe("mollie_resume_unreadable");
+  expect(await sync("2027-02-16T01:00:00.000Z")).toBe("mollie_resume_unreadable");
   expect(logged.mock.calls).toEqual([["mollie step failed", "mollie_resume_unreadable"]]);
   logged.mockRestore();
   await env.DB.prepare("DELETE FROM ledger_settings WHERE key = 'mollie_payments_resume'").run();
 
-  // A third night finds nothing more.
+  // A fourth night finds nothing more.
   const stamps = () => env.DB.prepare("SELECT id, updated_at FROM ledger_entries ORDER BY id").all().then((r) => r.results);
   const before = await stamps();
-  expect(await sync("2027-02-15T02:00:00.000Z")).toBe("ok");
+  expect(await sync("2027-02-16T02:00:00.000Z")).toBe("ok");
   expect(await stamps()).toEqual(before);
   expect(await count("mollie_payments")).toBe(1600);
   expect(await count("bank_lines")).toBe(400);
+});
+
+it("keeps nothing of a night on which a list failed, so no refund is left behind", async () => {
+  const fake = mollie.current;
+  paid("tr_lid", "32.00", "Lidm. Speeltuin ter Cleefte", "2027-03-01T10:00:00+00:00");
+  expect(await sync("2027-03-02T02:00:00.000Z")).toBe("ok");
+  // The membership is refunded on 2 March; then the list of refunds fails for five nights while payments keep coming.
+  fake.addRefund({ id: "re_lid", paymentId: "tr_lid", amount: "32.00", createdAt: "2027-03-02T09:00:00+00:00" });
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    for (let day = 2; day <= 6; day++) {
+      paid(`tr_${day}`, "2.00", "Dagticket", `2027-03-0${day}T10:00:00+00:00`);
+      fake.failNext("pass"); // the payments
+      fake.failNext(500); // the refunds
+      expect(await sync(`2027-03-0${day + 1}T02:00:00.000Z`)).toBe("unreachable");
+      // Nothing kept: the window stays where it was.
+      expect(await count("mollie_payments")).toBe(1);
+    }
+    expect(await sync("2027-03-08T02:00:00.000Z")).toBe("ok");
+    expect(await bankLine("re_lid")).toMatchObject({ amount_cents: -3200, booking_date: "2027-03-02", description: "Terugbetaling Mollie: Lidm. Speeltuin ter Cleefte" });
+    expect(await count("mollie_payments")).toBe(6);
+
+    // The same when the chargebacks fail: the refunds read with them are not lost, they come again the next night.
+    fake.addRefund({ id: "re_2", paymentId: "tr_2", amount: "2.00", createdAt: "2027-03-08T09:00:00+00:00" });
+    fake.failNext("pass", 2); // the payments and the refunds
+    fake.failNext(500); // the chargebacks
+    expect(await sync("2027-03-09T02:00:00.000Z")).toBe("unreachable");
+    expect(await bankLine("re_2")).toBeNull();
+    expect(await sync("2027-03-10T02:00:00.000Z")).toBe("ok");
+    expect(await bankLine("re_2")).toMatchObject({ amount_cents: -200 });
+  } finally {
+    logged.mockRestore();
+  }
+});
+
+it("keeps nothing when the refunds or chargebacks were cut short by the cap", async () => {
+  const fake = mollie.current;
+  fake.pageSize = 1;
+  paid("tr_1", "2.00", "Dagticket", "2027-03-06T10:00:00+00:00");
+  for (let i = 1; i <= 7; i++) fake.addRefund({ id: `re_${i}`, paymentId: "tr_old", amount: "1.00", createdAt: `2027-03-06T1${i}:00:00+00:00` });
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    expect(await sync("2027-03-07T02:00:00.000Z")).toBe("mollie_list_cut_short");
+    expect(await count("mollie_payments")).toBe(0);
+    expect(await count("bank_lines")).toBe(0);
+    fake.refunds = [];
+    for (let i = 1; i <= 7; i++) fake.addChargeback({ id: `chb_${i}`, paymentId: "tr_old", amount: "1.00", createdAt: `2027-03-06T1${i}:00:00+00:00` });
+    expect(await sync("2027-03-07T03:00:00.000Z")).toBe("mollie_list_cut_short");
+    expect(await count("mollie_payments")).toBe(0);
+    expect(await count("bank_lines")).toBe(0);
+    expect(logged.mock.calls).toEqual([
+      ["mollie step failed", "mollie_list_cut_short"],
+      ["mollie step failed", "mollie_list_cut_short"],
+    ]);
+  } finally {
+    logged.mockRestore();
+  }
+});
+
+it("books the days of a night that stopped half way, also when they are older than the next window", async () => {
+  // A first night with 30 days waiting, six payments a day: five day tickets and a gift.
+  for (let i = 0; i < 180; i++) {
+    const date = shiftDate("2027-03-01", Math.floor(i / 6));
+    paid(`tr_${i}`, "2.00", i % 6 === 5 ? "Gift" : "Dagticket", `${date}T${String(9 + (i % 6)).padStart(2, "0")}:00:00+00:00`);
+  }
+  // The night is cut off right after the payments were stored: nothing after that gets through.
+  let insertsPrepared = false;
+  let stored = false;
+  const cutOff = new Proxy(env.DB, {
+    get(target, prop) {
+      if (prop === "prepare") {
+        return (sql: string) => {
+          if (stored) throw new Error("the night was cut off");
+          if (sql.includes("INSERT INTO mollie_payments")) insertsPrepared = true;
+          return target.prepare(sql);
+        };
+      }
+      if (prop === "batch") {
+        return async (statements: D1PreparedStatement[]) => {
+          if (stored) throw new Error("the night was cut off");
+          const outcome = await target.batch(statements);
+          if (insertsPrepared) stored = true;
+          return outcome;
+        };
+      }
+      return Reflect.get(target, prop);
+    },
+  });
+  await expect(sync("2027-03-31T02:00:00.000Z", { DB: cutOff })).rejects.toThrow("the night was cut off");
+  expect(await count("mollie_payments")).toBe(180);
+  expect(await count("ledger_entries")).toBe(0);
+  expect(await count("bank_lines")).toBe(0);
+
+  // The next night reads only its last few days, and still books every day that was left.
+  expect(await sync("2027-04-01T02:00:00.000Z")).toBe("ok");
+  expect(await count("ledger_entries WHERE source = 'mollie_other'")).toBe(30);
+  expect(amounts(await entry("mollie_other", "2027-03-01"))).toEqual([
+    ["1030", 1000],
+    ["8012", -1000],
+  ]);
+  expect(await count("bank_lines")).toBe(30);
+  expect(await count("mollie_payments WHERE kind = 'line' AND bank_line_id IS NOT NULL")).toBe(30);
+  expect(await count("mollie_payments WHERE booked = 0")).toBe(0);
 });
 
 it("leaves the refund of a kassa payment to the kassa's reversal", async () => {
