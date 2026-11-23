@@ -220,3 +220,15 @@ it("splits a line over a toestel on 0130 and another account", async () => {
     ],
   });
 });
+
+it("says when a typed line is dated after today", async () => {
+  open([], { [`POST ${base}/bank/lines`]: [400, { error: "date_in_future" }] });
+  renderAt(page);
+  await tap("Regel intypen");
+  await user().clear(screen.getByLabelText("Datum"));
+  await user().type(screen.getByLabelText("Datum"), "2099-02-03");
+  await user().type(screen.getByLabelText("Bedrag"), "-12,50");
+  await user().type(screen.getByLabelText("Omschrijving"), "Pinkosten");
+  await tap("Regel toevoegen");
+  expect(await screen.findByText("Deze datum ligt in de toekomst.")).toBeInTheDocument();
+});

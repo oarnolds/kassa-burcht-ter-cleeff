@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import type { Asset, Entry, EntryChange, EntryLine, LedgerAccount } from "../../../shared/ledger-types";
 import { formatEuro } from "../../../shared/money";
 import { businessDate, formatDateNl, localTime } from "../../../shared/time";
@@ -54,7 +54,8 @@ function EntryView({ entry, accounts, history, reload }: { entry: Entry; account
   const empty = () =>
     run(async () => {
       setProblem(null);
-      if (!window.confirm(`Boeking ${entry.number} leegmaken? De boeking blijft bestaan met haar geschiedenis.`)) return;
+      const back = entry.source === "bank" ? ", en de bankregel komt terug bij Te boeken" : "";
+      if (!window.confirm(`Boeking ${entry.number} leegmaken? De boeking blijft bestaan met haar geschiedenis${back}.`)) return;
       check(await api.emptyEntry(entry.id));
     });
   const attach = (file: File) =>
@@ -101,6 +102,13 @@ function EntryView({ entry, accounts, history, reload }: { entry: Entry; account
         <Section title="Regels">
           <ul className="px-2 sm:px-3">
             {entry.lines.length === 0 && <li className="text-lg text-ink/70">Deze boeking is leeggemaakt.</li>}
+            {entry.lines.length === 0 && entry.source === "bank" && (
+              <li>
+                <Link className={`${textLink} inline-flex min-h-11 items-center`} to="/beheer/boekhouding/te-boeken">
+                  De bankregel staat weer bij Te boeken
+                </Link>
+              </li>
+            )}
             {entry.lines.map((line, index) => (
               <li key={index} className="flex flex-wrap justify-between gap-x-4 border-t border-sand py-2 first:border-t-0">
                 <span className="text-lg">{`${line.accountCode} ${names.get(line.accountCode) ?? ""}`}</span>

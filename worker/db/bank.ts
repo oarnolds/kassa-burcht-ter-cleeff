@@ -6,7 +6,7 @@ import { sha256Hex } from "../lib/crypto";
 import { type Entry, type EntryLine } from "../../shared/ledger-types";
 import { checkAssetLinks } from "./assets";
 import { dayMonthYear } from "./kassa-ledger";
-import { createEntry, editEntry, LedgerError, upsertSourcedStatements } from "./ledger";
+import { createEntry, editEntry, entrySnapshot, LedgerError, upsertSourcedStatements } from "./ledger";
 import { endOfDay } from "./opening";
 
 export type LineOrigin = "file" | "enable_banking" | "typed" | "mollie";
@@ -250,6 +250,8 @@ export type TypedLine = { accountCode: string; date: string; amountCents: number
 export async function addTypedLine(db: D1Database, input: TypedLine, now: Date): Promise<BankLine> {
   if (!Number.isSafeInteger(input.amountCents) || input.amountCents === 0) throw new LedgerError("amount_invalid", 400);
   if (input.date < LEDGER_START) throw new LedgerError("before_start", 400);
+  // The bank cannot have booked it yet; a line after today would also move where the next fetch of ING begins.
+  if (input.date > today(now)) throw new LedgerError("date_in_future", 400);
   await bankAccount(db, input.accountCode);
   const line: CamtLine = {
     bookingDate: input.date,
@@ -489,8 +491,9 @@ export async function bookLine(
   const content = { date: line.date, description: input.description ?? entryDescription(line), lines: entryLines(line, input.split) };
   // Looked up by reference, not only by `entry_id`: an entry made a moment before its line was marked still counts.
   const existing = await db.prepare("SELECT id FROM ledger_entries WHERE source = 'bank' AND source_ref = ?").bind(lineId).first<{ id: string }>();
-  // Booked by a sync (a payout of Mollie): that entry follows its source, and a second one would book the money twice.
-  if (!existing && line.status === "booked") throw new LedgerError("not_editable", 409);
+  // Booked by another entry (a payout of Mollie, also after his own entry was emptied): that entry follows its
+  // source, and a second one would book the money twice.
+  if (line.status === "booked" && line.entryId !== (existing?.id ?? null)) throw new LedgerError("not_editable", 409);
   const entry = existing
     ? await editEntry(db, existing.id, content, now)
     : await createEntry(db, { ...content, source: "bank", sourceRef: lineId }, now);
@@ -504,7 +507,7 @@ const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\
 type Auto = { description: string | null };
 
 const KRUISPOST = "1080";
-/** At most this many lines per run: each takes about seven statements, and a run stays within its database calls. */
+/** At most this many lines per run: each takes about eight statements, and a run stays within its database calls. */
 const AUTO_LINES_PER_RUN = 4000;
 const AUTO_BATCH = 100;
 
@@ -639,22 +642,25 @@ export async function autoBook(db: D1Database, now: Date): Promise<number> {
 
 /** An own transfer or a kasstorting: the line's amount against 1080, and the line marked booked. */
 function kruispostStatements(db: D1Database, row: OpenRow, description: string, now: Date): D1PreparedStatement[] {
+  const content = {
+    date: row.booking_date,
+    description,
+    lines: [
+      { accountCode: row.account_code, amountCents: row.amount_cents, note: null, assetId: null },
+      { accountCode: KRUISPOST, amountCents: -row.amount_cents, note: null, assetId: null },
+    ],
+  };
   return [
-    ...upsertSourcedStatements(
-      db,
-      {
-        date: row.booking_date,
-        description,
-        source: "bank",
-        sourceRef: row.id,
-        lines: [
-          { accountCode: row.account_code, amountCents: row.amount_cents, note: null, assetId: null },
-          { accountCode: KRUISPOST, amountCents: -row.amount_cents, note: null, assetId: null },
-        ],
-      },
-      null,
-      now,
-    ),
+    // An entry the penningmeester emptied (its line came back, R37) is filled again: that change is in its history too.
+    db
+      .prepare(
+        `INSERT INTO ledger_history (entry_id, at, before_json, after_json)
+         SELECT e.id, ?2, json_object('date', e.date, 'description', e.description, 'lines', json('[]')), ?3 FROM ledger_entries e
+         WHERE e.source = 'bank' AND e.source_ref = ?1 AND NOT EXISTS (SELECT 1 FROM ledger_lines l WHERE l.entry_id = e.id)
+           AND EXISTS (SELECT 1 FROM ledger_years y WHERE y.year = e.year AND y.status = 'open')`,
+      )
+      .bind(row.id, now.toISOString(), JSON.stringify(entrySnapshot(content))),
+    ...upsertSourcedStatements(db, { ...content, source: "bank", sourceRef: row.id }, null, now),
     db
       .prepare(
         `UPDATE bank_lines SET status = 'booked', entry_id = (SELECT id FROM ledger_entries WHERE source = 'bank' AND source_ref = ?1)

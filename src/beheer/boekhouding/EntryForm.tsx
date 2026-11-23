@@ -20,8 +20,9 @@ const amountOf = (row: Row) => (row.debit ?? 0) - (row.credit ?? 0);
 const isBlank = (row: Row) => row.accountCode === "" && amountOf(row) === 0 && row.note.trim() === "";
 const label = "flex flex-col gap-1 font-semibold";
 
+/** The rows to start with: the entry's lines, or two blank ones for a new or emptied entry. */
 const rowsOf = (body: EntryBody | undefined): Row[] =>
-  body
+  body && body.lines.length > 0
     ? body.lines.map((line) => ({
         accountCode: line.accountCode,
         debit: line.amountCents > 0 ? line.amountCents : null,

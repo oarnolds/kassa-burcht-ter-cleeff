@@ -389,6 +389,44 @@ export async function createEntry(db: D1Database, input: NewEntry, now: Date): P
   return entry;
 }
 
+/** The bank line a `bank` entry books, as far as an edit needs to know it. */
+type BankLineFacts = { account_code: string; amount_cents: number; booking_date: string; status: string; entry_id: string | null };
+
+/**
+ * A `bank` entry books what the bank gave (R37): it keeps the line on the bank's money account, with the bank's
+ * amount, and the bank's date; only the other side, the notes and the description may change. Emptied, it books
+ * nothing and its line goes back to Te boeken. Filled again (Wijzigen on the emptied entry, or booking the line),
+ * it may not book a line that another entry has booked meanwhile (a payout of Mollie): the money would count twice.
+ */
+function checkBankLine(line: BankLineFacts, id: string, next: Content): void {
+  if (next.lines.length === 0) return;
+  const own = next.lines.filter((one) => one.accountCode === line.account_code);
+  if (next.date !== line.booking_date || own.length !== 1 || own[0]!.amountCents !== line.amount_cents) {
+    throw new LedgerError("bank_line_fixed", 409);
+  }
+  if (line.status === "booked" && line.entry_id !== id) throw new LedgerError("not_editable", 409);
+}
+
+/**
+ * The bank line follows its entry, in the same batch and only once the entry's lines are written: emptied, the
+ * line is open again (and in Te boeken, where booking it fills this same entry); filled, it is booked by this entry.
+ */
+function bankLineFollows(db: D1Database, lineId: string, id: string, emptied: boolean): D1PreparedStatement {
+  return emptied
+    ? db
+        .prepare(
+          `UPDATE bank_lines SET status = 'open', entry_id = NULL, waiting_for = NULL
+           WHERE id = ?1 AND status = 'booked' AND entry_id = ?2 AND NOT EXISTS (SELECT 1 FROM ledger_lines WHERE entry_id = ?2)`,
+        )
+        .bind(lineId, id)
+    : db
+        .prepare(
+          `UPDATE bank_lines SET status = 'booked', entry_id = ?2, waiting_for = NULL
+           WHERE id = ?1 AND (status IN ('open', 'waiting') OR entry_id = ?2) AND EXISTS (SELECT 1 FROM ledger_lines WHERE entry_id = ?2)`,
+        )
+        .bind(lineId, id);
+}
+
 /** Changes an entry of the penningmeester and keeps what it was in the history. Unchanged, it writes nothing. */
 async function change(db: D1Database, id: string, content: (entry: Entry) => Content, now: Date): Promise<Entry> {
   const entry = await getEntry(db, id);
@@ -398,9 +436,17 @@ async function change(db: D1Database, id: string, content: (entry: Entry) => Con
   const next = content(entry);
   const year = checkContent(next);
   if (sameContent(entry, next)) return entry;
-  const checks = await db.batch(checkReads(db, year, next.lines, entry.lines));
+  const lineId = entry.source === "bank" ? entry.sourceRef : null;
+  const checks = await db.batch([
+    ...checkReads(db, year, next.lines, entry.lines),
+    ...(lineId === null
+      ? []
+      : [db.prepare("SELECT account_code, amount_cents, booking_date, status, entry_id FROM bank_lines WHERE id = ?").bind(lineId)]),
+  ]);
   checkResults(checks, next.lines, entry.source === "manual");
   checkDisposed(checks[2]!, entry.lines, next.lines);
+  const line = lineId === null ? undefined : (checks[3]!.results[0] as BankLineFacts | undefined);
+  if (line) checkBankLine(line, id, next);
   const nowIso = now.toISOString();
   await db.batch([
     openYear(db, year),
@@ -408,6 +454,7 @@ async function change(db: D1Database, id: string, content: (entry: Entry) => Con
       .prepare(`INSERT INTO ledger_history (entry_id, at, before_json, after_json) SELECT id, ?, ?, ? FROM ledger_entries WHERE ${writable(byId(id))}`)
       .bind(nowIso, JSON.stringify(snapshot(entry)), JSON.stringify(snapshot(next)), id, year),
     ...replaceStatements(db, byId(id), year, next, nowIso),
+    ...(line ? [bankLineFollows(db, lineId!, id, next.lines.length === 0)] : []),
   ]);
   return (await getEntry(db, id))!;
 }
@@ -417,7 +464,7 @@ export function editEntry(db: D1Database, id: string, input: Content, now: Date)
   return change(db, id, () => input, now);
 }
 
-/** Deleting is emptying: the entry keeps its number and its history, without lines. */
+/** Deleting is emptying: the entry keeps its number and its history, without lines. A `bank` entry's line goes back to Te boeken. */
 export function emptyEntry(db: D1Database, id: string, now: Date): Promise<Entry> {
   return change(db, id, (entry) => ({ date: entry.date, description: entry.description, lines: [] }), now);
 }

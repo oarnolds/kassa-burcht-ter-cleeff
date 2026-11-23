@@ -3,7 +3,7 @@ import { beforeEach, expect, it } from "vitest";
 import type { CamtLine } from "../shared/camt";
 import type { BankLine, Entry, ImportResult } from "../shared/ledger-types";
 import { autoBook, bookLine, importLines, OPEN_LINES_SQL, openLines } from "../worker/db/bank";
-import { balancesOn } from "../worker/db/ledger";
+import { balancesOn, entryHistory, getEntry, upsertSourced } from "../worker/db/ledger";
 import { api, asAdmin, meteredDb, resetData } from "./helpers";
 
 let cookie: string;
@@ -273,4 +273,137 @@ it("plans Te boeken on its indexes: no booked line is read in full for an open o
   expect(plan.some((step) => step.startsWith("SEARCH p USING INDEX bank_lines_booked_by_name"))).toBe(true);
   // Nothing scanned from end to end, and no sorting beside the indexes.
   expect(plan.filter((step) => /^SCAN (p|b)$|TEMP B-TREE/.test(step))).toEqual([]);
+});
+
+// ---- A bank entry keeps the bank's line and date (R37) ----
+
+const put = (id: string, json: unknown) => api(`/api/admin/boekhouding/entries/${id}`, { method: "PUT", cookie, json });
+const empty = (id: string) => api(`/api/admin/boekhouding/entries/${id}/empty`, { method: "POST", cookie });
+const pairs = (entry: Entry | null) => entry!.lines.map((x) => [x.accountCode, x.amountCents]);
+
+it("keeps a bank entry's line of the bank and its date; the other side, a note and the description may change", async () => {
+  const [l] = await store("1010", line({ amountCents: -41280, counterpartyName: "Goodoo", counterpartyIban: GOODOO, description: "Factuur" }));
+  const entry = await bookLine(env.DB, l!.id, { split: [{ accountCode: "4501", amountCents: 41280 }] }, NOW);
+  const body = (date: string, lines: [string, number][]) => ({
+    date,
+    description: "Factuur Goodoo",
+    lines: lines.map(([accountCode, amountCents]) => ({ accountCode, amountCents })),
+  });
+  for (const changed of [
+    body("2027-03-21", [["1010", -41280], ["4501", 41280]]),
+    body("2027-03-20", [["1010", -40000], ["4501", 40000]]),
+    body("2027-03-20", [["1011", -41280], ["4501", 41280]]),
+    body("2027-03-20", [["4501", 41280], ["4514", -41280]]),
+    body("2027-03-20", [["1010", -41280], ["1010", 100], ["4501", 41180]]),
+  ]) {
+    const res = await put(entry.id, changed);
+    expect([res.status, await res.json()], JSON.stringify(changed)).toEqual([409, { error: "bank_line_fixed" }]);
+  }
+  expect(pairs(await getEntry(env.DB, entry.id))).toEqual([
+    ["1010", -41280],
+    ["4501", 41280],
+  ]);
+
+  const res = await put(entry.id, {
+    date: "2027-03-20",
+    description: "Factuur Goodoo, met bezorging",
+    lines: [
+      { accountCode: "4514", amountCents: 1280, note: "bezorging" },
+      { accountCode: "1010", amountCents: -41280 },
+      { accountCode: "4501", amountCents: 40000 },
+    ],
+  });
+  expect(res.status).toBe(200);
+  expect(pairs(await res.json<Entry>())).toEqual([
+    ["4514", 1280],
+    ["1010", -41280],
+    ["4501", 40000],
+  ]);
+  expect(await lineRow(l!.id)).toEqual({ status: "booked", entry_id: entry.id });
+});
+
+it("puts the line of an emptied bank entry back in Te boeken, and booking it again fills the same entry with its history", async () => {
+  const [l] = await store("1010", line());
+  const entry = await bookLine(env.DB, l!.id, { split: [{ accountCode: "8020", amountCents: -609147 }] }, NOW);
+  const emptied = await empty(entry.id);
+  expect(emptied.status).toBe(200);
+  expect((await emptied.json<Entry>()).lines).toEqual([]);
+  expect(await lineRow(l!.id)).toEqual({ status: "open", entry_id: null });
+  expect((await openLines(env.DB, {})).map((x) => x.id)).toEqual([l!.id]);
+  expect((await balancesOn(env.DB, "2027-12-31")).get("1010") ?? 0).toBe(0);
+
+  const again = await book(l!.id, { split: [{ accountCode: "8010", amountCents: -609147 }] });
+  expect(again.status).toBe(200);
+  const refilled = await again.json<Entry>();
+  expect(refilled.id).toBe(entry.id);
+  expect(pairs(refilled)).toEqual([
+    ["1010", 609147],
+    ["8010", -609147],
+  ]);
+  expect(await lineRow(l!.id)).toEqual({ status: "booked", entry_id: entry.id });
+  expect((await entryHistory(env.DB, entry.id)).map((change) => pairs({ lines: change.after.lines } as Entry))).toEqual([
+    [],
+    [
+      ["1010", 609147],
+      ["8010", -609147],
+    ],
+  ]);
+});
+
+it("refills an emptied bank entry through Wijzigen only with the bank's line and date, and books the line again", async () => {
+  const [l] = await store("1010", line());
+  const entry = await bookLine(env.DB, l!.id, { split: [{ accountCode: "8020", amountCents: -609147 }] }, NOW);
+  await empty(entry.id);
+  const other = await put(entry.id, { date: "2027-03-20", description: "Subsidie", lines: [{ accountCode: "4501", amountCents: 100 }, { accountCode: "8020", amountCents: -100 }] });
+  expect([other.status, await other.json()]).toEqual([409, { error: "bank_line_fixed" }]);
+  expect(await lineRow(l!.id)).toEqual({ status: "open", entry_id: null });
+
+  const res = await put(entry.id, { date: "2027-03-20", description: "Subsidie", lines: [{ accountCode: "1010", amountCents: 609147 }, { accountCode: "8020", amountCents: -609147 }] });
+  expect(res.status).toBe(200);
+  expect(await lineRow(l!.id)).toEqual({ status: "booked", entry_id: entry.id });
+  expect(await openLines(env.DB, {})).toEqual([]);
+});
+
+it("brings an emptied kasstorting or own transfer back to Te boeken, and autoBook books it again with its history", async () => {
+  await setIdentifier("1011", "V00000000");
+  await importLines(
+    env.DB,
+    "1010",
+    [
+      line({ amountCents: 5470, description: "Kasstorting juli", counterpartyName: "O. Penningmeester", counterpartyIban: null }),
+      line({ amountCents: -100000, counterpartyName: "Spaarrekening", counterpartyIban: "V00000000", description: "Overboeking" }),
+    ],
+    "file",
+    NOW,
+  );
+  expect(await autoBook(env.DB, NOW)).toBe(2);
+  const { results } = await env.DB.prepare("SELECT id, entry_id FROM bank_lines ORDER BY amount_cents").all<{ id: string; entry_id: string }>();
+  for (const booked of results) {
+    const before = pairs(await getEntry(env.DB, booked.entry_id));
+    expect((await empty(booked.entry_id)).status).toBe(200);
+    expect(await lineRow(booked.id)).toEqual({ status: "open", entry_id: null });
+    expect((await openLines(env.DB, {})).map((x) => x.id)).toEqual([booked.id]);
+
+    expect(await autoBook(env.DB, NOW)).toBe(1);
+    expect(await lineRow(booked.id)).toEqual({ status: "booked", entry_id: booked.entry_id });
+    expect(pairs(await getEntry(env.DB, booked.entry_id))).toEqual(before);
+    expect((await entryHistory(env.DB, booked.entry_id)).map((change) => change.after.lines.length)).toEqual([0, 2]);
+  }
+  expect(await autoBook(env.DB, NOW)).toBe(0);
+});
+
+it("does not book a line again by hand once another entry has booked it", async () => {
+  const [l] = await store("1010", line({ amountCents: 9812, description: "05665564.2703.01 Mollie", counterpartyIban: null }));
+  const own = await bookLine(env.DB, l!.id, { split: [{ accountCode: "1030", amountCents: -9812 }] }, NOW);
+  await empty(own.id);
+  // A sync books the line in an entry of its own, e.g. a payout of Mollie.
+  const payout = await upsertSourced(env.DB, { date: "2027-03-20", description: "Uitbetaling", source: "mollie_settlement", sourceRef: "stl_1", lines: [{ accountCode: "1010", amountCents: 9812, note: null, assetId: null }, { accountCode: "1030", amountCents: -9812, note: null, assetId: null }] }, NOW);
+  await env.DB.prepare("UPDATE bank_lines SET status = 'booked', entry_id = ? WHERE id = ?").bind(payout.id, l!.id).run();
+
+  const again = await book(l!.id, { split: [{ accountCode: "1030", amountCents: -9812 }] });
+  expect([again.status, await again.json()]).toEqual([409, { error: "not_editable" }]);
+  const refill = await put(own.id, { date: "2027-03-20", description: "Mollie", lines: [{ accountCode: "1010", amountCents: 9812 }, { accountCode: "1030", amountCents: -9812 }] });
+  expect([refill.status, await refill.json()]).toEqual([409, { error: "not_editable" }]);
+  expect(await lineRow(l!.id)).toEqual({ status: "booked", entry_id: payout.id });
+  expect((await getEntry(env.DB, own.id))!.lines).toEqual([]);
 });

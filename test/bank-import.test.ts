@@ -1,9 +1,9 @@
 import { env } from "cloudflare:workers";
-import { beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { CamtLine, CamtStatement } from "../shared/camt";
 import type { BankLine, EntryLine, ImportResult, MoneyAccount } from "../shared/ledger-types";
 import { shiftDate } from "../shared/time";
-import { getBankLine, importLines, importStatement, moneyAccounts, recordBalance } from "../worker/db/bank";
+import { addTypedLine, getBankLine, importLines, importStatement, moneyAccounts, recordBalance } from "../worker/db/bank";
 import { createEntry } from "../worker/db/ledger";
 import { setOpening } from "../worker/db/opening";
 import { api, asAdmin, meteredDb, resetData } from "./helpers";
@@ -14,6 +14,16 @@ beforeEach(async () => {
   await resetData();
   cookie = (await asAdmin()).cookie;
 });
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+/** The routes take today from the clock: for a typed line of 2027, the clock is set to NOW and the admin logs in again. */
+async function onNow() {
+  vi.useFakeTimers({ toFake: ["Date"], now: NOW });
+  cookie = (await asAdmin()).cookie;
+}
 
 const NOW = new Date("2027-11-23T12:00:00.000Z");
 const BETAAL = "NL00INGB0000000000";
@@ -299,6 +309,7 @@ it("lets the penningmeester set each account's identifier and source", async () 
 });
 
 it("lets the penningmeester type a line by hand", async () => {
+  await onNow();
   const typed = { accountCode: "1011", date: "2027-03-31", amountCents: 500, description: "Rente", counterpartyName: "ING" };
   const res = await typeLine(typed);
   expect(res.status).toBe(201);
@@ -332,6 +343,7 @@ it("lets the penningmeester type a line by hand", async () => {
 });
 
 it("refuses a typed line it cannot keep", async () => {
+  await onNow();
   const typed = { accountCode: "1011", date: "2027-03-31", amountCents: 500, description: "Rente" };
   const refused = async (json: unknown, status: number, error: string) => {
     const res = await typeLine(json);
@@ -346,7 +358,13 @@ it("refuses a typed line it cannot keep", async () => {
   await refused({ ...typed, description: " " }, 400, "invalid");
   await refused({ ...typed, description: "x".repeat(201) }, 400, "invalid");
   await refused({ ...typed, date: "2027-02-30" }, 400, "invalid");
+  // After today (23 November 2027) the bank cannot have booked it yet.
+  await refused({ ...typed, date: "2027-11-24" }, 400, "date_in_future");
   expect(await count()).toBe(0);
+  // Today is today as Amsterdam counts it: at 00:30 on the 24th, the 24th may be typed.
+  await expect(addTypedLine(env.DB, { ...typed, date: "2027-11-25", counterpartyName: null }, new Date("2027-11-23T23:30:00.000Z"))).rejects.toMatchObject({ code: "date_in_future", status: 400 });
+  expect((await addTypedLine(env.DB, { ...typed, date: "2027-11-24", counterpartyName: null }, new Date("2027-11-23T23:30:00.000Z"))).date).toBe("2027-11-24");
+  expect((await typeLine({ ...typed, date: "2027-11-23" })).status).toBe(201);
 });
 
 it("reads a year of lines in a handful of database calls", async () => {

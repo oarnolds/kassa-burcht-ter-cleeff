@@ -110,6 +110,8 @@ export function explainWrite(status: number, error: string): string {
     year_unknown: "Voor deze datum worden de boeken niet bijgehouden.",
     before_start: "Voor deze datum worden de boeken niet bijgehouden.",
     not_editable: "Deze boeking kan niet worden aangepast.",
+    bank_line_fixed: "De regel van de bank en de datum blijven zoals de bank ze gaf.",
+    date_in_future: "Deze datum ligt in de toekomst.",
     unbalanced: "Debet en credit zijn niet gelijk.",
     account_hidden: "Deze rekening is verborgen. Kies een andere.",
     account_unknown: "Deze rekening bestaat niet.",

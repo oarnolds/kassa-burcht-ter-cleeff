@@ -133,3 +133,40 @@ it("says that the purchase of a disposed toestel cannot be changed", async () =>
   await tap("Opslaan");
   expect(await screen.findByText("Dit toestel is afgevoerd; de aankoop kan niet meer worden gewijzigd.")).toBeInTheDocument();
 });
+
+it("starts Wijzigen of an emptied entry with two blank rows", async () => {
+  open(entry({ lines: [], changed: true }));
+  renderAt(page);
+  expect(await screen.findByText("Deze boeking is leeggemaakt.")).toBeInTheDocument();
+  await tap("Wijzigen");
+  expect(screen.getByLabelText("Rekening regel 1")).toHaveValue("");
+  expect(screen.getByLabelText("Rekening regel 2")).toHaveValue("");
+  expect(screen.queryByLabelText("Rekening regel 3")).not.toBeInTheDocument();
+});
+
+it("says that a bank entry keeps the bank's line and date", async () => {
+  open(entry({ source: "bank", sourceRef: "l1" }), [], { [`PUT ${base}/entries/e1`]: [409, { error: "bank_line_fixed" }] });
+  renderAt(page);
+  await tap("Wijzigen");
+  await user().clear(screen.getByLabelText("Datum"));
+  await user().type(screen.getByLabelText("Datum"), "2027-01-05");
+  await tap("Opslaan");
+  expect(await screen.findByText("De regel van de bank en de datum blijven zoals de bank ze gaf.")).toBeInTheDocument();
+});
+
+it("tells that emptying a bank entry puts its line back in Te boeken", async () => {
+  open(entry({ source: "bank", sourceRef: "l1" }), [], { [`POST ${base}/entries/e1/empty`]: entry({ source: "bank", sourceRef: "l1", lines: [] }) });
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  renderAt(page);
+  await tap("Leegmaken");
+  expect(confirm).toHaveBeenCalledWith("Boeking 7 leegmaken? De boeking blijft bestaan met haar geschiedenis, en de bankregel komt terug bij Te boeken.");
+  await waitFor(() => expect(calls("POST")).toHaveLength(1));
+  confirm.mockRestore();
+});
+
+it("points an emptied bank entry to Te boeken", async () => {
+  open(entry({ source: "bank", sourceRef: "l1", lines: [], changed: true }));
+  renderAt(page);
+  expect(await screen.findByText("Deze boeking is leeggemaakt.")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "De bankregel staat weer bij Te boeken" })).toHaveAttribute("href", "/beheer/boekhouding/te-boeken");
+});
