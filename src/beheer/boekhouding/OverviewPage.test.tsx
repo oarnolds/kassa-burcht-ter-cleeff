@@ -1,6 +1,7 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
+import { formatEuro } from "../../../shared/money";
 import { calls, mockApi, mockLoggedIn, renderAt } from "../../test-utils";
 import { base, moneyAccount } from "./ledger-test-data";
 
@@ -133,4 +134,21 @@ it("warns at once when the consent ended early (a long way from its planned end)
   expect((await screen.findByRole("link", { name: "Vernieuwen" })).parentElement).toHaveTextContent(
     "ING haalt geen regels meer op: toestemming verlopen. Vernieuwen of upload een bankbestand.",
   );
+});
+
+it("points to the Mollie page when Mollie's balance differs from the books", async () => {
+  mockLoggedIn();
+  mockApi({ [`${base}/overview`]: overview({ mollieDifferenceCents: -250 }) });
+  const first = renderAt("/beheer/boekhouding");
+  // The amount carries a non-breaking space, as everywhere in beheer.
+  expect(await screen.findByRole("link", { name: `Mollie wijkt ${formatEuro(250)} af van de boekhouding` })).toHaveAttribute("href", "/beheer/boekhouding/mollie");
+  first.unmount();
+
+  for (const same of [0, null]) {
+    mockApi({ [`${base}/overview`]: overview({ mollieDifferenceCents: same }) });
+    const page = renderAt("/beheer/boekhouding");
+    await screen.findByRole("link", { name: "Te boeken: 3" });
+    expect(screen.queryByText(/Mollie wijkt/)).not.toBeInTheDocument();
+    page.unmount();
+  }
 });

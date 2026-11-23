@@ -92,6 +92,14 @@ it("shows a waiting line and a line in a closed year without a Boeken button", a
   expect(screen.queryByRole("button", { name: "Boeken" })).not.toBeInTheDocument();
 });
 
+it("tells why a payout of Mollie was not booked by itself, and lets him book it", async () => {
+  open([bankLine({ counterpartyName: "Stichting Mollie Payments", amountCents: 9800, suggestion: null, note: "Bedrag wijkt af van de uitbetaling bij Mollie (€ 98,12)" })]);
+  renderAt(page);
+  const row = within(await screen.findByRole("listitem", { name: /Stichting Mollie Payments/ }));
+  expect(row.getByText("Bedrag wijkt af van de uitbetaling bij Mollie (€ 98,12)")).toBeInTheDocument();
+  expect(row.getByRole("button", { name: "Boeken" })).toBeInTheDocument();
+});
+
 it("keeps a receipt with the line and uploads it once the line is booked", async () => {
   open([bankLine()], { [`POST ${base}/bank/lines/l1/book`]: entry(), [`POST ${base}/entries/e1/attachments`]: [201, { id: "a1" }] });
   renderAt(page);

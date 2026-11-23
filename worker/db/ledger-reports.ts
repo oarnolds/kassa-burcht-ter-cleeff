@@ -186,7 +186,7 @@ function parseNightly(value: string | null): NightlyReport | null {
   }
 }
 
-/** What beheer's first page shows. `mollieDifferenceCents` is filled by later work. */
+/** What beheer's first page shows. `mollieDifferenceCents` is 1030 against Mollie's balance (null without one). */
 export async function overview(db: D1Database, now: Date): Promise<LedgerOverview> {
   const today = businessDate(now.toISOString());
   const yesterday = shiftDate(today, -1);
@@ -209,7 +209,7 @@ export async function overview(db: D1Database, now: Date): Promise<LedgerOvervie
     resultYearCents,
     cashDifferenceCents,
     consent: consent.status === "active" || consent.status === "expired" ? { validUntil: consent.validUntil!, daysLeft: consent.daysLeft! } : null,
-    mollieDifferenceCents: null,
+    mollieDifferenceCents: accounts.find((account) => account.accountCode === "1030")?.differenceCents ?? null,
     lastNightly: parseNightly(lastNightly),
   };
 }

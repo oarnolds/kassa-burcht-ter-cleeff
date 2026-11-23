@@ -2,20 +2,22 @@
 // The payments of the website and the QR code are booked per day by the penningmeester's rules, in one entry
 // "Mollie overig {datum}"; one that fits no rule, and every refund or chargeback of such a payment, waits on 1030 in
 // Te boeken. A day in a closed year stays as it is: what arrives for it later is booked on 1 January of the first
-// open year. Mollie is read only through worker/lib/mollie-read.ts; nothing it says goes into a log line.
+// open year. Mollie's payouts (settlements) are kept here too; worker/db/bank.ts books one when it arrives on ING.
+// The month's comparison lays the kassa next to Mollie. Mollie is read only through worker/lib/mollie-read.ts;
+// nothing it says goes into a log line.
 
 import type { CamtLine } from "../../shared/camt";
-import { type AccountKind, LEDGER_START, type MollieRule } from "../../shared/ledger-types";
-import { businessDate, shiftDate } from "../../shared/time";
+import { type AccountKind, LEDGER_START, type MollieMonth, type MollieRule } from "../../shared/ledger-types";
+import { businessDate, monthRange, shiftDate } from "../../shared/time";
 import type { Env } from "../env";
 import { type MollieChargebackRow, type MolliePaymentRow, mollieReadFor, type MollieRefundRow, type PaymentGap } from "../lib/mollie-read";
-import { autoBook, importLines, recordBalance } from "./bank";
+import { autoBook, importLines, moneyAccountOf, moneyAccountOnStatement, recordBalance } from "./bank";
 import { add, type Amounts, dayMonthYear, minus, sameAmounts, toLines } from "./kassa-ledger";
 import { firstOpenYear, LedgerError, type NewEntry, upsertSourcedStatements } from "./ledger";
 import { deleteLedgerSettingStatement, setLedgerSettingStatement } from "./ledger-settings";
 import { endOfDay } from "./opening";
 
-export type { MollieRule };
+export type { MollieMonth, MollieRule };
 
 const MOLLIE = "1030";
 const SOURCE = "mollie_other";
@@ -29,6 +31,8 @@ const MAX_DAYS = 200;
 const PER_INSERT = 500;
 /** In `ledger_settings`: the stretch of payments a run cut short by the page cap left unread (JSON `PaymentGap`). */
 const RESUME_KEY = "mollie_payments_resume";
+/** A run reads the payouts from this long before the newest one settled that it has, to catch a late change. */
+const PAYOUT_LOOK_BACK_MS = 7 * 86_400_000;
 
 type Kind = "kassa" | "rule" | "line";
 type Paid = MolliePaymentRow & { paidAt: string; paidDate: string };
@@ -344,6 +348,129 @@ async function storeReversals(
       };
     });
   await importLines(db, MOLLIE, lines, "mollie", now);
+}
+
+// ---- Payouts ----
+
+/**
+ * Nightly, after the payments: Mollie's payouts (settlements) that are still open or were settled since a week
+ * before the newest one kept (or since LEDGER_START), each kept once by its id, a later read bringing its status,
+ * date, amount and costs up to date (the costs with Mollie's sign). Then `autoBook`, which books a payout line on
+ * ING that waited for it. A failure of Mollie gives its name, logged as a fixed text with that name only.
+ */
+export async function syncSettlements(env: Env, now: Date): Promise<"ok" | "skipped" | string> {
+  const client = mollieReadFor(env);
+  if (!client) return "skipped";
+  const failed = (code: string) => {
+    console.error("mollie settlements failed", code);
+    return code;
+  };
+  const db = env.DB;
+  try {
+    const newest = await db.prepare("SELECT MAX(settled_at) AS at FROM mollie_settlements").first<{ at: string | null }>();
+    const from = newest?.at ? new Date(Date.parse(newest.at) - PAYOUT_LOOK_BACK_MS).toISOString() : startOfDay(LEDGER_START);
+    const read = await client.settlementsSince(from);
+    if (!read.ok) return failed(read.failure);
+    // A payout still being made up has no reference yet: none, never an empty one (the reference is unique).
+    const rows = read.data.map((row) => ({
+      id: row.id,
+      reference: row.reference || null,
+      status: row.status,
+      settledAt: row.settledAt === null ? null : new Date(row.settledAt).toISOString(),
+      amount: row.amountCents,
+      costs: row.costsCents,
+    }));
+    const writes: D1PreparedStatement[] = [];
+    for (let i = 0; i < rows.length; i += PER_INSERT) {
+      writes.push(
+        db
+          .prepare(
+            `INSERT INTO mollie_settlements (id, reference, status, settled_at, amount_cents, costs_cents)
+             SELECT json_extract(value, '$.id'), json_extract(value, '$.reference'), json_extract(value, '$.status'),
+               json_extract(value, '$.settledAt'), json_extract(value, '$.amount'), json_extract(value, '$.costs')
+             FROM json_each(?1) WHERE true
+             ON CONFLICT (id) DO UPDATE SET reference = COALESCE(excluded.reference, mollie_settlements.reference), status = excluded.status,
+               settled_at = COALESCE(excluded.settled_at, mollie_settlements.settled_at), amount_cents = excluded.amount_cents,
+               costs_cents = excluded.costs_cents`,
+          )
+          .bind(JSON.stringify(rows.slice(i, i + PER_INSERT))),
+      );
+    }
+    if (writes.length > 0) await db.batch(writes);
+    await autoBook(db, now);
+    return "ok";
+  } catch (error) {
+    if (error instanceof LedgerError) return failed(error.code);
+    throw error;
+  }
+}
+
+// ---- The month next to Mollie ----
+
+/**
+ * A month of Mollie next to the books, in one batch of reads. The kassa's pin: its paid pin sales of the month,
+ * turned-back ones included (as the kassa's own reports count them); Mollie's: the terminal payments paid in the
+ * month. Per payment what is on one side only: a paid pin sale (not a turn-back) whose payment Mollie does not
+ * have, and a terminal payment no paid sale has. The rule payments of the month per account, the costs of the
+ * payouts settled in it, and 1030 next to Mollie's balance as it stood at the end of the month (or today, in the
+ * current one): the newest balance on or before that day, with the ledger on that balance's own date, as the
+ * Overzicht lays them.
+ */
+export async function mollieMonth(db: D1Database, month: string, now: Date = new Date()): Promise<MollieMonth> {
+  const { first, last } = monthRange(month);
+  const today = businessDate(now.toISOString());
+  const until = last < today ? last : today;
+  const [kassaRows, posRows, kassaOnlyRows, mollieOnlyRows, otherRows, costRows, balanceRows] = await db.batch([
+    db
+      .prepare("SELECT COALESCE(SUM(total_cents), 0) AS cents FROM sales WHERE method = 'pin' AND status = 'paid' AND business_date BETWEEN ?1 AND ?2")
+      .bind(first, last),
+    db
+      .prepare("SELECT COALESCE(SUM(amount_cents), 0) AS cents FROM mollie_payments WHERE method = 'pointofsale' AND paid_date BETWEEN ?1 AND ?2")
+      .bind(first, last),
+    db
+      .prepare(
+        `SELECT s.id, s.business_date AS date, s.total_cents AS cents FROM sales s
+         WHERE s.method = 'pin' AND s.status = 'paid' AND s.reverses_sale_id IS NULL AND s.business_date BETWEEN ?1 AND ?2
+           AND NOT EXISTS (SELECT 1 FROM mollie_payments p WHERE p.id = s.mollie_payment_id)
+         ORDER BY s.business_date, s.sold_at, s.id`,
+      )
+      .bind(first, last),
+    db
+      .prepare(
+        `SELECT p.id, p.paid_date AS date, p.amount_cents AS cents FROM mollie_payments p
+         WHERE p.method = 'pointofsale' AND p.paid_date BETWEEN ?1 AND ?2
+           AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.mollie_payment_id = p.id AND s.status = 'paid')
+         ORDER BY p.paid_date, p.id`,
+      )
+      .bind(first, last),
+    db
+      .prepare(
+        `SELECT account_code AS code, SUM(amount_cents) AS cents FROM mollie_payments
+         WHERE kind = 'rule' AND paid_date BETWEEN ?1 AND ?2 GROUP BY account_code ORDER BY account_code`,
+      )
+      .bind(first, last),
+    // Settled in the month as Amsterdam counts its days; the moments are kept in UTC.
+    db
+      .prepare("SELECT COALESCE(SUM(abs(costs_cents)), 0) AS cents FROM mollie_settlements WHERE settled_at >= ?1 AND settled_at <= ?2")
+      .bind(startOfDay(first), endOfDay(last)),
+    moneyAccountOnStatement(db, MOLLIE, until),
+  ]);
+  const sum = (result: D1Result) => (result.results[0] as { cents: number }).cents;
+  const account = moneyAccountOf(balanceRows!);
+  return {
+    month,
+    kassaPinCents: sum(kassaRows!),
+    molliePosCents: sum(posRows!),
+    onlyInKassa: (kassaOnlyRows!.results as { id: string; date: string; cents: number }[]).map((row) => ({ saleId: row.id, date: row.date, amountCents: row.cents })),
+    onlyAtMollie: (mollieOnlyRows!.results as { id: string; date: string; cents: number }[]).map((row) => ({ paymentId: row.id, date: row.date, amountCents: row.cents })),
+    otherByAccount: (otherRows!.results as { code: string; cents: number }[]).map((row) => ({ accountCode: row.code, cents: row.cents })),
+    costsCents: sum(costRows!),
+    balance: {
+      ledgerCents: account?.ledgerCents ?? 0,
+      mollieCents: account?.bank?.balanceCents ?? null,
+      differenceCents: account?.differenceCents ?? null,
+    },
+  };
 }
 
 // ---- The rules ----

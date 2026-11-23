@@ -4,7 +4,7 @@ import { fetchIng } from "./db/bank-consent";
 import { syncKassa } from "./db/kassa-ledger";
 import { LedgerError } from "./db/ledger";
 import { setLedgerSetting } from "./db/ledger-settings";
-import { syncMolliePayments } from "./db/mollie-ledger";
+import { syncMolliePayments, syncSettlements } from "./db/mollie-ledger";
 
 /** In `ledger_settings`: how the last run went, as JSON. */
 export const NIGHTLY_KEY = "ledger_nightly_last";
@@ -14,6 +14,12 @@ export type StepRunner = (env: Env, now: Date) => Promise<"ok" | "skipped" | str
 
 const ORDER: NightlyStep[] = ["kassa", "ing", "mollie"];
 
+/** Mollie's payments, then its payouts (which books a payout line on ING that waited): the first failure, else ok. */
+async function mollie(env: Env, now: Date): Promise<"ok" | "skipped" | string> {
+  const outcomes = [await syncMolliePayments(env, now), await syncSettlements(env, now)];
+  return outcomes.find((outcome) => outcome !== "ok" && outcome !== "skipped") ?? (outcomes.includes("ok") ? "ok" : "skipped");
+}
+
 /** The steps of the nightly run. */
 const STEPS: Record<NightlyStep, StepRunner> = {
   kassa: async (env, now) => {
@@ -21,7 +27,7 @@ const STEPS: Record<NightlyStep, StepRunner> = {
     return "ok";
   },
   ing: fetchIng,
-  mollie: syncMolliePayments,
+  mollie,
 };
 
 /**

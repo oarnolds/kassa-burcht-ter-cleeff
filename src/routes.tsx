@@ -14,6 +14,7 @@ import { ComparisonPage } from "./beheer/boekhouding/ComparisonPage";
 import { EntriesPage } from "./beheer/boekhouding/EntriesPage";
 import { EntryPage } from "./beheer/boekhouding/EntryPage";
 import { LedgerLayout } from "./beheer/boekhouding/LedgerLayout";
+import { MolliePage } from "./beheer/boekhouding/MolliePage";
 import { OpeningPage } from "./beheer/boekhouding/OpeningPage";
 import { OverviewPage } from "./beheer/boekhouding/OverviewPage";
 import { LedgerPlaceholder, YearPlaceholder } from "./beheer/boekhouding/Placeholder";
@@ -54,7 +55,7 @@ export function AppRoutes() {
           <Route path="boekingen" element={<EntriesPage />} />
           <Route path="boekingen/:id" element={<EntryPage />} />
           <Route path="rapporten" element={<ReportsLedgerPage />} />
-          <Route path="mollie" element={<LedgerPlaceholder title="Mollie" />} />
+          <Route path="mollie" element={<MolliePage />} />
           <Route path="toestellen" element={<LedgerPlaceholder title="Toestellen" />} />
           <Route path="jaar" element={<YearPlaceholder />} />
           <Route path="jaar/:year/afdruk" element={<LedgerPlaceholder title="Afdruk" />} />

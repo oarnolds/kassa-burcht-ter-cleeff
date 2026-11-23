@@ -1,5 +1,6 @@
 import type { CamtLine, CamtStatement } from "../../shared/camt";
 import { type BankLine, type ImportResult, LEDGER_START, type MoneyAccount, type MoneySource } from "../../shared/ledger-types";
+import { formatEuro } from "../../shared/money";
 import { businessDate, shiftDate } from "../../shared/time";
 import { sha256Hex } from "../lib/crypto";
 import { type Entry, type EntryLine } from "../../shared/ledger-types";
@@ -272,12 +273,15 @@ type AccountRow = {
   ledger_cents: number;
 };
 
+/** No balance is dated after this: "the newest balance" with no date to stop at. */
+const LAST_DATE = "9999-12-31";
+
 /**
- * The money accounts (or one), each with the ledger on the date of the bank's newest balance, or on `today`
- * without one. One query for all of them. A balance of 31 December 2026 is laid next to what the opening entry
- * books on the account: the ledger keeps the end of that day as its opening, dated 1 January 2027.
+ * The money accounts (or one), each with the ledger on the date of the bank's newest balance on or before `upTo`,
+ * or on `today` without one. One query for all of them. A balance of 31 December 2026 is laid next to what the
+ * opening entry books on the account: the ledger keeps the end of that day as its opening, dated 1 January 2027.
  */
-function accountsQuery(db: D1Database, today: string, code: string | null): D1PreparedStatement {
+function accountsQuery(db: D1Database, today: string, code: string | null, upTo = LAST_DATE): D1PreparedStatement {
   return db
     .prepare(
       `SELECT m.account_code, a.name, m.identifier, m.source, b.date AS bank_date, b.balance_cents AS bank_cents,
@@ -290,11 +294,11 @@ function accountsQuery(db: D1Database, today: string, code: string | null): D1Pr
        FROM money_accounts m
        JOIN ledger_accounts a ON a.code = m.account_code
        LEFT JOIN bank_balances b ON b.account_code = m.account_code
-         AND b.date = (SELECT MAX(x.date) FROM bank_balances x WHERE x.account_code = m.account_code)
+         AND b.date = (SELECT MAX(x.date) FROM bank_balances x WHERE x.account_code = m.account_code AND x.date <= ?5)
        WHERE ?2 IS NULL OR m.account_code = ?2
        ORDER BY a.sort`,
     )
-    .bind(today, code, LEDGER_START, FIRST_OPENING_REF);
+    .bind(today, code, LEDGER_START, FIRST_OPENING_REF, upTo);
 }
 
 const toMoneyAccount = (row: AccountRow): MoneyAccount => ({
@@ -312,6 +316,20 @@ const today = (now: Date) => businessDate(now.toISOString());
 export async function moneyAccounts(db: D1Database, now: Date): Promise<MoneyAccount[]> {
   const { results } = await accountsQuery(db, today(now), null).all<AccountRow>();
   return results.map(toMoneyAccount);
+}
+
+/**
+ * One money account as it stood on `date`: the bank's newest balance on or before that date, next to the ledger on
+ * that balance's own date (on `date` without one), as `moneyAccounts` lays them. A statement for the caller's
+ * batch; `moneyAccountOf` reads its result.
+ */
+export function moneyAccountOnStatement(db: D1Database, code: string, date: string): D1PreparedStatement {
+  return accountsQuery(db, date, code, date);
+}
+
+export function moneyAccountOf(result: D1Result): MoneyAccount | null {
+  const row = result.results[0] as AccountRow | undefined;
+  return row ? toMoneyAccount(row) : null;
 }
 
 /**
@@ -383,7 +401,8 @@ const entryLines = (line: BankLine, split: { accountCode: string; amountCents: n
 
 /**
  * Books a line: the money account gets the line's amount, `split` the other side. The entry is `bank`, with the
- * line's id as reference and its booking date. A line that is booked already has its entry edited, history kept.
+ * line's id as reference and its booking date. A line that is booked already has its entry edited, history kept;
+ * one that a sync booked (a payout of Mollie) is refused.
  */
 export async function bookLine(
   db: D1Database,
@@ -397,6 +416,8 @@ export async function bookLine(
   const content = { date: line.date, description: input.description ?? entryDescription(line), lines: entryLines(line, input.split) };
   // Looked up by reference, not only by `entry_id`: an entry made a moment before its line was marked still counts.
   const existing = await db.prepare("SELECT id FROM ledger_entries WHERE source = 'bank' AND source_ref = ?").bind(lineId).first<{ id: string }>();
+  // Booked by a sync (a payout of Mollie): that entry follows its source, and a second one would book the money twice.
+  if (!existing && line.status === "booked") throw new LedgerError("not_editable", 409);
   const entry = existing
     ? await editEntry(db, existing.id, content, now)
     : await createEntry(db, { ...content, source: "bank", sourceRef: lineId }, now);
@@ -414,29 +435,68 @@ const KRUISPOST = "1080";
 const AUTO_LINES_PER_RUN = 4000;
 const AUTO_BATCH = 100;
 
-type OpenRow = { id: string; account_code: string; booking_date: string; amount_cents: number; counterparty_name: string | null; counterparty_iban: string | null; description: string };
+/** Mollie pays out to ING betaal; the bank statement carries the payout's reference, e.g. 05665564.2611.01. */
+const PAYOUT_ACCOUNT = "1010";
+const PAYOUT_REFERENCE = /\b\d{7,8}\.\d{4}\.\d{2}\b/;
+const MOLLIE = "1030";
+const MOLLIE_COSTS = "4511";
+
+type OpenRow = {
+  id: string;
+  account_code: string;
+  booking_date: string;
+  amount_cents: number;
+  counterparty_name: string | null;
+  counterparty_iban: string | null;
+  description: string;
+  status: "open" | "waiting";
+  waiting_for: BankLine["waitingFor"];
+  note: string | null;
+};
+/** A payout of Mollie as read by worker/db/mollie-ledger.ts; `booked` once its entry is there. */
+type PayoutRow = { id: string; reference: string; amount_cents: number; costs_cents: number; booked: number };
+/** The statements for one line; `books` when the last of them marks the line booked. */
+type Work = { statements: D1PreparedStatement[]; books: boolean };
+
+/** The reference of a payout of Mollie on a credit of ING betaal, or null. */
+const payoutReference = (row: OpenRow): string | null =>
+  row.account_code === PAYOUT_ACCOUNT && row.amount_cents > 0 ? (PAYOUT_REFERENCE.exec(row.description)?.[0] ?? null) : null;
 
 /**
- * Own transfers and kasstortings book themselves, against 1080. Only `open` lines in years that are not closed;
- * a second run finds nothing more. In batches, not one call per line. Gives how many lines were booked.
+ * Lines that book themselves. A payout of Mollie on ING betaal, by the reference in its description: known with the
+ * same amount, it is booked with Mollie's costs (debit 1010 the payout, debit 4511 the costs, credit 1030 both);
+ * not known yet, it waits for Mollie; known with another amount, or booked already from another line, it stays open
+ * with the reason, and the app never guesses. Own transfers and kasstortings, of `open` lines only, against 1080.
+ * Lines in years that are not closed; a second run finds nothing more. In batches, not one call per line. Gives how
+ * many lines were booked.
  */
 export async function autoBook(db: D1Database, now: Date): Promise<number> {
-  const [lines, accounts] = await db.batch([
+  const [lines, accounts, settlements] = await db.batch([
     db
       .prepare(
-        `SELECT b.id, b.account_code, b.booking_date, b.amount_cents, b.counterparty_name, b.counterparty_iban, b.description FROM bank_lines b
-         WHERE b.status = 'open' AND b.booking_date >= ?1
+        `SELECT b.id, b.account_code, b.booking_date, b.amount_cents, b.counterparty_name, b.counterparty_iban, b.description,
+           b.status, b.waiting_for, b.note
+         FROM bank_lines b
+         WHERE b.status IN ('open', 'waiting') AND b.booking_date >= ?1
            AND NOT EXISTS (SELECT 1 FROM ledger_years y WHERE y.year = CAST(substr(b.booking_date, 1, 4) AS INTEGER) AND y.status = 'closed')
          ORDER BY b.booking_date, b.imported_at, b.rowid LIMIT ?2`,
       )
       .bind(LEDGER_START, AUTO_LINES_PER_RUN),
     db.prepare("SELECT account_code, identifier FROM money_accounts WHERE identifier IS NOT NULL AND trim(identifier) <> ''"),
+    db.prepare(
+      `SELECT s.id, s.reference, s.amount_cents, s.costs_cents,
+         EXISTS (SELECT 1 FROM ledger_entries e WHERE e.source = 'mollie_settlement' AND e.source_ref = s.id) AS booked
+       FROM mollie_settlements s WHERE s.reference IS NOT NULL`,
+    ),
   ]);
   const others = (accounts!.results as { account_code: string; identifier: string }[]).map((row) => ({
     code: row.account_code,
     id: normal(row.identifier),
     word: new RegExp(`(^|[^A-Za-z0-9])${escapeRegExp(row.identifier.trim())}($|[^A-Za-z0-9])`, "i"),
   }));
+  const payouts = new Map((settlements!.results as PayoutRow[]).map((row) => [row.reference, row]));
+  // A payout is booked from one line only: the oldest that carries it, or the one that already did.
+  const taken = new Set([...payouts.values()].filter((payout) => payout.booked === 1).map((payout) => payout.id));
 
   const auto = (row: OpenRow): Auto | null => {
     const iban = row.counterparty_iban === null ? "" : normal(row.counterparty_iban);
@@ -447,43 +507,99 @@ export async function autoBook(db: D1Database, now: Date): Promise<number> {
     return null;
   };
 
-  const found = (lines!.results as OpenRow[]).flatMap((row) => {
+  /** Puts a line in a state of its own (no entry); nothing when it is in that state already. */
+  const mark = (row: OpenRow, status: OpenRow["status"], waitingFor: BankLine["waitingFor"], note: string | null): Work[] =>
+    row.status === status && row.waiting_for === waitingFor && row.note === note
+      ? []
+      : [
+          {
+            statements: [
+              db
+                .prepare("UPDATE bank_lines SET status = ?2, waiting_for = ?3, note = ?4 WHERE id = ?1 AND status IN ('open', 'waiting')")
+                .bind(row.id, status, waitingFor, note),
+            ],
+            books: false,
+          },
+        ];
+
+  const work = (lines!.results as OpenRow[]).flatMap((row): Work[] => {
+    const reference = payoutReference(row);
+    if (reference !== null) {
+      const payout = payouts.get(reference);
+      if (!payout) return mark(row, "waiting", "mollie", null);
+      if (payout.amount_cents !== row.amount_cents) return mark(row, "open", null, `Bedrag wijkt af van de uitbetaling bij Mollie (${formatEuro(payout.amount_cents)})`);
+      if (taken.has(payout.id)) return mark(row, "open", null, `Uitbetaling ${reference} is al geboekt`);
+      taken.add(payout.id);
+      return [{ statements: payoutStatements(db, row, payout, reference, now), books: true }];
+    }
+    if (row.status !== "open") return [];
     const kind = auto(row);
-    return kind ? [{ row, description: kind.description ?? entryDescription({ counterpartyName: row.counterparty_name, description: row.description }) }] : [];
+    if (!kind) return [];
+    const description = kind.description ?? entryDescription({ counterpartyName: row.counterparty_name, description: row.description });
+    return [{ statements: kruispostStatements(db, row, description, now), books: true }];
   });
 
   let booked = 0;
-  for (let i = 0; i < found.length; i += AUTO_BATCH) {
-    const groups = found.slice(i, i + AUTO_BATCH).map(({ row, description }) => [
-      ...upsertSourcedStatements(
-        db,
-        {
-          date: row.booking_date,
-          description,
-          source: "bank",
-          sourceRef: row.id,
-          lines: [
-            { accountCode: row.account_code, amountCents: row.amount_cents, note: null, assetId: null },
-            { accountCode: KRUISPOST, amountCents: -row.amount_cents, note: null, assetId: null },
-          ],
-        },
-        null,
-        now,
-      ),
-      db
-        .prepare(
-          `UPDATE bank_lines SET status = 'booked', entry_id = (SELECT id FROM ledger_entries WHERE source = 'bank' AND source_ref = ?1)
-           WHERE id = ?1 AND status = 'open' AND EXISTS (SELECT 1 FROM ledger_entries WHERE source = 'bank' AND source_ref = ?1)`,
-        )
-        .bind(row.id),
-    ]);
-    const outcomes = await db.batch(groups.flat());
-    // The last statement of each group marks its line; it changes a row only when the entry was written.
+  for (let i = 0; i < work.length; i += AUTO_BATCH) {
+    const groups = work.slice(i, i + AUTO_BATCH);
+    const outcomes = await db.batch(groups.flatMap((group) => group.statements));
+    // The last statement of a booking group marks its line; it changes a row only when the entry was written.
     let at = 0;
     for (const group of groups) {
-      at += group.length;
-      booked += outcomes[at - 1]!.meta.changes ?? 0;
+      at += group.statements.length;
+      if (group.books) booked += outcomes[at - 1]!.meta.changes ?? 0;
     }
   }
   return booked;
+}
+
+/** An own transfer or a kasstorting: the line's amount against 1080, and the line marked booked. */
+function kruispostStatements(db: D1Database, row: OpenRow, description: string, now: Date): D1PreparedStatement[] {
+  return [
+    ...upsertSourcedStatements(
+      db,
+      {
+        date: row.booking_date,
+        description,
+        source: "bank",
+        sourceRef: row.id,
+        lines: [
+          { accountCode: row.account_code, amountCents: row.amount_cents, note: null, assetId: null },
+          { accountCode: KRUISPOST, amountCents: -row.amount_cents, note: null, assetId: null },
+        ],
+      },
+      null,
+      now,
+    ),
+    db
+      .prepare(
+        `UPDATE bank_lines SET status = 'booked', entry_id = (SELECT id FROM ledger_entries WHERE source = 'bank' AND source_ref = ?1)
+         WHERE id = ?1 AND status = 'open' AND EXISTS (SELECT 1 FROM ledger_entries WHERE source = 'bank' AND source_ref = ?1)`,
+      )
+      .bind(row.id),
+  ];
+}
+
+/**
+ * A payout of Mollie, on the line's booking date: debit 1010 what came in, debit 4511 Mollie's costs (as a cost,
+ * whatever sign Mollie gives them), credit 1030 the two together. One entry per payout (its reference is the
+ * settlement's id); the line is marked booked in the same batch, only when that entry is there.
+ */
+function payoutStatements(db: D1Database, row: OpenRow, payout: PayoutRow, reference: string, now: Date): D1PreparedStatement[] {
+  const costs = Math.abs(payout.costs_cents);
+  const lines: EntryLine[] = [
+    { accountCode: row.account_code, amountCents: row.amount_cents, note: null, assetId: null },
+    ...(costs === 0 ? [] : [{ accountCode: MOLLIE_COSTS, amountCents: costs, note: null, assetId: null }]),
+    { accountCode: MOLLIE, amountCents: -(row.amount_cents + costs), note: null, assetId: null },
+  ];
+  const entry = "SELECT id FROM ledger_entries WHERE source = 'mollie_settlement' AND source_ref = ?2";
+  return [
+    ...upsertSourcedStatements(db, { date: row.booking_date, description: `Uitbetaling Mollie ${reference}`, source: "mollie_settlement", sourceRef: payout.id, lines }, null, now),
+    db
+      .prepare(
+        `UPDATE bank_lines SET status = 'booked', waiting_for = NULL, note = NULL, entry_id = (${entry})
+         WHERE id = ?1 AND status IN ('open', 'waiting') AND EXISTS (${entry})`,
+      )
+      .bind(row.id, payout.id),
+  ];
 }

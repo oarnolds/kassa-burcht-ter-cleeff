@@ -67,6 +67,7 @@ export const ledgerPath = {
   ingConsent: `${LEDGER}/bank/ing`,
   categoryAccounts: `${LEDGER}/category-accounts`,
   mollieRules: `${LEDGER}/mollie/rules`,
+  mollieMonth: (month: string) => `${LEDGER}/mollie/month?month=${month}`,
   opening: (year: number) => `${LEDGER}/opening?year=${year}`,
   comparison: (year: number) => `${LEDGER}/comparison?year=${year}`,
 };

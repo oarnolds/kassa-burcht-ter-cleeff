@@ -96,6 +96,24 @@ export type ConsentState = { status: "none" | "pending" | "active" | "expired"; 
 /** The penningmeester's rule for Mollie's other payments: a description that holds `keyword` (case ignored) books on `accountCode`. */
 export type MollieRule = { id: string; keyword: string; accountCode: string };
 
+/**
+ * A month of Mollie next to the books (`month` is `YYYY-MM`). The kassa's pin (paid pin sales, turned-back ones
+ * included) next to Mollie's terminal payments, with the payments found on one side only; the other payments
+ * booked by rule, per account; Mollie's costs of the payouts settled in the month; and 1030 next to Mollie's
+ * balance at the end of the month (today in the current one): `differenceCents` = ledger − Mollie, null without
+ * a balance from Mollie.
+ */
+export type MollieMonth = {
+  month: string;
+  kassaPinCents: number;
+  molliePosCents: number;
+  onlyInKassa: { saleId: string; date: string; amountCents: number }[];
+  onlyAtMollie: { paymentId: string; date: string; amountCents: number }[];
+  otherByAccount: { accountCode: string; cents: number }[];
+  costsCents: number;
+  balance: { ledgerCents: number; mollieCents: number | null; differenceCents: number | null };
+};
+
 export type NightlyStep = "kassa" | "ing" | "mollie";
 /** What the nightly run did, step by step; a string other than ok/skipped is the error code of a step that failed. */
 export type NightlyReport = { at: string; steps: Partial<Record<NightlyStep, "ok" | "skipped" | string>> };

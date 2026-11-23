@@ -81,6 +81,7 @@ export function BankLineRow({ line, accounts, onBooked }: { line: BankLine; acco
       </div>
       <p className="text-ink/80">{line.description}</p>
       {waiting && <p className="font-semibold text-ink/70">wacht op Mollie</p>}
+      {line.note && <p className="font-semibold text-redbrown">{line.note}</p>}
       {closed && <p className="font-semibold text-redbrown">{`valt in afgesloten jaar ${line.date.slice(0, 4)}`}</p>}
       {!waiting && !closed && (
         <>

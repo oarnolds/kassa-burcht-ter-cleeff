@@ -88,6 +88,13 @@ export function OverviewPage() {
                   </li>
                 ))}
               </ul>
+              {o.mollieDifferenceCents !== null && o.mollieDifferenceCents !== 0 && (
+                <p className="mt-1 px-2 sm:px-3">
+                  <Link className={`${textLink} inline-flex min-h-11 items-center`} to="/beheer/boekhouding/mollie">
+                    {`Mollie wijkt ${formatEuro(Math.abs(o.mollieDifferenceCents))} af van de boekhouding`}
+                  </Link>
+                </p>
+              )}
             </Section>
             <Section title="Dit jaar">
               <p className="flex flex-wrap justify-between gap-2 px-2 text-lg sm:px-3">
