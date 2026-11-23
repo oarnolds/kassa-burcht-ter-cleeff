@@ -21,9 +21,18 @@ export type MollieRefundRow = { id: string; paymentId: string; amountCents: numb
 export type MollieChargebackRow = { id: string; paymentId: string; amountCents: number; createdAt: string };
 export type MollieSettlementRow = { id: string; reference: string; status: string; settledAt: string | null; amountCents: number; costsCents: number };
 
+/**
+ * The stretch of payments a read cut short by the page cap left unread: from the payment `from` (Mollie's cursor,
+ * the first one not read) back to `untilIso`, where that read began.
+ */
+export type PaymentGap = { from: string; untilIso: string };
+
 export type MollieRead = {
-  /** Every payment created at or after `fromIso`, newest first. */
-  paymentsSince(fromIso: string): Promise<MollieResult<MolliePaymentRow[]>>;
+  /**
+   * Every payment created at or after `fromIso`, newest first. With `gap`, that stretch is read first, within the
+   * same page cap, and the newest only once it is done. `gap` in the answer is what is still left unread (null: nothing).
+   */
+  paymentsSince(fromIso: string, gap?: PaymentGap | null): Promise<MollieResult<{ rows: MolliePaymentRow[]; gap: PaymentGap | null }>>;
   refundsSince(fromIso: string): Promise<MollieResult<MollieRefundRow[]>>;
   chargebacksSince(fromIso: string): Promise<MollieResult<MollieChargebackRow[]>>;
   /** Payouts that are still open or were settled at or after `fromIso`. `costsCents` is the gross of all costs, as Mollie signs them. */
@@ -132,12 +141,14 @@ export function mollieReadFor(env: Env): MollieRead | null {
 
   /**
    * Reads pages of `_embedded[key]` from `first`; `budget` is the calls this list may still make (pages and the
-   * extra reads of `onPage` alike). `onPage` takes a page's items and says whether to go on.
+   * extra reads of `onPage` alike). `onPage` takes a page's items and says whether to go on. Answers the path of the
+   * page left unread because the calls ran out, or null when the list was read to its end or `onPage` stopped it.
    */
-  async function pages(first: string, key: string, onPage: (items: Raw[]) => boolean | Promise<boolean>, budget: Budget = { left: MAX_PAGES }, profile: string | null = null): Promise<MollieResult<null>> {
+  async function pages(first: string, key: string, onPage: (items: Raw[]) => boolean | Promise<boolean>, budget: Budget = { left: MAX_PAGES }, profile: string | null = null): Promise<MollieResult<string | null>> {
     let path: string | null = first;
     try {
-      while (path && budget.left > 0) {
+      while (path) {
+        if (budget.left <= 0) return { ok: true, data: path };
         budget.left--;
         const result = await call(path);
         if (!result.ok) return result;
@@ -156,9 +167,14 @@ export function mollieReadFor(env: Env): MollieRead | null {
   }
 
   /** The profile an organisation token must name on the payments, refunds and chargebacks lists: read once, then kept. */
+  let knownProfile: string | null = null;
   async function profileId(): Promise<MollieResult<string>> {
+    if (knownProfile) return { ok: true, data: knownProfile };
     const kept = await getLedgerSetting(env.DB, PROFILE_KEY);
-    if (kept) return { ok: true, data: kept };
+    if (kept) {
+      knownProfile = kept;
+      return { ok: true, data: kept };
+    }
     let found: string | null = null;
     const result = await pages("/profiles?limit=1", "profiles", (items) => {
       found = text(items[0]?.id);
@@ -167,18 +183,29 @@ export function mollieReadFor(env: Env): MollieRead | null {
     if (!result.ok) return result;
     if (!found) return { ok: false, failure: "not_found", status: 0 };
     await setLedgerSetting(env.DB, PROFILE_KEY, found, new Date());
+    knownProfile = found;
     return { ok: true, data: found };
   }
 
-  /** A list newest first that needs the profile: items from `fromIso` on, stopping at the first older one. */
-  async function newestFirst<T>(resource: string, key: string, fromIso: string, toRow: (item: Raw) => T): Promise<MollieResult<T[]>> {
+  /**
+   * A list newest first that needs the profile: items from `fromIso` on, stopping at the first older one, from the
+   * top or from the item `startAt`. `cursor` is the first item left unread when `budget` ran out, else null.
+   */
+  async function newestFirst<T>(
+    resource: string,
+    key: string,
+    fromIso: string,
+    toRow: (item: Raw) => T,
+    budget: Budget = { left: MAX_PAGES },
+    startAt: string | null = null,
+  ): Promise<MollieResult<{ rows: T[]; cursor: string | null }>> {
     const from = Date.parse(fromIso);
     if (Number.isNaN(from)) return UNREADABLE;
     const profile = await profileId();
     if (!profile.ok) return profile;
     const rows: T[] = [];
     const result = await pages(
-      `/${resource}?limit=250&profileId=${encodeURIComponent(profile.data)}`,
+      `/${resource}?limit=250&profileId=${encodeURIComponent(profile.data)}${startAt === null ? "" : `&from=${encodeURIComponent(startAt)}`}`,
       key,
       (items) => {
         for (const item of items) {
@@ -187,41 +214,63 @@ export function mollieReadFor(env: Env): MollieRead | null {
         }
         return true;
       },
-      { left: MAX_PAGES },
+      budget,
       profile.data,
     );
-    return result.ok ? { ok: true, data: rows } : result;
+    if (!result.ok) return result;
+    if (result.data === null) return { ok: true, data: { rows, cursor: null } };
+    // The page left unread always carries Mollie's cursor (only a first page has none, and a list gets at least one call).
+    const cursor = new URL(result.data, "https://mollie.invalid").searchParams.get("from");
+    return cursor ? { ok: true, data: { rows, cursor } } : UNREADABLE;
   }
 
+  const paymentRow = (item: Raw): MolliePaymentRow => ({
+    id: need(text(item.id)),
+    method: text(item.method) ?? "",
+    amountCents: cents(units(item.amount)),
+    description: text(item.description) ?? "",
+    status: need(text(item.status)),
+    paidAt: text(item.paidAt),
+    settlementId: text(item.settlementId),
+  });
+  const rowsOnly = <T>(result: MollieResult<{ rows: T[] }>): MollieResult<T[]> => (result.ok ? { ok: true, data: result.data.rows } : result);
+
   return {
-    paymentsSince: (fromIso) =>
-      newestFirst("payments", "payments", fromIso, (item) => ({
-        id: need(text(item.id)),
-        method: text(item.method) ?? "",
-        amountCents: cents(units(item.amount)),
-        description: text(item.description) ?? "",
-        status: need(text(item.status)),
-        paidAt: text(item.paidAt),
-        settlementId: text(item.settlementId),
-      })),
+    async paymentsSince(fromIso, gap = null) {
+      const budget: Budget = { left: MAX_PAGES };
+      const rows: MolliePaymentRow[] = [];
+      if (gap) {
+        const stretch = await newestFirst("payments", "payments", gap.untilIso, paymentRow, budget, gap.from);
+        if (!stretch.ok) return stretch;
+        rows.push(...stretch.data.rows);
+        // Not done yet: the newest wait until the stretch is read.
+        if (stretch.data.cursor !== null) return { ok: true, data: { rows, gap: { from: stretch.data.cursor, untilIso: gap.untilIso } } };
+        // Done, with no call left: the newest are read the next time, from what is kept by then.
+        if (budget.left <= 0) return { ok: true, data: { rows, gap: null } };
+      }
+      const newest = await newestFirst("payments", "payments", fromIso, paymentRow, budget);
+      if (!newest.ok) return newest;
+      rows.push(...newest.data.rows);
+      return { ok: true, data: { rows, gap: newest.data.cursor === null ? null : { from: newest.data.cursor, untilIso: fromIso } } };
+    },
 
-    refundsSince: (fromIso) =>
-      newestFirst("refunds", "refunds", fromIso, (item) => ({
+    refundsSince: async (fromIso) =>
+      rowsOnly(await newestFirst("refunds", "refunds", fromIso, (item) => ({
         id: need(text(item.id)),
         paymentId: need(text(item.paymentId)),
         amountCents: cents(units(item.amount)),
         createdAt: need(text(item.createdAt)),
         description: text(item.description) ?? "",
         status: need(text(item.status)),
-      })),
+      }))),
 
-    chargebacksSince: (fromIso) =>
-      newestFirst("chargebacks", "chargebacks", fromIso, (item) => ({
+    chargebacksSince: async (fromIso) =>
+      rowsOnly(await newestFirst("chargebacks", "chargebacks", fromIso, (item) => ({
         id: need(text(item.id)),
         paymentId: need(text(item.paymentId)),
         amountCents: cents(units(item.amount)),
         createdAt: need(text(item.createdAt)),
-      })),
+      }))),
 
     async settlementsSince(fromIso) {
       const from = Date.parse(fromIso);

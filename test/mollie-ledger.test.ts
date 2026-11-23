@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { Entry } from "../shared/ledger-types";
+import { shiftDate } from "../shared/time";
 import { openLines } from "../worker/db/bank";
 import { getEntry } from "../worker/db/ledger";
 import { exportAll } from "../worker/db/maintenance";
@@ -138,6 +139,65 @@ it("puts a refund of a website payment in Te boeken", async () => {
     ["8000", -3200],
     ["8012", -200],
   ]);
+});
+
+it("ticks off a pin payment as the kassa's, also before its sale is known", async () => {
+  // Only the kassa uses the terminal: a pin payment is the kassa's, whether or not a sale has its id (yet),
+  // and whatever its description says.
+  paid("tr_pin", "2.50", "Kassa bon", "2027-03-06T10:00:00+00:00", "pointofsale");
+  paid("tr_pin2", "1.20", "Kassa bon: 2x dagkaartje", "2027-03-06T10:05:00+00:00", "pointofsale");
+  mollie.current.addRefund({ id: "re_pin", paymentId: "tr_pin", amount: "2.50", createdAt: "2027-03-06T11:00:00+00:00" });
+
+  expect(await sync("2027-03-07T02:00:00.000Z")).toBe("ok");
+  expect(await payment("tr_pin")).toEqual({ kind: "kassa", account_code: null, bank_line_id: null, paid_date: "2027-03-06" });
+  expect(await payment("tr_pin2")).toEqual({ kind: "kassa", account_code: null, bank_line_id: null, paid_date: "2027-03-06" });
+  expect(await count("bank_lines")).toBe(0);
+  expect(await count("ledger_entries")).toBe(0);
+});
+
+it("reads a long backlog to the end over two nights, each payment once", async () => {
+  // 1.600 payments waiting since 4 January, 40 a day: more than the six pages of 250 one night reads.
+  for (let i = 0; i < 1600; i++) {
+    const date = shiftDate("2027-01-04", Math.floor(i / 40));
+    const at = `${date}T${String(8 + (i % 10)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}:00+00:00`;
+    paid(`tr_${i}`, `${1 + (i % 5)}.00`, i % 4 === 3 ? "Gift" : "Dagticket", at);
+  }
+  const resume = () => env.DB.prepare("SELECT value FROM ledger_settings WHERE key = 'mollie_payments_resume'").first<{ value: string }>();
+
+  // The first night reads the newest 1.500 and notes where it stopped, down to where it began.
+  expect(await sync("2027-02-13T02:00:00.000Z")).toBe("ok");
+  expect(await count("mollie_payments")).toBe(1500);
+  expect(JSON.parse((await resume())!.value)).toEqual({ from: expect.stringMatching(/^tr_\d+$/), untilIso: "2026-12-31T23:00:00.000Z" });
+
+  // The second night reads the rest first, then the newest as always; the note goes.
+  expect(await sync("2027-02-14T02:00:00.000Z")).toBe("ok");
+  expect(await resume()).toBeNull();
+  expect(await count("mollie_payments")).toBe(1600);
+  expect(await count("mollie_payments WHERE kind = 'rule'")).toBe(1200);
+  expect(await count("mollie_payments WHERE kind = 'line' AND bank_line_id IS NOT NULL")).toBe(400);
+  expect(await count("bank_lines")).toBe(400);
+  expect(await count("ledger_entries WHERE source = 'mollie_other'")).toBe(40);
+  const booked = await env.DB.prepare(
+    "SELECT SUM(l.amount_cents) AS cents FROM ledger_lines l JOIN ledger_entries e ON e.id = l.entry_id WHERE e.source = 'mollie_other' AND l.account_code = '1030'",
+  ).first<{ cents: number }>();
+  const ruled = await env.DB.prepare("SELECT SUM(amount_cents) AS cents FROM mollie_payments WHERE kind = 'rule'").first<{ cents: number }>();
+  expect(booked!.cents).toBe(ruled!.cents);
+
+  // A note that cannot be read stops the step, out loud, rather than being dropped with the payments it stands for.
+  await env.DB.prepare("INSERT INTO ledger_settings (key, value, updated_at) VALUES ('mollie_payments_resume', 'kapot', '2027-02-14T02:00:00.000Z')").run();
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  expect(await sync("2027-02-15T01:00:00.000Z")).toBe("mollie_resume_unreadable");
+  expect(logged.mock.calls).toEqual([["mollie step failed", "mollie_resume_unreadable"]]);
+  logged.mockRestore();
+  await env.DB.prepare("DELETE FROM ledger_settings WHERE key = 'mollie_payments_resume'").run();
+
+  // A third night finds nothing more.
+  const stamps = () => env.DB.prepare("SELECT id, updated_at FROM ledger_entries ORDER BY id").all().then((r) => r.results);
+  const before = await stamps();
+  expect(await sync("2027-02-15T02:00:00.000Z")).toBe("ok");
+  expect(await stamps()).toEqual(before);
+  expect(await count("mollie_payments")).toBe(1600);
+  expect(await count("bank_lines")).toBe(400);
 });
 
 it("leaves the refund of a kassa payment to the kassa's reversal", async () => {

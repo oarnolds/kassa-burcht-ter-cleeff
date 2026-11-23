@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { beforeEach, expect, it, vi } from "vitest";
 import { getLedgerSetting } from "../worker/db/ledger-settings";
 import { mollieFor } from "../worker/lib/mollie";
-import { mollieReadFor } from "../worker/lib/mollie-read";
+import { type MollieRead, mollieReadFor } from "../worker/lib/mollie-read";
 import { resetData, useFakeMollie } from "./helpers";
 
 const mollie = useFakeMollie();
@@ -18,10 +18,13 @@ it("reads payments of every method since a moment", async () => {
   const result = await read().paymentsSince("2027-02-01T00:00:00.000Z");
   expect(result).toEqual({
     ok: true,
-    data: [
-      { id: "tr_pin", method: "pointofsale", amountCents: 300, description: "Test", status: "open", paidAt: null, settlementId: null },
-      { id: "tr_ideal", method: "ideal", amountCents: 1250, description: "Lidgeld", status: "paid", paidAt: "2027-02-02T10:01:00+00:00", settlementId: "stl_1" },
-    ],
+    data: {
+      rows: [
+        { id: "tr_pin", method: "pointofsale", amountCents: 300, description: "Test", status: "open", paidAt: null, settlementId: null },
+        { id: "tr_ideal", method: "ideal", amountCents: 1250, description: "Lidgeld", status: "paid", paidAt: "2027-02-02T10:01:00+00:00", settlementId: "stl_1" },
+      ],
+      gap: null,
+    },
   });
   const request = lists()[0]!;
   expect(request).toMatchObject({ method: "GET", path: "/v2/payments", authorization: "Bearer org_fake" });
@@ -134,7 +137,8 @@ it("follows the next link page by page and stops at the first old item", async (
   fake.pageSize = 2;
   for (let day = 1; day <= 7; day++) fake.addPayment({ id: `tr_${day}`, method: "ideal", amount: "1.00", createdAt: `2027-03-0${day}T10:00:00+00:00` });
   const result = await read().paymentsSince("2027-03-04T00:00:00.000Z");
-  expect(result.ok && result.data.map((p) => p.id)).toEqual(["tr_7", "tr_6", "tr_5", "tr_4"]);
+  expect(result.ok && result.data.rows.map((p) => p.id)).toEqual(["tr_7", "tr_6", "tr_5", "tr_4"]);
+  expect(result.ok && result.data.gap).toBeNull();
   // newest first: 7 6 | 5 4 | 3 (old: stop). Three pages, not four.
   expect(lists()).toHaveLength(3);
   expect(lists()[1]!.query.from).toBe("tr_5");
@@ -146,8 +150,47 @@ it("reads at most six pages of a list", async () => {
   fake.pageSize = 1;
   for (let i = 1; i <= 15; i++) fake.addPayment({ id: `tr_${i}`, method: "ideal", amount: "1.00", createdAt: `2027-03-${String(i).padStart(2, "0")}T10:00:00+00:00` });
   const result = await read().paymentsSince("2027-01-01T00:00:00.000Z");
-  expect(result.ok && result.data).toHaveLength(6);
+  expect(result.ok && result.data.rows).toHaveLength(6);
   expect(lists()).toHaveLength(6);
+});
+
+const rowIds = (result: Awaited<ReturnType<MollieRead["paymentsSince"]>>) => (result.ok ? result.data.rows.map((p) => p.id) : result);
+const gapOf = (result: Awaited<ReturnType<MollieRead["paymentsSince"]>>) => (result.ok ? result.data.gap : result);
+
+it("says where a list cut short by the cap goes on, and reads that stretch first the next time", async () => {
+  const fake = mollie.current;
+  fake.pageSize = 1;
+  for (let i = 1; i <= 15; i++) fake.addPayment({ id: `tr_${i}`, method: "ideal", amount: "1.00", createdAt: `2027-03-${String(i).padStart(2, "0")}T10:00:00+00:00` });
+  const since = "2027-01-01T00:00:00.000Z";
+  const first = await read().paymentsSince(since);
+  expect(rowIds(first)).toEqual(["tr_15", "tr_14", "tr_13", "tr_12", "tr_11", "tr_10"]);
+  expect(gapOf(first)).toEqual({ from: "tr_9", untilIso: since });
+
+  // The next run reads the stretch first, within the same six calls: not done yet, and nothing newer is read.
+  fake.requests = [];
+  const second = await read().paymentsSince("2027-03-12T00:00:00.000Z", { from: "tr_9", untilIso: since });
+  expect(rowIds(second)).toEqual(["tr_9", "tr_8", "tr_7", "tr_6", "tr_5", "tr_4"]);
+  expect(gapOf(second)).toEqual({ from: "tr_3", untilIso: since });
+  expect(lists()).toHaveLength(6);
+  expect(lists()[0]!.query).toMatchObject({ from: "tr_9", profileId: "pfl_fake" });
+
+  // The last of the stretch (to the end of the list), then the newest with the calls left over.
+  fake.requests = [];
+  const third = await read().paymentsSince("2027-03-14T00:00:00.000Z", { from: "tr_3", untilIso: since });
+  expect(rowIds(third)).toEqual(["tr_3", "tr_2", "tr_1", "tr_15", "tr_14"]);
+  expect(gapOf(third)).toBeNull();
+  expect(lists()).toHaveLength(6); // 3 for the stretch; 3 for the newest, the third ending at tr_13 (older)
+});
+
+it("ends a stretch at its first item older than where the cut-short read began", async () => {
+  const fake = mollie.current;
+  fake.pageSize = 2;
+  for (let i = 1; i <= 6; i++) fake.addPayment({ id: `tr_${i}`, method: "ideal", amount: "1.00", createdAt: `2027-03-0${i}T10:00:00+00:00` });
+  // tr_2 and tr_1 are older than the read that was cut short: the stretch ends there; then the newest are read.
+  const result = await read().paymentsSince("2027-03-06T00:00:00.000Z", { from: "tr_4", untilIso: "2027-03-03T00:00:00.000Z" });
+  expect(rowIds(result)).toEqual(["tr_4", "tr_3", "tr_6"]);
+  expect(gapOf(result)).toBeNull();
+  expect(lists().map((r) => r.query.from ?? null)).toEqual(["tr_4", "tr_2", null]); // [4 3] [2: older, stop] then the newest [6 5: older, stop]
 });
 
 it("reads settlement pages until one holds nothing open or recent", async () => {
@@ -217,7 +260,7 @@ it("fetches the next page from the pinned base even when the link names another 
   fake.addPayment({ id: "tr_2", method: "ideal", amount: "1.00", createdAt: "2027-03-02T10:00:00+00:00" });
   const seen = spyOnFetch();
   const result = await read().paymentsSince("2027-01-01T00:00:00.000Z");
-  expect(result.ok && result.data.map((p) => p.id)).toEqual(["tr_2", "tr_1"]);
+  expect(result.ok && result.data.rows.map((p) => p.id)).toEqual(["tr_2", "tr_1"]);
   expect(seen.length).toBeGreaterThan(2);
   expect(seen.every((call) => new URL(call.url).hostname === "api.mollie.com")).toBe(true);
   expect(seen.every((call) => call.authorization === "Bearer org_fake")).toBe(true);
