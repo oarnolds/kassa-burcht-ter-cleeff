@@ -50,12 +50,15 @@ function checkContent(content: Content): number {
 const codesOf = (lines: EntryLine[]) => [...new Set(lines.map((line) => line.accountCode))];
 const assetIdsOf = (lines: EntryLine[]) => [...new Set(lines.flatMap((line) => (line.assetId ? [line.assetId] : [])))];
 
-/** Reads what the checks of a write need: the status of its year, the accounts it books on and the toestellen it names. */
-function checkReads(db: D1Database, year: number, lines: EntryLine[]): D1PreparedStatement[] {
+/**
+ * Reads what the checks of a write need: the status of its year, the accounts it books on and the toestellen it
+ * names (with those of the lines it replaces, `before`, to see whether one is disposed of).
+ */
+function checkReads(db: D1Database, year: number, lines: EntryLine[], before: EntryLine[] = []): D1PreparedStatement[] {
   return [
     db.prepare("SELECT status FROM ledger_years WHERE year = ?").bind(year),
     db.prepare("SELECT code, hidden FROM ledger_accounts WHERE code IN (SELECT value FROM json_each(?))").bind(JSON.stringify(codesOf(lines))),
-    db.prepare("SELECT id FROM assets WHERE id IN (SELECT value FROM json_each(?))").bind(JSON.stringify(assetIdsOf(lines))),
+    db.prepare("SELECT id, disposed_on FROM assets WHERE id IN (SELECT value FROM json_each(?))").bind(JSON.stringify(assetIdsOf([...lines, ...before]))),
   ];
 }
 
@@ -67,7 +70,26 @@ function checkResults([years, accounts, assets]: D1Result[], lines: EntryLine[],
     if (!hidden.has(code)) throw new LedgerError("account_unknown", 400);
     if (refuseHidden && hidden.get(code)) throw new LedgerError("account_hidden", 400);
   }
-  if (assets!.results.length !== assetIdsOf(lines).length) throw new LedgerError("asset_unknown", 404);
+  const known = new Set((assets!.results as { id: string }[]).map((row) => row.id));
+  if (!assetIdsOf(lines).every((id) => known.has(id))) throw new LedgerError("asset_unknown", 404);
+}
+
+/** What the lines book on one toestel (account and amount), in any order. */
+const bookedOn = (lines: EntryLine[], assetId: string) =>
+  lines
+    .filter((line) => line.assetId === assetId)
+    .map((line) => `${line.accountCode}|${line.amountCents}`)
+    .sort()
+    .join(",");
+
+/**
+ * A disposed toestel's lines stay as they are: its disposal took exactly them off 0130 and 0135, and a disposal is
+ * not done again. Refuses an edit that would change, move or drop them.
+ */
+function checkDisposed(assets: D1Result, before: EntryLine[], after: EntryLine[]): void {
+  for (const row of assets.results as { id: string; disposed_on: string | null }[]) {
+    if (row.disposed_on !== null && bookedOn(before, row.id) !== bookedOn(after, row.id)) throw new LedgerError("asset_disposed", 409);
+  }
 }
 
 function sameContent(a: Content, b: Content): boolean {
@@ -315,7 +337,9 @@ async function change(db: D1Database, id: string, content: (entry: Entry) => Con
   const next = content(entry);
   const year = checkContent(next);
   if (sameContent(entry, next)) return entry;
-  checkResults(await db.batch(checkReads(db, year, next.lines)), next.lines, entry.source === "manual");
+  const checks = await db.batch(checkReads(db, year, next.lines, entry.lines));
+  checkResults(checks, next.lines, entry.source === "manual");
+  checkDisposed(checks[2]!, entry.lines, next.lines);
   const nowIso = now.toISOString();
   await db.batch([
     openYear(db, year),

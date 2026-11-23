@@ -2,6 +2,7 @@ import type { PastedAsset } from "../../shared/asset-paste";
 import { MAX_LIFE_YEARS } from "../../shared/asset-paste";
 import { depreciationFor } from "../../shared/depreciation";
 import { type Asset, type DepreciationPlan, type Entry, type EntryLine, LEDGER_START } from "../../shared/ledger-types";
+import { businessDate } from "../../shared/time";
 import { getEntry, LedgerError, upsertSourced, upsertSourcedStatements } from "./ledger";
 import { getOpening, setOpening } from "./opening";
 
@@ -205,27 +206,6 @@ const DEPRECIATION_LINES = (year: number) =>
 
 type LineRow = { account_code: string; amount_cents: number; note: string | null; asset_id: string | null };
 
-/** The year's depreciation per toestel; one disposed of in or before the year has none (its disposal covers it). */
-function planOf(year: number, atEnd: Asset[], atStart: Asset[], bookedLines: number): DepreciationPlan {
-  const before = new Map(atStart.map((asset) => [asset.id, asset.writtenOffCents]));
-  const rows: DepreciationPlan["rows"] = [];
-  for (const asset of atEnd) {
-    if (asset.purchaseDate === null || (asset.disposedOn !== null && asset.disposedOn <= lastDay(year))) continue;
-    const cents = depreciationFor({ ...asset, purchaseDate: asset.purchaseDate }, year, before.get(asset.id) ?? 0);
-    if (cents !== 0) rows.push({ assetId: asset.id, name: asset.name, cents });
-  }
-  return { year, rows, totalCents: rows.reduce((sum, row) => sum + row.cents, 0), booked: bookedLines > 0 };
-}
-
-export async function depreciationPlan(db: D1Database, year: number): Promise<DepreciationPlan> {
-  const [atEnd, atStart, booked] = await db.batch([
-    assetsStatement(db, lastDay(year)),
-    assetsStatement(db, lastDay(year - 1)),
-    db.prepare(`SELECT COUNT(*) AS n FROM (${DEPRECIATION_LINES(year)})`),
-  ]);
-  return planOf(year, toAssets(atEnd!, lastDay(year)), toAssets(atStart!, lastDay(year - 1)), (booked!.results[0] as { n: number }).n);
-}
-
 /** The lines of a year's depreciation: 4601 the total, 0135 per toestel. Nothing to write off: no lines. */
 function depreciationLines(rows: { assetId: string; name: string; cents: number }[]): EntryLine[] {
   const total = rows.reduce((sum, row) => sum + row.cents, 0);
@@ -236,15 +216,88 @@ function depreciationLines(rows: { assetId: string; name: string; cents: number 
   ];
 }
 
-/** "Afschrijving {jaar} boeken": one entry on 31 December, replaced when booked again. */
-export async function bookDepreciation(db: D1Database, year: number, now: Date): Promise<Entry> {
+/** Lines compared by what they book (account, amount, toestel), in any order; a note is only a name. */
+const booking = (lines: { accountCode: string; amountCents: number; assetId: string | null }[]): string =>
+  lines
+    .map((line) => `${line.accountCode}|${line.amountCents}|${line.assetId ?? ""}`)
+    .sort()
+    .join("\n");
+const heldBooking = (rows: LineRow[]) => booking(rows.map((row) => ({ accountCode: row.account_code, amountCents: row.amount_cents, assetId: row.asset_id })));
+
+/** The first later year whose depreciation entry has lines, or null. */
+const LATER_BOOKED = `SELECT MIN(CAST(e.source_ref AS INTEGER)) AS year FROM ledger_entries e
+  WHERE e.source = 'depreciation' AND CAST(e.source_ref AS INTEGER) > ?1 AND EXISTS (SELECT 1 FROM ledger_lines l WHERE l.entry_id = e.id)`;
+
+/** What a year's plan reads: the list at the end of the year and of the year before, its entry's lines, later years. Four statements. */
+function planStatements(db: D1Database, year: number): D1PreparedStatement[] {
+  return [assetsStatement(db, lastDay(year)), assetsStatement(db, lastDay(year - 1)), db.prepare(DEPRECIATION_LINES(year)), db.prepare(LATER_BOOKED).bind(year)];
+}
+
+/**
+ * The year's depreciation per toestel; one disposed of in or before the year has none (its disposal covers it).
+ * `upToDate`: the entry books exactly this (nothing to book and no lines counts too).
+ */
+function planOf(year: number, [atEnd, atStart, held, later]: D1Result[]): DepreciationPlan {
+  const before = new Map(toAssets(atStart!, lastDay(year - 1)).map((asset) => [asset.id, asset.writtenOffCents]));
+  const rows: DepreciationPlan["rows"] = [];
+  for (const asset of toAssets(atEnd!, lastDay(year))) {
+    if (asset.purchaseDate === null || (asset.disposedOn !== null && asset.disposedOn <= lastDay(year))) continue;
+    const cents = depreciationFor({ ...asset, purchaseDate: asset.purchaseDate }, year, before.get(asset.id) ?? 0);
+    if (cents !== 0) rows.push({ assetId: asset.id, name: asset.name, cents });
+  }
+  const heldLines = held!.results as LineRow[];
+  return {
+    year,
+    rows,
+    totalCents: rows.reduce((sum, row) => sum + row.cents, 0),
+    booked: heldLines.length > 0,
+    upToDate: heldBooking(heldLines) === booking(depreciationLines(rows)),
+    laterBooked: (later!.results[0] as { year: number | null } | undefined)?.year ?? null,
+  };
+}
+
+export async function depreciationPlan(db: D1Database, year: number): Promise<DepreciationPlan> {
+  return planOf(year, await db.batch(planStatements(db, year)));
+}
+
+const statusStatement = (db: D1Database, year: number) => db.prepare("SELECT status FROM ledger_years WHERE year = ?").bind(year);
+const isClosed = (result: D1Result | undefined) => (result?.results[0] as { status: string } | undefined)?.status === "closed";
+
+/** The year the page opens on: the earliest open year (from 2027 to this one) whose depreciation is not booked as planned; else this year. One call. */
+export async function defaultDepreciationYear(db: D1Database, now: Date): Promise<number> {
+  const last = Math.max(FIRST_YEAR, yearOf(businessDate(now.toISOString())));
+  const years = Array.from({ length: last - FIRST_YEAR + 1 }, (_, i) => FIRST_YEAR + i);
+  const results = await db.batch(years.flatMap((year) => [statusStatement(db, year), ...planStatements(db, year)]));
+  const found = years.find((year, i) => !isClosed(results[i * 5]) && !planOf(year, results.slice(i * 5 + 1, i * 5 + 5)).upToDate);
+  return found ?? last;
+}
+
+/**
+ * "Afschrijving {jaar} boeken": one entry on 31 December, replaced when booked again; `empty` books nothing (to
+ * undo a year). Only in year order, as each year rests on what is written off up to the year before: refused while
+ * a later year's entry has lines (`depreciation_later`: undo that one first), and while the year before is open and
+ * not booked as planned (`depreciation_first`). Booked again without a change, it is simply there.
+ */
+export async function bookDepreciation(db: D1Database, year: number, now: Date, options: { empty?: boolean } = {}): Promise<Entry> {
   if (year < FIRST_YEAR) throw new LedgerError("year_unknown", 400);
-  const plan = await depreciationPlan(db, year);
-  return upsertSourced(
-    db,
-    { date: lastDay(year), description: `Afschrijving speeltoestellen ${year}`, source: "depreciation", sourceRef: String(year), lines: depreciationLines(plan.rows) },
-    now,
-  );
+  const hasPrevious = year - 1 >= FIRST_YEAR;
+  const [status, previousStatus, ...plans] = await db.batch([
+    statusStatement(db, year),
+    statusStatement(db, year - 1),
+    ...planStatements(db, year),
+    ...(hasPrevious ? planStatements(db, year - 1) : []),
+  ]);
+  if (isClosed(status)) throw new LedgerError("year_closed", 409);
+  const plan = planOf(year, plans.slice(0, 4));
+  const lines = options.empty ? [] : depreciationLines(plan.rows);
+  if (booking(lines) !== heldBooking(plans[2]!.results as LineRow[])) {
+    if (plan.laterBooked !== null) throw new LedgerError("depreciation_later", 409);
+    if (!options.empty && hasPrevious && !isClosed(previousStatus)) {
+      const previous = planOf(year - 1, plans.slice(4, 8));
+      if (previous.rows.length > 0 && !previous.upToDate) throw new LedgerError("depreciation_first", 409);
+    }
+  }
+  return upsertSourced(db, { date: lastDay(year), description: `Afschrijving speeltoestellen ${year}`, source: "depreciation", sourceRef: String(year), lines }, now);
 }
 
 /**

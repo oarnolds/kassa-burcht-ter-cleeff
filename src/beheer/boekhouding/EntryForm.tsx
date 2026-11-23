@@ -39,12 +39,15 @@ export function EntryForm({
   accounts,
   initial,
   assetNames = new Map(),
+  explain = explainWrite,
   onSave,
   onCancel,
 }: {
   accounts: LedgerAccount[];
   initial?: EntryBody;
   assetNames?: Map<string, string>;
+  /** The sentence for a refusal; the page may know better than the general one. */
+  explain?: (status: number, error: string) => string;
   onSave(body: EntryBody): Promise<ApiResult<unknown>>;
   onCancel(): void;
 }) {
@@ -83,7 +86,7 @@ export function EntryForm({
           return { accountCode: row.accountCode, amountCents: amountOf(row), note: row.note.trim() || null, ...(assetId ? { assetId } : {}) };
         }),
       });
-      if (!answer.ok) setProblem(explainWrite(answer.status, answer.error));
+      if (!answer.ok) setProblem(explain(answer.status, answer.error));
     });
 
   return (

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { MAX_LIFE_YEARS } from "../../shared/asset-paste";
 import { LEDGER_START } from "../../shared/ledger-types";
-import { addPastedAssets, ALL_DATES, bookDepreciation, depreciationPlan, disposeAsset, listAssets, saveAsset } from "../db/assets";
+import { addPastedAssets, ALL_DATES, bookDepreciation, defaultDepreciationYear, depreciationPlan, disposeAsset, listAssets, saveAsset } from "../db/assets";
 import { LedgerError } from "../db/ledger";
 import type { AppEnv } from "../env";
 import { parseDate } from "../lib/params";
@@ -26,7 +26,7 @@ const patchBody = z
   .object({ name: name.optional(), lifeYears: lifeYears.optional(), residualCents: cents.optional() })
   .refine((body) => body.name !== undefined || body.lifeYears !== undefined || body.residualCents !== undefined);
 const disposeBody = z.object({ date });
-const depreciationBody = z.object({ year: z.number().int() });
+const depreciationBody = z.object({ year: z.number().int(), empty: z.boolean().optional() });
 
 const jsonBody = (c: { req: { json: () => Promise<unknown> } }) => c.req.json().catch(() => null);
 
@@ -72,9 +72,11 @@ adminLedgerAssets.post("/assets/:id/dispose", async (c) => {
   return c.json(await disposeAsset(c.env.DB, c.req.param("id"), body.data.date, new Date()));
 });
 
+/** A year's plan; without `?year=`, that of the earliest open year still to book (the page opens on it). */
 adminLedgerAssets.get("/depreciation", async (c) => {
   const asked = c.req.query("year");
-  if (!asked || !/^\d{4}$/.test(asked)) return c.json({ error: "invalid" }, 400);
+  if (asked === undefined) return c.json(await depreciationPlan(c.env.DB, await defaultDepreciationYear(c.env.DB, new Date())));
+  if (!/^\d{4}$/.test(asked)) return c.json({ error: "invalid" }, 400);
   const parsed = year.safeParse(Number(asked));
   if (!parsed.success) return c.json({ error: "year_unknown" }, 400);
   return c.json(await depreciationPlan(c.env.DB, parsed.data));
@@ -84,5 +86,5 @@ adminLedgerAssets.post("/depreciation", async (c) => {
   const body = depreciationBody.safeParse(await jsonBody(c));
   if (!body.success) return c.json({ error: "invalid" }, 400);
   if (!year.safeParse(body.data.year).success) return c.json({ error: "year_unknown" }, 400);
-  return c.json(await bookDepreciation(c.env.DB, body.data.year, new Date()));
+  return c.json(await bookDepreciation(c.env.DB, body.data.year, new Date(), { empty: body.data.empty === true }));
 });

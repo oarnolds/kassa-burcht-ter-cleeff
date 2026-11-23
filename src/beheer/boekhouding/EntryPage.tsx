@@ -14,6 +14,12 @@ import { useBusy } from "./useBusy";
 const linesText = (lines: EntryLine[], names: Map<string, string>): string =>
   lines.map((line) => `${line.accountCode} ${names.get(line.accountCode) ?? ""} ${formatEuro(line.amountCents)}`.replace("  ", " ")).join(", ");
 
+/** A refusal on this page: a disposed toestel's purchase stays as it was. */
+function explainEntry(status: number, error: string): string {
+  if (error === "asset_disposed") return "Dit toestel is afgevoerd; de aankoop kan niet meer worden gewijzigd.";
+  return explainWrite(status, error);
+}
+
 /** One line of the history: when, and what it was before (or the note, for a change that is not an edit). */
 function changeText(change: EntryChange, names: Map<string, string>): string {
   const when = `Gewijzigd op ${formatDateNl(businessDate(change.at))} ${localTime(change.at)}`;
@@ -43,7 +49,7 @@ function EntryView({ entry, accounts, history, reload }: { entry: Entry; account
 
   const check = (answer: { ok: boolean; status?: number; error?: string }) => {
     if (answer.ok) return reload();
-    setProblem(explainWrite(answer.status ?? 0, answer.error ?? ""));
+    setProblem(explainEntry(answer.status ?? 0, answer.error ?? ""));
   };
   const empty = () =>
     run(async () => {
@@ -78,6 +84,7 @@ function EntryView({ entry, accounts, history, reload }: { entry: Entry; account
                 lines: entry.lines.map(({ accountCode, amountCents, note, assetId }) => ({ accountCode, amountCents, note, assetId })),
               }}
               assetNames={assetNames}
+              explain={explainEntry}
               onCancel={() => setEditing(false)}
               onSave={async (body) => {
                 const answer = await api.saveEntry(entry.id, body);

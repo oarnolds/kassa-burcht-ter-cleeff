@@ -3,7 +3,7 @@ import { beforeEach, expect, it } from "vitest";
 import type { PastedAsset } from "../shared/asset-paste";
 import type { Asset, DepreciationPlan, Entry } from "../shared/ledger-types";
 import { importLines, openLines } from "../worker/db/bank";
-import { addPastedAssets, bookDepreciation, depreciationPlan, disposeAsset, listAssets, saveAsset } from "../worker/db/assets";
+import { addPastedAssets, bookDepreciation, defaultDepreciationYear, depreciationPlan, disposeAsset, listAssets, saveAsset } from "../worker/db/assets";
 import { balancesOn, createEntry, getEntry, upsertSourced } from "../worker/db/ledger";
 import { exportAll } from "../worker/db/maintenance";
 import { getOpening, setOpening } from "../worker/db/opening";
@@ -153,6 +153,8 @@ it("books the year's depreciation per asset", async () => {
     ],
     totalCents: 259766,
     booked: false,
+    upToDate: false,
+    laterBooked: null,
   });
 
   const entry = await bookDepreciation(env.DB, 2027, LATER);
@@ -214,7 +216,7 @@ it("makes an asset from a bank line booked on 0130", async () => {
   expect(byName(listed, "Schommel")).toMatchObject({ purchaseDate: "2027-07-15", costCents: 1_200_000, writtenOffCents: 0, bookValueCents: 1_200_000 });
   // Bought in July: six months of 1.200.000 / 10 in the first year.
   const plan = await (await get("/depreciation?year=2027")).json<DepreciationPlan>();
-  expect(plan).toEqual({ year: 2027, rows: [{ assetId: schommel.id, name: "Schommel", cents: 60000 }], totalCents: 60000, booked: false });
+  expect(plan).toEqual({ year: 2027, rows: [{ assetId: schommel.id, name: "Schommel", cents: 60000 }], totalCents: 60000, booked: false, upToDate: false, laterBooked: null });
 
   const other = await bankLine("2027-07-16", -5000, "Bout");
   const unknown = await post(`/bank/lines/${other}/book`, { split: [{ accountCode: "0130", amountCents: 5000, assetId: "nope" }] });
@@ -402,4 +404,91 @@ it("refuses a toestel on a line of another account than 0130 or 0135, and one th
     upsertSourced(env.DB, { date: "2027-03-02", description: "x", source: "kassa_day", sourceRef: "2027-03-02", lines: [{ ...wrong, accountCode: "0135", assetId: "nope" }, other] }, NOW),
   ).rejects.toMatchObject({ code: "asset_unknown", status: 404 });
   expect(await count("ledger_entries WHERE source IN ('manual', 'kassa_day')")).toBe(1);
+});
+
+// Fix round 1: depreciation only in year order, and a disposed toestel's purchase stays as it was.
+
+it("books the depreciation only in year order, so nothing goes past the residual value", async () => {
+  const [straaljager, dome] = await addPastedAssets(env.DB, [STRAALJAGER, DOME], NOW);
+  await saveAsset(env.DB, { id: dome!.id, residualCents: 200000 }, NOW);
+
+  // 2028 before 2027 would take Straaljager's last 474,80 twice.
+  await expect(bookDepreciation(env.DB, 2028, YEAR_AFTER)).rejects.toMatchObject({ code: "depreciation_first", status: 409 });
+  expect(await count("ledger_entries WHERE source = 'depreciation'")).toBe(0);
+  await bookDepreciation(env.DB, 2027, LATER);
+  const year2028 = await bookDepreciation(env.DB, 2028, YEAR_AFTER);
+  expect(year2028.lines.map((line) => [line.accountCode, line.amountCents])).toEqual([
+    ["4601", 212286],
+    ["0135", -212286],
+  ]);
+  expect(byName(await listAssets(env.DB, "9999-12-31"), "Straaljager")).toMatchObject({ writtenOffCents: 949600, bookValueCents: 0 });
+
+  // Booked again unchanged: nothing to refuse.
+  expect((await bookDepreciation(env.DB, 2027, YEAR_AFTER)).lines).toHaveLength(3);
+  expect(await depreciationPlan(env.DB, 2027)).toMatchObject({ booked: true, upToDate: true, laterBooked: 2028 });
+
+  // A residual value changed afterwards: 2027 is stale, and 2028 rests on it.
+  await saveAsset(env.DB, { id: dome!.id, residualCents: 0 }, YEAR_AFTER);
+  expect(await depreciationPlan(env.DB, 2027)).toMatchObject({ booked: true, upToDate: false, laterBooked: 2028 });
+  await expect(bookDepreciation(env.DB, 2027, YEAR_AFTER)).rejects.toMatchObject({ code: "depreciation_later", status: 409 });
+  await expect(bookDepreciation(env.DB, 2028, YEAR_AFTER)).rejects.toMatchObject({ code: "depreciation_first", status: 409 });
+
+  // Emptied from the last year back, then booked again in order.
+  await expect(bookDepreciation(env.DB, 2027, YEAR_AFTER, { empty: true })).rejects.toMatchObject({ code: "depreciation_later", status: 409 });
+  expect((await bookDepreciation(env.DB, 2028, YEAR_AFTER, { empty: true })).lines).toEqual([]);
+  expect((await bookDepreciation(env.DB, 2027, YEAR_AFTER)).lines.map((line) => line.amountCents)).toEqual([47480 + 222286, -47480, -222286]);
+  expect((await bookDepreciation(env.DB, 2028, YEAR_AFTER)).lines.map((line) => line.amountCents)).toEqual([222286, -222286]);
+  expect(await count("ledger_entries WHERE source = 'depreciation'")).toBe(2);
+  expect((await balancesOn(env.DB, "2028-12-31")).get("4601")).toBe(47480 + 222286 + 222286);
+  expect(byName(await listAssets(env.DB, "9999-12-31"), straaljager!.name)).toMatchObject({ writtenOffCents: 949600, bookValueCents: 0 });
+});
+
+it("starts the page at the earliest open year whose depreciation is not booked", async () => {
+  await addPastedAssets(env.DB, [STRAALJAGER, DOME], NOW);
+  const february2028 = new Date("2028-02-01T10:00:00.000Z");
+  expect(await defaultDepreciationYear(env.DB, february2028)).toBe(2027);
+  await bookDepreciation(env.DB, 2027, february2028);
+  expect(await defaultDepreciationYear(env.DB, february2028)).toBe(2028);
+  await bookDepreciation(env.DB, 2028, february2028);
+  expect(await defaultDepreciationYear(env.DB, new Date("2029-06-01T10:00:00.000Z"))).toBe(2029);
+  await closeYear(2027);
+  await env.DB.prepare("UPDATE assets SET residual_cents = 1000").run(); // 2027 is stale but closed: not offered
+  expect(await defaultDepreciationYear(env.DB, february2028)).toBe(2028);
+
+  const res = await post("/depreciation", { year: 2029, empty: "ja" });
+  expect(res.status).toBe(400);
+  const plan = await (await get("/depreciation")).json<DepreciationPlan>();
+  expect(plan.year).toBe(2027);
+});
+
+it("keeps the purchase of a disposed toestel as it was", async () => {
+  const schommel = await saveAsset(env.DB, { name: "Schommel", lifeYears: 10, residualCents: 0 }, NOW);
+  const lineId = await bankLine("2027-07-15", -1_200_000, "Factuur schommel");
+  const bought = await (await post(`/bank/lines/${lineId}/book`, { split: [{ accountCode: "0130", amountCents: 1_200_000, assetId: schommel.id }] })).json<Entry>();
+  await bookDepreciation(env.DB, 2027, LATER);
+  await disposeAsset(env.DB, schommel.id, "2028-03-01", YEAR_AFTER);
+
+  const body = (lines: { accountCode: string; amountCents: number; assetId?: string }[], description = bought.description) => ({ date: bought.date, description, lines });
+  const asBooked = bought.lines.map((line) => ({ accountCode: line.accountCode, amountCents: line.amountCents, ...(line.assetId ? { assetId: line.assetId } : {}) }));
+  for (const changed of [
+    body([{ accountCode: "1010", amountCents: -1_000_000 }, { accountCode: "0130", amountCents: 1_000_000, assetId: schommel.id }]),
+    body([{ accountCode: "1010", amountCents: -1_200_000 }, { accountCode: "0130", amountCents: 1_200_000 }]),
+    body([{ accountCode: "1010", amountCents: -1_200_000 }, { accountCode: "4514", amountCents: 1_200_000 }]),
+  ]) {
+    const res = await put(`/entries/${bought.id}`, changed);
+    expect(res.status, JSON.stringify(changed.lines)).toBe(409);
+    expect(await res.json()).toEqual({ error: "asset_disposed" });
+  }
+  const emptied = await post(`/entries/${bought.id}/empty`);
+  expect(emptied.status).toBe(409);
+  expect(await emptied.json()).toEqual({ error: "asset_disposed" });
+  const rebooked = await post(`/bank/lines/${lineId}/book`, { split: [{ accountCode: "4514", amountCents: 1_200_000 }] });
+  expect(rebooked.status).toBe(409);
+
+  // A new description leaves the purchase as it was.
+  const described = await put(`/entries/${bought.id}`, body(asBooked, "Schommel, afgevoerd in 2028"));
+  expect(described.status).toBe(200);
+  const balances = await balancesOn(env.DB, "2028-12-31");
+  expect(balances.get("0130") ?? 0).toBe(0);
+  expect(balances.get("0135") ?? 0).toBe(0);
 });

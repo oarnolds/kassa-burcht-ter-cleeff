@@ -77,7 +77,8 @@ export const ledgerPath = {
   opening: (year: number) => `${LEDGER}/opening?year=${year}`,
   comparison: (year: number) => `${LEDGER}/comparison?year=${year}`,
   assets: `${LEDGER}/assets`,
-  depreciation: (year: number) => `${LEDGER}/depreciation?year=${year}`,
+  /** Without a year: the plan of the earliest open year still to book. */
+  depreciation: (year?: number | null) => (year == null ? `${LEDGER}/depreciation` : `${LEDGER}/depreciation?year=${year}`),
 };
 
 /** A sentence for a refusal or a failure of a write on these pages. */
@@ -106,6 +107,7 @@ export function explainWrite(status: number, error: string): string {
     asset_line_account: "Een toestel kan alleen op 0130 of 0135 staan.",
     asset_booked_later: "Op dit toestel is na die datum nog geboekt. Kies een latere datum.",
     depreciation_first: "Boek eerst de afschrijving van het jaar ervoor; daarna kan dit toestel worden afgevoerd.",
+    depreciation_later: "Er is al afgeschreven over een later jaar; pas dat eerst aan.",
   };
   return known[error] ?? "Dat is niet gelukt. Probeer het opnieuw.";
 }
@@ -154,7 +156,8 @@ export function useLedgerWrites() {
       patchAsset: (id: string, body: { name?: string; lifeYears?: number; residualCents?: number }): Promise<ApiResult<Asset>> =>
         write(`${LEDGER}/assets/${encodeURIComponent(id)}`, "PATCH", body),
       disposeAsset: (id: string, date: string): Promise<ApiResult<Entry>> => write(`${LEDGER}/assets/${encodeURIComponent(id)}/dispose`, "POST", { date }),
-      bookDepreciation: (year: number): Promise<ApiResult<Entry>> => write(`${LEDGER}/depreciation`, "POST", { year }),
+      /** `empty`: books nothing, to undo a year before one ahead of it is booked again. */
+      bookDepreciation: (year: number, empty = false): Promise<ApiResult<Entry>> => write(`${LEDGER}/depreciation`, "POST", empty ? { year, empty } : { year }),
       createEntry: (body: EntryBody): Promise<ApiResult<Entry>> => write(`${LEDGER}/entries`, "POST", body),
       saveEntry: (id: string, body: EntryBody): Promise<ApiResult<Entry>> => write(`${LEDGER}/entries/${id}`, "PUT", body),
       emptyEntry: (id: string): Promise<ApiResult<Entry>> => write(`${LEDGER}/entries/${id}/empty`, "POST"),

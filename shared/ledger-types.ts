@@ -173,5 +173,16 @@ export type Asset = {
   disposedOn: string | null;
 };
 
-/** What "Afschrijving {jaar} boeken" books: a row per toestel with something to write off. `booked`: the year's entry has lines. */
-export type DepreciationPlan = { year: number; rows: { assetId: string; name: string; cents: number }[]; totalCents: number; booked: boolean };
+/**
+ * What "Afschrijving {jaar} boeken" books: a row per toestel with something to write off. `booked`: the year's entry
+ * has lines; `upToDate`: it books exactly these rows (with nothing to write off, no lines). `laterBooked`: the first
+ * later year whose depreciation has lines, which must be undone before this year can change.
+ */
+export type DepreciationPlan = {
+  year: number;
+  rows: { assetId: string; name: string; cents: number }[];
+  totalCents: number;
+  booked: boolean;
+  upToDate: boolean;
+  laterBooked: number | null;
+};

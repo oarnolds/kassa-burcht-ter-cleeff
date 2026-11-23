@@ -28,6 +28,8 @@ const plan = (extra: Partial<DepreciationPlan> = {}): DepreciationPlan => ({
   ],
   totalCents: 259766,
   booked: false,
+  upToDate: false,
+  laterBooked: null,
   ...extra,
 });
 
@@ -143,19 +145,69 @@ it("shows the depreciation of the year per toestel and books it", async () => {
   expect(rowIn("Afschrijving 2027", "Straaljager").getByText("€ 474,80")).toBeInTheDocument();
   expect(rowIn("Afschrijving 2027", "Dome - Kopan").getByText("€ 2.122,86")).toBeInTheDocument();
   expect(within(section).getByText("Nog niet geboekt.")).toBeInTheDocument();
-  expect(calls("GET").some((call) => call.url === `${base}/depreciation?year=2027`)).toBe(true);
+  expect(calls("GET").some((call) => call.url === `${base}/depreciation`)).toBe(true);
 
   await tap("Afschrijving 2027 boeken");
   await waitFor(() => expect(calls("POST")).toHaveLength(1));
   expect(calls("POST")[0]).toMatchObject({ url: `${base}/depreciation`, body: { year: 2027 } });
   expect(await screen.findByText("Geboekt.")).toBeInTheDocument();
+  // It stays on the year just booked, even when the Worker would now start on the next one.
+  await waitFor(() => expect(calls("GET").some((call) => call.url === `${base}/depreciation?year=2027`)).toBe(true));
 });
 
 it("says when the depreciation of the year is booked already", async () => {
   inDecember2027();
-  open([asset()], { [`${base}/depreciation`]: plan({ booked: true }) });
+  open([asset()], { [`${base}/depreciation`]: plan({ booked: true, upToDate: true }) });
   renderAt(page);
   expect(await screen.findByText("Geboekt op 31-12-2027. Opnieuw boeken vervangt die boeking.")).toBeInTheDocument();
+});
+
+/** The plan the Worker gives for a year; without one, for the earliest open year still to book (here 2027). */
+const plans = (byYear: Record<number, Partial<DepreciationPlan>>) => (req: { url: string }) => {
+  const asked = new URL(req.url, "http://localhost").searchParams.get("year");
+  const year = asked === null ? 2027 : Number(asked);
+  return plan({ year, ...byYear[year] });
+};
+
+it("starts at the earliest year whose depreciation is still to book, in February 2028", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date("2028-02-01T10:00:00.000Z") });
+  open([asset(), dome], { [`${base}/depreciation`]: plans({}) });
+  renderAt(page);
+  expect(await screen.findByRole("region", { name: "Afschrijving 2027" })).toBeInTheDocument();
+  expect(calls("GET").find((call) => call.url.startsWith(`${base}/depreciation`))!.url).toBe(`${base}/depreciation`);
+  expect(screen.getByLabelText("Jaar")).toHaveValue("2027");
+  expect(within(screen.getByLabelText("Jaar")).getAllByRole("option").map((option) => option.textContent)).toEqual(["2027", "2028"]);
+});
+
+it("says to book the year before first, and to undo a later year first", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date("2028-02-01T10:00:00.000Z") });
+  open([asset(), dome], {
+    [`${base}/depreciation`]: plans({ 2027: { booked: true, upToDate: false, laterBooked: 2028 }, 2028: { booked: false } }),
+    [`POST ${base}/depreciation`]: (req: { body: { year: number } }) => [409, { error: req.body.year === 2027 ? "depreciation_later" : "depreciation_first" }],
+  });
+  renderAt(page);
+  await screen.findByRole("region", { name: "Afschrijving 2027" });
+  expect(await screen.findByText("Geboekt op 31-12-2027, maar de bedragen zijn sindsdien veranderd. Opnieuw boeken past dat aan.")).toBeInTheDocument();
+  await tap("Afschrijving 2027 boeken");
+  expect(await screen.findByText("Er is al afgeschreven over 2028; pas dat eerst aan.")).toBeInTheDocument();
+
+  await user().selectOptions(screen.getByLabelText("Jaar"), "2028");
+  await screen.findByRole("region", { name: "Afschrijving 2028" });
+  await tap("Afschrijving 2028 boeken");
+  expect(await screen.findByText("Boek eerst de afschrijving van 2027.")).toBeInTheDocument();
+});
+
+it("empties a year's depreciation after asking", async () => {
+  inDecember2027();
+  open([asset(), dome], { [`${base}/depreciation`]: plan({ booked: true, upToDate: true }), [`POST ${base}/depreciation`]: entry({ source: "depreciation", lines: [] }) });
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  renderAt(page);
+  await tap("Afschrijving 2027 leegmaken");
+  expect(confirm).toHaveBeenCalledWith("De afschrijving van 2027 leegmaken? Daarna kan het jaar ervoor opnieuw worden geboekt.");
+  await waitFor(() => expect(calls("POST")).toHaveLength(1));
+  expect(calls("POST")[0]).toMatchObject({ url: `${base}/depreciation`, body: { year: 2027, empty: true } });
+  expect(await screen.findByText("Leeggemaakt.")).toBeInTheDocument();
+  confirm.mockRestore();
 });
 
 it("disposes of a toestel on a date, after asking once more", async () => {

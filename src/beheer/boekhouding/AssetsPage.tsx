@@ -178,35 +178,65 @@ function DisposeAsset({ asset, onClose, onDone }: { asset: Asset; onClose(): voi
   );
 }
 
-/** "Afschrijving {jaar} boeken": the amount per toestel, booked on 31 December; booking again replaces it. */
-function Depreciation({ year, onYear, plan, onBooked }: { year: number; onYear(year: number): void; plan: AdminData<DepreciationPlan>; onBooked(): void }) {
+/** The state of a year's depreciation, in a sentence. */
+function bookedText(plan: DepreciationPlan): string {
+  if (!plan.booked) return "Nog niet geboekt.";
+  const on = formatDateNl(`${plan.year}-12-31`);
+  return plan.upToDate
+    ? `Geboekt op ${on}. Opnieuw boeken vervangt die boeking.`
+    : `Geboekt op ${on}, maar de bedragen zijn sindsdien veranderd. Opnieuw boeken past dat aan.`;
+}
+
+/**
+ * "Afschrijving {jaar} boeken": the amount per toestel, booked on 31 December; booking again replaces it. Only in
+ * year order: the Worker refuses a year before the one ahead of it is booked, or while a later year is booked;
+ * "leegmaken" undoes a year, from the last one back. `year` is null until the Worker has said where to start.
+ */
+function Depreciation({ year, onYear, plan, onBooked }: { year: number | null; onYear(year: number): void; plan: AdminData<DepreciationPlan>; onBooked(year: number): void }) {
   const api = useLedgerWrites();
   const toast = useToast();
   const [busy, run] = useBusy();
   const [problem, setProblem] = useState<string | null>(null);
+  const shown = year;
+  const options = shown === null || years().includes(shown) ? years() : [...years(), shown].sort();
 
-  const book = () =>
+  const explain = (status: number, error: string, data: DepreciationPlan): string => {
+    if (error === "depreciation_first") return `Boek eerst de afschrijving van ${data.year - 1}.`;
+    if (error === "depreciation_later") return `Er is al afgeschreven over ${data.laterBooked ?? data.year + 1}; pas dat eerst aan.`;
+    return explainWrite(status, error);
+  };
+  const book = (data: DepreciationPlan, empty: boolean) =>
     run(async () => {
       setProblem(null);
-      const answer = await api.bookDepreciation(year);
-      if (!answer.ok) return setProblem(explainWrite(answer.status, answer.error));
-      toast.show("Geboekt.");
-      onBooked();
+      if (empty && !window.confirm(`De afschrijving van ${data.year} leegmaken? Daarna kan het jaar ervoor opnieuw worden geboekt.`)) return;
+      const answer = await api.bookDepreciation(data.year, empty);
+      if (!answer.ok) return setProblem(explain(answer.status, answer.error, data));
+      toast.show(empty ? "Leeggemaakt." : "Geboekt.");
+      onBooked(data.year);
     });
 
   return (
-    <Section title={`Afschrijving ${year}`} note="Lineair, zoals e-Boekhouden het deed: debet 4601, credit 0135, op 31 december.">
+    <Section title={shown === null ? "Afschrijving" : `Afschrijving ${shown}`} note="Lineair, zoals e-Boekhouden het deed: debet 4601, credit 0135, op 31 december.">
       <div className="flex flex-col gap-3 px-2 sm:px-3">
-        <label className="flex flex-wrap items-center gap-2 font-semibold">
-          Jaar
-          <select className={`${field} w-28`} value={year} onChange={(event) => onYear(Number(event.target.value))}>
-            {years().map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
+        {shown !== null && (
+          <label className="flex flex-wrap items-center gap-2 font-semibold">
+            Jaar
+            <select
+              className={`${field} w-28`}
+              value={shown}
+              onChange={(event) => {
+                setProblem(null);
+                onYear(Number(event.target.value));
+              }}
+            >
+              {options.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <Loaded from={plan}>
           {(data) => (
             <>
@@ -232,11 +262,16 @@ function Depreciation({ year, onYear, plan, onBooked }: { year: number; onYear(y
                   </table>
                 </div>
               )}
-              <p className="text-ink/70">{data.booked ? `Geboekt op ${formatDateNl(`${year}-12-31`)}. Opnieuw boeken vervangt die boeking.` : "Nog niet geboekt."}</p>
-              <div>
-                <Button variant="primary" disabled={busy || plan.loading || (data.totalCents === 0 && !data.booked)} onClick={() => void book()}>
-                  {`Afschrijving ${year} boeken`}
+              <p className="text-ink/70">{bookedText(data)}</p>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="primary" disabled={busy || plan.loading || (data.totalCents === 0 && !data.booked)} onClick={() => void book(data, false)}>
+                  {`Afschrijving ${data.year} boeken`}
                 </Button>
+                {data.booked && (
+                  <Button disabled={busy || plan.loading} onClick={() => void book(data, true)}>
+                    {`Afschrijving ${data.year} leegmaken`}
+                  </Button>
+                )}
               </div>
             </>
           )}
@@ -353,7 +388,8 @@ function Paste({ onDone }: { onDone(): void }) {
 /** Toestellen: the list behind 0130 and 0135, its depreciation per year, disposal, and the list taken over from e-Boekhouden. */
 export function AssetsPage() {
   const assets = useAdminData<Asset[]>(ledgerPath.assets);
-  const [year, setYear] = useState(thisYear);
+  // The year chosen; until then the Worker's: the earliest open year still to book. Booking a year stays on it.
+  const [year, setYear] = useState<number | null>(null);
   const plan = useAdminData<DepreciationPlan>(ledgerPath.depreciation(year));
   const [editing, setEditing] = useState<Asset | null>(null);
   const [disposing, setDisposing] = useState<Asset | null>(null);
@@ -404,7 +440,15 @@ export function AssetsPage() {
           }}
         />
       )}
-      <Depreciation year={year} onYear={setYear} plan={plan} onBooked={reload} />
+      <Depreciation
+        year={year ?? plan.data?.year ?? null}
+        onYear={setYear}
+        plan={plan}
+        onBooked={(booked) => {
+          setYear(booked);
+          reload();
+        }}
+      />
       <Paste onDone={reload} />
     </div>
   );

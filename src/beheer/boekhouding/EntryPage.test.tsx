@@ -113,3 +113,23 @@ it("keeps the toestel of a line on 0130 when the entry is changed, and names it"
     ],
   });
 });
+
+it("says that the purchase of a disposed toestel cannot be changed", async () => {
+  const withToestellen = [...accounts, { code: "0130", name: "Speeltoestellen en inventaris", kind: "asset" as const, money: false, hidden: false, formerly: ["0130"] }];
+  const bought = entry({
+    source: "bank",
+    lines: [
+      { accountCode: "1010", amountCents: -41280, note: null, assetId: null },
+      { accountCode: "0130", amountCents: 41280, note: null, assetId: "a9" },
+    ],
+  });
+  open(bought, [], { [`${base}/accounts`]: withToestellen, [`${base}/assets`]: [], [`PUT ${base}/entries/e1`]: [409, { error: "asset_disposed" }] });
+  renderAt(page);
+  await tap("Wijzigen");
+  await user().clear(screen.getByLabelText("Debet regel 2"));
+  await user().type(screen.getByLabelText("Debet regel 2"), "400");
+  await user().clear(screen.getByLabelText("Credit regel 1"));
+  await user().type(screen.getByLabelText("Credit regel 1"), "400");
+  await tap("Opslaan");
+  expect(await screen.findByText("Dit toestel is afgevoerd; de aankoop kan niet meer worden gewijzigd.")).toBeInTheDocument();
+});
