@@ -270,17 +270,15 @@ Wat er via Mollie binnenkomt, volgens een export van de penningmeester (alle bet
 
 **De lijst.** Per toestel: naam, aankoopdatum, aanschafwaarde, restwaarde, levensduur in jaren, en (bij de start) wat er al is afgeschreven. Restwaarde komt voor in de huidige lijst: Dome-Kopan € 2.000, Pizza € 1.000, Banken (mei 2024) de helft.
 
-**De start.** e-Boekhouden heeft een lijst vaste activa (export van 23 november 2026): 31 regels, aanschafwaarde samen € 209.081,20, afgeschreven € 97.333,37, huidige waarde € 111.747,83; 12 toestellen staan op nul. De penningmeester downloadt die lijst opnieuw nadat hij de afschrijving van 2026 in e-Boekhouden heeft geboekt. Die lijst komt in de app; de penningmeester controleert hem in beheer. 0130 en 0135 in de beginbalans zijn de totalen van de lijst. De lijst wijkt af van de balans in e-Boekhouden (op 23 november 2026 € 2.493,70 in boekwaarde; de afschrijving van 2025 is daar rechtstreeks op 0130 geboekt). Dat verschil komt in het uitgerekende eigen vermogen (§9).
-
-Twee regels lijken niet te kloppen en worden bij het overnemen nagekeken door de penningmeester:
-- Stadsbanken (aankoop 11 juni 2018, € 3.968,80): er is maar € 60 af te schrijven; de restwaarde is dan € 3.908,80.
-- Banken (aankoop 1 mei 2024): in 2,5 jaar is € 243,51 afgeschreven.
-
-De export bevat **geen levensduur** per toestel. Die zoekt de penningmeester op in e-Boekhouden, of vult hij zelf in.
+**De start.** De penningmeester gebruikt het overzicht "Vaste activa 2026" uit e-Boekhouden (online, gekopieerd op 23 november 2026). Daarin staat per toestel dat nog waarde heeft: aankoopdatum, aanschafwaarde, afschrijvingen tot 1 januari en in het boekjaar, boekwaarde per 31 december 2026 en "Afschrijven in (jaren)", de levensduur. Op 23 november 2026: 19 toestellen, aanschafwaarde samen € 173.100,20, afschrijving 2026 € 8.556,31 (nog niet geboekt), boekwaarde per 31 december 2026 € 88.331,50. De levensduur is 20 jaar, behalve Poort deel 1, Waterpomp Kleverwoud en Ijsjes vriezer (10) en Fietsjes (8).
+- Nadat hij de afschrijving van 2026 in e-Boekhouden heeft geboekt, kopieert hij dat overzicht opnieuw en plakt het in de app. De app neemt per toestel over: naam, aankoopdatum, aanschafwaarde, afschrijvingen tot en met 31 december 2026 en levensduur. De penningmeester controleert de lijst in beheer.
+- De restwaarde staat niet in dat overzicht. De app zet hem op nul; de penningmeester vult hem in waar hij er een is. Uit de export van 23 november 2026 en de bedragen per jaar volgen: Dome - Kopan € 2.000, Pizza € 1.000, Banken (mei 2024) € 2.922,15 (de helft) en Stadsbanken (11 juni 2018) € 3.908,80. Die laatste lijkt een invoerfout (er wordt maar € 3 per jaar afgeschreven); de penningmeester kijkt hem na.
+- De 12 oude toestellen die al helemaal zijn afgeschreven, staan niet in het overzicht. Ze komen niet in de app: ze hebben geen waarde meer en er wordt niets meer op afgeschreven.
+- 0130 en 0135 in de beginbalans zijn de totalen van de lijst (aanschafwaarde en afschrijvingen tot en met 2026). Dat wijkt af van de balans in e-Boekhouden (daar is onder meer de afschrijving van 2025 rechtstreeks op 0130 geboekt). Het verschil komt in het uitgerekende eigen vermogen (§9).
 
 **Kopen.** Een bankregel voor een nieuw toestel boekt de penningmeester op 0130 en koppelt hem aan een toestel (bestaand, of hij maakt het daar aan). De aanschafwaarde is wat er op 0130 is geboekt voor dat toestel.
 
-**Afschrijven.** Lineair: (aanschafwaarde − restwaarde) gedeeld door de levensduur, per maand. In het jaar van aankoop vanaf de maand van aankoop; een toestel gaat nooit onder zijn restwaarde. Eén knop per jaar, "Afschrijving {jaar} boeken", toont per toestel het bedrag en boekt het totaal op 31 december: debet 4601, credit 0135. Opnieuw drukken in hetzelfde jaar vervangt de boeking (bijvoorbeeld na een nieuw toestel).
+**Afschrijven.** Lineair, zoals e-Boekhouden het nu doet: per jaar (aanschafwaarde − restwaarde) gedeeld door de levensduur in jaren (Straaljager: € 9.496 / 20 = € 474,80). In het jaar van aankoop naar rato van de maanden vanaf de maand van aankoop; in het laatste jaar wat er nog over is; een toestel gaat nooit onder zijn restwaarde. Eén knop per jaar, "Afschrijving {jaar} boeken", toont per toestel het bedrag en boekt het totaal op 31 december: debet 4601, credit 0135. Opnieuw drukken in hetzelfde jaar vervangt de boeking (bijvoorbeeld na een nieuw toestel).
 
 **Afvoeren.** Gaat een toestel weg, dan kiest de penningmeester "Afvoeren" met een datum: de afschrijving tot die maand wordt geboekt, daarna de rest van de boekwaarde naar 4601, en het toestel gaat van 0130 en 0135 af. Een opbrengst (verkoop van een oud toestel) boekt hij op 8040. Toestellen op nul die er niet meer staan, voert hij bij de start in één keer af.
 
@@ -343,8 +341,8 @@ Deze keuzes zijn door de bouwer gemaakt; de penningmeester sprak over uitkomsten
 2. De privésleutel van Enable Banking (het `.pem`-bestand) en het id van de applicatie als Worker-secret zetten, met een opdracht die de bouwer in het handboek zet. De sleutel komt nooit in de chat.
 3. In het Mollie-dashboard een organisatie-toegangssleutel maken met alleen leesrechten (betalingen, terugbetalingen, uitbetalingen, saldi), en die als Worker-secret zetten.
 4. Eén keer de regels instellen voor de betalingen bij Mollie die niet van de kassa komen (welke omschrijving op welke rekening).
-5. 2026 afsluiten in e-Boekhouden, met de afschrijving van 2026. Daarna de eindbalans en de lijst vaste activa downloaden.
-6. De levensduur per toestel opzoeken.
+5. 2026 afsluiten in e-Boekhouden, met de afschrijving van 2026. Daarna de eindbalans downloaden en het overzicht "Vaste activa 2026" kopiëren.
+6. De restwaarde nakijken bij Stadsbanken (11 juni 2018).
 7. In de app: beginbalans, vergelijkingscijfers 2026, lijst speeltoestellen nakijken, ING koppelen.
 8. Elk kwartaal (of vaker) de bankbestanden van de ING-kwartaalrekening en de ASN-rekeningen downloaden en uploaden.
 9. Twee keer per jaar de toestemming van ING vernieuwen.
@@ -367,7 +365,7 @@ Stap 1 en 2 zijn het nuttigst om in januari 2027 te hebben; de rest kan later in
 
 Niet met de penningmeester besproken; kunnen worden teruggedraaid:
 - Boekingen zijn aan te passen zolang het jaar open is, met geschiedenis. Reden: een volgnummer met tegenboekingen voor elke tikfout maakt het jaaroverzicht onleesbaar voor de kascommissie.
-- Afschrijving per maand, in het aankoopjaar vanaf de maand van aankoop.
+- Afschrijving per jaar zoals e-Boekhouden, in het aankoopjaar naar rato van de maanden vanaf de aankoopmaand.
 - Kasverschillen op een eigen rekening 4515.
 - De uitbetaling van Mollie wordt geboekt op het moment dat hij op ING binnenkomt, niet wanneer Mollie hem aanmaakt.
 - Dubbele bankregels worden herkend aan datum, bedrag, omschrijving en tegenpartij als er geen bankreferentie is.
