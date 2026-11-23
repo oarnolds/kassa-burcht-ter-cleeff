@@ -1,11 +1,12 @@
 import { useState } from "react";
-import type { BalanceReport, ResultReport } from "../../../shared/ledger-types";
+import { Link } from "react-router";
+import type { BalanceReport, MultiYearReport, ResultReport } from "../../../shared/ledger-types";
 import { formatEuro } from "../../../shared/money";
 import { Button } from "../../ui/Button";
-import { Loaded, PageTitle, Section, amount, amountHead, cell, field, head, table, tableScroll, today } from "../parts";
+import { Loaded, PageTitle, Section, amount, amountHead, cell, field, head, table, tableScroll, textLink, today } from "../parts";
 import { useAdminData } from "../useAdmin";
 import { AccountLinesPanel } from "./AccountLinesPanel";
-import { ledgerPath } from "./ledger-api";
+import { EARLIER_YEARS_ROUTE, FIRST_LEDGER_YEAR, ledgerPath } from "./ledger-api";
 
 const label = "flex flex-col gap-1 font-semibold";
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -164,11 +165,82 @@ function ResultView() {
   );
 }
 
-function FragmentRows({ title, children }: { title: string; children: React.ReactNode }) {
+/**
+ * The result per account with a column per year: the earlier years read from e-Boekhouden (marked so in the header)
+ * next to every year of the books. Only the result: an earlier year has no balance in the app.
+ */
+function MultiYearView() {
+  const report = useAdminData<MultiYearReport>(ledgerPath.multiYear);
+  const cellOf = (cents: number | null, key: number) => (
+    <td key={key} className={amount}>
+      {cents === null ? "" : formatEuro(cents)}
+    </td>
+  );
+  return (
+    <Loaded from={report}>
+      {(data) => (
+        <Section title="Winst en verlies per jaar" note={`De jaren vóór ${FIRST_LEDGER_YEAR} komen uit e-Boekhouden en zijn alleen om te vergelijken.`}>
+          <div className={tableScroll}>
+            <table className={table}>
+              <thead>
+                <tr>
+                  <th className={head}>Rekening</th>
+                  {data.years.map((year) => (
+                    <th key={year} className={`${amountHead} align-bottom`}>
+                      {year < FIRST_LEDGER_YEAR ? (
+                        <>
+                          {`${year} `}
+                          <span className="block text-xs font-normal">uit e-Boekhouden</span>
+                        </>
+                      ) : (
+                        year
+                      )}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(
+                  [
+                    ["Opbrengsten", "income"],
+                    ["Kosten", "expense"],
+                  ] as const
+                ).map(([title, kind]) => (
+                  <FragmentRows key={kind} title={title} span={data.years.length + 1}>
+                    {data.rows
+                      .filter((row) => row.kind === kind)
+                      .map((row) => (
+                        <tr key={row.code} className="border-t border-sand">
+                          <td className={cell}>{`${row.code} ${row.name}`}</td>
+                          {row.cents.map((cents, i) => cellOf(cents, data.years[i]!))}
+                        </tr>
+                      ))}
+                  </FragmentRows>
+                ))}
+                <tr className="border-t-2 border-ink/30 font-bold">
+                  <td className={cell}>Resultaat</td>
+                  {data.results.map((cents, i) => cellOf(cents, data.years[i]!))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-3 px-2 text-ink/70 sm:px-3">
+            {"Een eerder jaar erbij: "}
+            <Link to={EARLIER_YEARS_ROUTE} className={textLink}>
+              Eerdere jaren
+            </Link>
+          </p>
+        </Section>
+      )}
+    </Loaded>
+  );
+}
+
+function FragmentRows({ title, span = 3, children }: { title: string; span?: number; children: React.ReactNode }) {
   return (
     <>
       <tr>
-        <th colSpan={3} scope="colgroup" className="px-1.5 pt-4 pb-1 text-left text-sm font-bold text-ink/70 sm:px-3">
+        <th colSpan={span} scope="colgroup" className="px-1.5 pt-4 pb-1 text-left text-sm font-bold text-ink/70 sm:px-3">
           {title}
         </th>
       </tr>
@@ -177,21 +249,24 @@ function FragmentRows({ title, children }: { title: string; children: React.Reac
   );
 }
 
-/** The balance on a date and the result over a period, with a way into the lines of an account. */
+/** The balance on a date, the result over a period with a way into the lines of an account, and the result per year. */
 export function ReportsLedgerPage() {
-  const [view, setView] = useState<"balance" | "result">("balance");
+  const [view, setView] = useState<"balance" | "result" | "years">("balance");
   return (
     <div>
       <PageTitle>Rapporten</PageTitle>
-      <div className="mt-4 flex gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         <Button variant={view === "balance" ? "primary" : "secondary"} aria-pressed={view === "balance"} onClick={() => setView("balance")}>
           Balans
         </Button>
         <Button variant={view === "result" ? "primary" : "secondary"} aria-pressed={view === "result"} onClick={() => setView("result")}>
           Winst en verlies
         </Button>
+        <Button variant={view === "years" ? "primary" : "secondary"} aria-pressed={view === "years"} onClick={() => setView("years")}>
+          Meerjarenoverzicht
+        </Button>
       </div>
-      {view === "balance" ? <BalanceView /> : <ResultView />}
+      {view === "balance" ? <BalanceView /> : view === "result" ? <ResultView /> : <MultiYearView />}
     </div>
   );
 }

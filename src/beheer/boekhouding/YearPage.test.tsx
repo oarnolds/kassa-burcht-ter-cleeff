@@ -73,6 +73,7 @@ it("shows each year with its status, the checks of an open year, the history and
   expect(y2027.getByRole("link", { name: "Jaaroverzicht" })).toHaveAttribute("href", "/beheer/boekhouding/jaar/2027/afdruk");
 
   expect(screen.getByRole("link", { name: "Beginbalans" })).toHaveAttribute("href", "/beheer/boekhouding/beginbalans");
+  expect(screen.getByRole("link", { name: "Eerdere jaren" })).toHaveAttribute("href", "/beheer/boekhouding/eerdere-jaren");
   expect(screen.getByRole("link", { name: "Vergelijkingscijfers 2026" })).toHaveAttribute("href", "/beheer/boekhouding/vergelijking");
   expect(screen.getByRole("link", { name: "Toestellen (afschrijving)" })).toHaveAttribute("href", "/beheer/boekhouding/toestellen");
 });

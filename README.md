@@ -178,11 +178,11 @@ Het meeste boekt de app zelf, elke nacht: de omzet van de kassa, de afdrachten v
 - **Overzicht.** Hoeveel regels er te boeken zijn. Per geldrekening het saldo in de boekhouding naast het saldo bij de bank; een verschil staat er in rood, met hoeveel regels daarvan nog te boeken zijn. Tot wanneer ING gekoppeld is, en het resultaat van dit jaar tot nu toe. Met **Nu bijwerken** doet de app meteen wat hij anders 's nachts doet.
 - **Te boeken.** De bankregels die op jou wachten. Per bankrekening staat er de knop **Bankbestand inlezen**, en met **Regel intypen** zet je er zelf een regel bij (met een datum tot en met vandaag).
 - **Boekingen.** Alle boekingen van een jaar. Zoeken kan op datum, rekening, bedrag of tekst. Hier maak je een **Nieuwe boeking**, bijvoorbeeld voor kosten die aan het eind van het jaar nog betaald moeten worden.
-- **Rapporten.** De **Balans** op een datum en **Winst en verlies** over een periode, naast hetzelfde jaar ervoor. Tik op een rekening om de regels ervan te zien.
+- **Rapporten.** De **Balans** op een datum en **Winst en verlies** over een periode, naast hetzelfde jaar ervoor. Tik op een rekening om de regels ervan te zien. Het **Meerjarenoverzicht** zet de winst-en-verliesrekening van alle jaren naast elkaar, ook de jaren uit e-Boekhouden.
 - **Mollie.** Per maand de pin van de kassa naast die van Mollie, de betalingen via de website en de QR-code, de kosten en het saldo.
 - **Toestellen.** De speeltoestellen en de inventaris, de afschrijving per jaar, en afvoeren.
-- **Jaar.** Per jaar de controles, **Jaar afsluiten**, heropenen, en het jaaroverzicht.
-- **Instellingen.** De rekeningen, per geldrekening het kenmerk en de bron, ING automatisch, de omzet van de kassa, de regels voor Mollie, en onder **Eenmalig** de schermen voor de eerste keer: **Beginbalans** en **Vergelijkingscijfers 2026**.
+- **Jaar.** Per jaar de controles, **Jaar afsluiten**, heropenen, en het jaaroverzicht. Bovenaan ook **Eerdere jaren**: de jaren uit e-Boekhouden.
+- **Instellingen.** De rekeningen, per geldrekening het kenmerk en de bron, ING automatisch, de omzet van de kassa, de regels voor Mollie, en onder **Eenmalig** de schermen voor de eerste keer: **Beginbalans**, **Eerdere jaren** en **Vergelijkingscijfers 2026**.
 
 Op het gewone **Overzicht** van beheer staat een regel zodra er iets te boeken is, een saldo afwijkt, de toestemming van ING bijna afloopt, een deel van de nachtelijke taak niet lukte, de boekhouding langer dan anderhalve dag niet is bijgewerkt, of de kas afwijkt van wat er volgens de kassa in het kluisje hoort.
 
@@ -201,9 +201,21 @@ Doe dit in januari 2027, nadat je 2026 in e-Boekhouden hebt afgesloten, met de a
    - **1080 Kruisposten.** Een uitbetaling van Mollie uit december 2026 die pas in januari op ING binnenkomt, is op 31 december geld onderweg. Zet dat bedrag op 1080. Als hij in januari binnenkomt, staat hij in **Te boeken** met de melding "Uitbetaling … is van … (2026): boek hem tegen 1080 Kruisposten …". Boek hem dan op **1080 Kruisposten**.
 
    Het eigen vermogen (1400) rekent de app zelf uit. Typ ter vergelijking het eigen vermogen uit e-Boekhouden in; de app laat het verschil zien. 0130 en 0135 vult de app zelf zodra de toestellen erin staan (stap 7).
-6. **Instellingen → Vergelijkingscijfers 2026.** Typ per rekening het totaal van 2026 uit e-Boekhouden en tik op **Opslaan**. Laat leeg wat nul is. Bij een rekening staat welke oude rekeningen erin zijn opgegaan. Zo staat 2026 in de rapporten naast 2027.
+6. **Instellingen → Vergelijkingscijfers 2026.** Typ per rekening het totaal van 2026 uit e-Boekhouden en tik op **Opslaan**. Laat leeg wat nul is. Bij een rekening staat welke oude rekeningen erin zijn opgegaan. Zo staat 2026 in de rapporten naast 2027. Sneller: lees de winst-en-verliesrekening van 2026 in onder **Eerdere jaren** (zie hieronder) en kijk hier daarna na.
 7. **Toestellen.** Boek eerst de afschrijving van 2026 in e-Boekhouden. Kopieer daarna in e-Boekhouden het overzicht **Vaste activa 2026**, plak het bij **Plakken uit e-Boekhouden** en tik op **Overnemen**. Kijk na wat er is gelezen en wat er is overgeslagen. De restwaarde staat niet in dat overzicht: vul hem met **Wijzigen** in bij Dome - Kopan (€ 2.000), Pizza (€ 1.000) en Banken van mei 2024 (€ 2.922,15, de helft), zoals in e-Boekhouden. Kijk de Stadsbanken van 11 juni 2018 na: uit e-Boekhouden volgt een restwaarde van € 3.908,80 (er wordt maar € 3 per jaar afgeschreven), wat op een invoerfout lijkt.
 8. **ING koppelen**: zie "ING automatisch" hieronder.
+
+### Eerdere jaren
+
+De winst-en-verliesrekening van jaren vóór 2027 (bijvoorbeeld 2020 tot en met 2026) kan naast de jaren van de app staan. Die cijfers zijn alleen om te vergelijken: ze worden niet geboekt en staan niet in de balans of in de jaarafsluiting.
+
+1. Maak in e-Boekhouden bij **Rapportages → Winst & verlies** het overzicht van een heel jaar (1 januari tot en met 31 december) en exporteer het naar Excel. Elk jaar is een eigen bestand.
+2. Ga naar **Jaar → Eerdere jaren** (of **Instellingen → Eenmalig → Eerdere jaren**), tik op **W&V uit e-Boekhouden inlezen** en kies het bestand.
+3. De app laat het jaar zien en per rekening van de app het bedrag. Bij een rekening staat welke oude rekeningen erin zijn opgegaan, bijvoorbeeld "was 4302 en 4303". Daaronder staan de totalen en, als het bestand die heeft, de regel "Volgens e-Boekhouden: Saldo winst € …".
+4. Onder **Niet geplaatst** staan de regels die bij geen rekening van de app horen, zoals **9999 Eindresultaat** of een vervallen rekening als 4311. Laat 9999 Eindresultaat meestal op **Niet meenemen**: in e-Boekhouden maakt die regel het Saldo winst hoger dan het echte resultaat. Hoort een andere regel wel ergens bij, kies dan de rekening. De totalen rekenen meteen mee.
+5. Tik op **Overnemen**. Staat het jaar er al, dan zegt de app dat eerst: overnemen vervangt die cijfers.
+
+Onder **Ingelezen jaren** staan per jaar de opbrengsten, de kosten en het resultaat. Met **Bekijken of wijzigen** zie je de cijfers per rekening en kun je er een verbeteren. Alle jaren naast elkaar staan onder **Rapporten → Meerjarenoverzicht**, met "uit e-Boekhouden" boven de eerdere jaren. Een bestand van 2027 of later leest de app niet in: die jaren staan in de boekhouding zelf.
 
 ### Elke week of elke maand
 

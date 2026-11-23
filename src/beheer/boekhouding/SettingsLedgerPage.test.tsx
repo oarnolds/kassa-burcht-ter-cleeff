@@ -142,9 +142,10 @@ it("shows which kassa category goes to which account", async () => {
   expect(await screen.findByText("Opgeslagen.")).toBeInTheDocument();
 });
 
-it("links to the opening balance and the 2026 figures", async () => {
+it("links to the opening balance, the earlier years and the 2026 figures", async () => {
   await open();
   expect(screen.getByRole("link", { name: "Beginbalans" })).toHaveAttribute("href", "/beheer/boekhouding/beginbalans");
+  expect(screen.getByRole("link", { name: "Eerdere jaren" })).toHaveAttribute("href", "/beheer/boekhouding/eerdere-jaren");
   expect(screen.getByRole("link", { name: "Vergelijkingscijfers 2026" })).toHaveAttribute("href", "/beheer/boekhouding/vergelijking");
   void tap;
 });

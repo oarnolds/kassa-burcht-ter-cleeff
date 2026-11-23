@@ -4,6 +4,7 @@
 export { AssetsPage } from "./AssetsPage";
 export { BankReturnPage } from "./BankReturnPage";
 export { ComparisonPage } from "./ComparisonPage";
+export { EarlierYearsPage } from "./EarlierYearsPage";
 export { EntriesPage } from "./EntriesPage";
 export { EntryPage } from "./EntryPage";
 export { MolliePage } from "./MolliePage";

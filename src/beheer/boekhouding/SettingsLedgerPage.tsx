@@ -7,7 +7,7 @@ import { Button } from "../../ui/Button";
 import { useToast } from "../../ui/Toast";
 import { Loaded, PageTitle, Problem, Section, field, textLink } from "../parts";
 import { useAdminData } from "../useAdmin";
-import { explainWrite, ledgerPath, useLedgerWrites, type CategoryAccount } from "./ledger-api";
+import { EARLIER_YEARS_ROUTE, explainWrite, ledgerPath, useLedgerWrites, type CategoryAccount } from "./ledger-api";
 
 const label = "flex flex-col gap-1 font-semibold";
 const kindName: Record<AccountKind, string> = { asset: "bezit", liability: "schuld", equity: "vermogen", expense: "kosten", income: "opbrengst" };
@@ -399,6 +399,11 @@ export function SettingsLedgerPage() {
           <li>
             <Link to="/beheer/boekhouding/beginbalans" className={textLink}>
               Beginbalans
+            </Link>
+          </li>
+          <li>
+            <Link to={EARLIER_YEARS_ROUTE} className={textLink}>
+              Eerdere jaren
             </Link>
           </li>
           <li>

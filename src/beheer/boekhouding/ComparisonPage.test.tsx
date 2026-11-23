@@ -68,3 +68,27 @@ it("shows no 'was' for an account without old numbers", async () => {
   await screen.findByLabelText("Nieuw");
   expect(screen.queryByText(/^was/)).not.toBeInTheDocument();
 });
+
+it("takes the year from the address", async () => {
+  mockLoggedIn();
+  mockApi({
+    [`${base}/accounts`]: accounts,
+    [`${base}/comparison`]: { year: 2025, figures: [{ accountCode: "4302", amountCents: 483948 }] },
+    [`PUT ${base}/comparison`]: { year: 2025, figures: [] },
+  });
+  renderAt("/beheer/boekhouding/vergelijking?jaar=2025");
+  expect(await screen.findByRole("heading", { name: "Cijfers 2025" })).toBeInTheDocument();
+  expect(screen.getByText("Wat e-Boekhouden over 2025 laat zien, per rekening. Laat leeg wat nul is.")).toBeInTheDocument();
+  expect(await screen.findByLabelText("Gebouw en inventaris")).toHaveValue("4839,48");
+  expect(calls("GET").some((c) => c.url === `${base}/comparison?year=2025`)).toBe(true);
+  await tap("Opslaan");
+  await waitFor(() => expect(calls("PUT").map((c) => c.url)).toEqual([`${base}/comparison?year=2025`]));
+});
+
+it("says from 2027 on the figures are in the books themselves", async () => {
+  mockLoggedIn();
+  mockApi({ [`${base}/accounts`]: accounts, [`${base}/comparison`]: { year: 2027, figures: [] } });
+  renderAt("/beheer/boekhouding/vergelijking?jaar=2027");
+  expect(await screen.findByText("Vanaf 2027 staan de cijfers in de boekhouding zelf.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Opslaan" })).not.toBeInTheDocument();
+});

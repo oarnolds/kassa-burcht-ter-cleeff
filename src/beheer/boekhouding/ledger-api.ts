@@ -18,7 +18,7 @@ import type {
   MollieRule,
   NightlyReport,
 } from "../../../shared/ledger-types";
-import { YEAR_PAGE } from "../../../shared/ledger-types";
+import { LEDGER_START, YEAR_PAGE } from "../../../shared/ledger-types";
 import type { ApiResult } from "../../lib/api";
 import { useAdminWrite } from "../useAdmin";
 
@@ -53,6 +53,16 @@ export type EntryFilter = { year: number; from?: string; to?: string; account?: 
 /** The page of one entry. */
 export const entryRoute = (id: string): string => `/beheer/boekhouding/boekingen/${id}`;
 
+/** The page "Eerdere jaren": the years read from e-Boekhouden, and reading another. */
+export const EARLIER_YEARS_ROUTE = "/beheer/boekhouding/eerdere-jaren";
+/** The page with the comparison figures of one year before the books, to see or change them. */
+export const comparisonRoute = (year: number): string => `/beheer/boekhouding/vergelijking?jaar=${year}`;
+
+/** The first year the app keeps the books; the years before it are comparison figures only. */
+export const FIRST_LEDGER_YEAR = Number(LEDGER_START.slice(0, 4));
+/** Why a year from FIRST_LEDGER_YEAR on takes no comparison figures. */
+export const FROM_LEDGER = `Vanaf ${FIRST_LEDGER_YEAR} staan de cijfers in de boekhouding zelf.`;
+
 const query = (pairs: Record<string, string | number | undefined>): string => {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(pairs)) if (value !== undefined && value !== "") params.set(key, String(value));
@@ -79,6 +89,10 @@ export const ledgerPath = {
   mollieMonth: (month: string) => `${LEDGER}/mollie/month?month=${month}`,
   opening: (year: number) => `${LEDGER}/opening?year=${year}`,
   comparison: (year: number) => `${LEDGER}/comparison?year=${year}`,
+  /** Every year with comparison figures, with its income, costs and result. */
+  comparisonYears: `${LEDGER}/comparison/years`,
+  /** The result per account, a column per year: the earlier years from e-Boekhouden and every year of the books. */
+  multiYear: `${LEDGER}/reports/years`,
   assets: `${LEDGER}/assets`,
   /** Without a year: the plan of the earliest open year still to book. */
   depreciation: (year?: number | null) => (year == null ? `${LEDGER}/depreciation` : `${LEDGER}/depreciation?year=${year}`),
@@ -124,6 +138,7 @@ export function explainWrite(status: number, error: string): string {
     enable_banking_off: "De koppeling met Enable Banking is nog niet ingesteld (de sleutel ontbreekt).",
     identifier_missing: "Vul eerst het kenmerk (IBAN) van ING betaal in.",
     invalid: "Controleer de invoer en probeer het opnieuw.",
+    not_comparison_year: FROM_LEDGER,
     depreciation_booked: "De afschrijving is al geboekt. De lijst uit e-Boekhouden kan niet meer worden vervangen.",
     asset_linked: "Er is al op een toestel uit de lijst geboekt. De lijst uit e-Boekhouden kan niet meer worden vervangen.",
     asset_disposed: "Dit toestel is al afgevoerd.",

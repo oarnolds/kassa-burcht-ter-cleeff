@@ -5,7 +5,7 @@ import { Button } from "../../ui/Button";
 import { useToast } from "../../ui/Toast";
 import { Loaded, PageTitle, Problem, Section, field, pillLink, textLink, today } from "../parts";
 import { useAdminData } from "../useAdmin";
-import { explainWrite, ledgerPath, useLedgerWrites } from "./ledger-api";
+import { EARLIER_YEARS_ROUTE, explainWrite, ledgerPath, useLedgerWrites } from "./ledger-api";
 import { useBusy } from "./useBusy";
 import { CHECK_NAMES, dayOf } from "./year-labels";
 import { YearExportButtons } from "./YearExportButtons";
@@ -169,6 +169,9 @@ export function YearPage() {
       <p className="mt-3 flex flex-wrap gap-3">
         <Link to="/beheer/boekhouding/beginbalans" className={pillLink}>
           Beginbalans
+        </Link>
+        <Link to={EARLIER_YEARS_ROUTE} className={pillLink}>
+          Eerdere jaren
         </Link>
         <Link to="/beheer/boekhouding/vergelijking" className={pillLink}>
           Vergelijkingscijfers 2026

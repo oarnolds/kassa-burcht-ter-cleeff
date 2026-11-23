@@ -22,6 +22,7 @@ const ledgerPage = (name: keyof LedgerPages) => lazy(() => import("./beheer/boek
 const AssetsPage = ledgerPage("AssetsPage");
 const BankReturnPage = ledgerPage("BankReturnPage");
 const ComparisonPage = ledgerPage("ComparisonPage");
+const EarlierYearsPage = ledgerPage("EarlierYearsPage");
 const EntriesPage = ledgerPage("EntriesPage");
 const EntryPage = ledgerPage("EntryPage");
 const MolliePage = ledgerPage("MolliePage");
@@ -70,6 +71,7 @@ export function AppRoutes() {
           <Route path="instellingen" element={<SettingsLedgerPage />} />
           <Route path="beginbalans" element={<OpeningPage />} />
           <Route path="vergelijking" element={<ComparisonPage />} />
+          <Route path="eerdere-jaren" element={<EarlierYearsPage />} />
         </Route>
         <Route
           path="bank"

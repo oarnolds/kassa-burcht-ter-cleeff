@@ -1,6 +1,6 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { expect, it } from "vitest";
-import { calls, mockApi, mockLoggedIn, renderAt, tap, user } from "../../test-utils";
+import { calls, mockApi, mockLoggedIn, renderAt, rowIn, tap, user } from "../../test-utils";
 import { base } from "./ledger-test-data";
 
 const result = {
@@ -61,4 +61,35 @@ it("shows the balance on a date", async () => {
   renderAt("/beheer/boekhouding/rapporten");
   expect(await screen.findByRole("button", { name: /1010 ING betaalrekening/ })).toBeInTheDocument();
   expect(screen.getByText("Resultaat nog niet geboekt")).toBeInTheDocument();
+});
+
+it("lays the years next to each other in the Meerjarenoverzicht, the earlier years marked as from e-Boekhouden", async () => {
+  mockLoggedIn();
+  mockApi({
+    [`${base}/reports/years`]: {
+      years: [2024, 2025, 2027],
+      rows: [
+        { code: "4301", name: "Huur", kind: "expense", cents: [120000, null, 130000] },
+        { code: "8010", name: "Verhuur", kind: "income", cents: [50000, 60000, 70000] },
+      ],
+      results: [-70000, 60000, -60000],
+    },
+  });
+  renderAt("/beheer/boekhouding/rapporten");
+  await tap("Meerjarenoverzicht");
+  expect(await screen.findByRole("columnheader", { name: "2024 uit e-Boekhouden" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "2025 uit e-Boekhouden" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "2027" })).toBeInTheDocument();
+  const cells = (row: string) =>
+    rowIn("Winst en verlies per jaar", row)
+      .getAllByRole("cell")
+      .map((cell: HTMLElement) => cell.textContent!.replace(/\s+/g, " "));
+  expect(cells("4301 Huur")).toEqual(["4301 Huur", "€ 1.200,00", "", "€ 1.300,00"]);
+  expect(cells("8010 Verhuur")).toEqual(["8010 Verhuur", "€ 500,00", "€ 600,00", "€ 700,00"]);
+  expect(cells("Resultaat")).toEqual(["Resultaat", "-€ 700,00", "€ 600,00", "-€ 600,00"]);
+  // Income first, then costs, as in the result.
+  const rows = within(screen.getByRole("region", { name: "Winst en verlies per jaar" }))
+    .getAllByRole("row")
+    .map((row) => row.firstElementChild!.textContent);
+  expect(rows.slice(1)).toEqual(["Opbrengsten", "8010 Verhuur", "Kosten", "4301 Huur", "Resultaat"]);
 });
