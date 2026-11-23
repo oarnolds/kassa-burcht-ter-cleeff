@@ -148,3 +148,75 @@ it("types a bank line by hand", async () => {
     body: { accountCode: "1020", date: "2027-02-03", amountCents: -1250, description: "Pinkosten" },
   });
 });
+
+const withToestellen = [...accounts, { code: "0130", name: "Speeltoestellen en inventaris", kind: "asset" as const, money: false, hidden: false, formerly: ["0130"] }];
+const toestel = { id: "a1", name: "Straaljager", purchaseDate: "2008-01-01", costCents: 949600, residualCents: 0, lifeYears: 20, writtenOffCents: 902120, bookValueCents: 47480, disposedOn: null };
+const gone = { ...toestel, id: "a0", name: "Oude wip", disposedOn: "2027-01-10" };
+
+it("makes a new toestel when a line is booked on 0130, and books the line with it", async () => {
+  open([bankLine({ suggestion: null })], {
+    [`${base}/accounts`]: withToestellen,
+    [`${base}/assets`]: [toestel, gone],
+    [`POST ${base}/assets`]: [201, { ...toestel, id: "a9", name: "Schommel", purchaseDate: null, costCents: 0, writtenOffCents: 0, bookValueCents: 0 }],
+    [`POST ${base}/bank/lines/l1/book`]: entry(),
+  });
+  renderAt(page);
+  const row = within(await screen.findByRole("listitem", { name: /Goodoo BV/ }));
+  expect(row.queryByLabelText("Toestel")).not.toBeInTheDocument();
+  await user().selectOptions(row.getByRole("combobox", { name: "Rekening" }), "0130");
+  const pick = await row.findByRole("combobox", { name: "Toestel" });
+  await waitFor(() => expect(within(pick).getByRole("option", { name: "Straaljager" })).toBeInTheDocument());
+  expect(within(pick).queryByRole("option", { name: "Oude wip" })).not.toBeInTheDocument();
+  expect(row.getByRole("button", { name: "Boeken" })).toBeDisabled();
+
+  await user().selectOptions(pick, "Nieuw toestel");
+  await user().type(row.getByLabelText("Naam van het toestel"), "Schommel");
+  await user().type(row.getByLabelText("Levensduur in jaren"), "10");
+  await user().type(row.getByLabelText("Restwaarde"), "50");
+  await user().click(row.getByRole("button", { name: "Boeken" }));
+  await waitFor(() => expect(calls("POST")).toHaveLength(2));
+  expect(calls("POST")[0]).toMatchObject({ url: `${base}/assets`, body: { name: "Schommel", lifeYears: 10, residualCents: 5000 } });
+  expect(calls("POST")[1]).toMatchObject({ url: `${base}/bank/lines/l1/book`, body: { split: [{ accountCode: "0130", amountCents: 41280, assetId: "a9" }] } });
+});
+
+it("books a line on 0130 for a toestel that is already in the list", async () => {
+  open([bankLine({ suggestion: "0130" })], {
+    [`${base}/accounts`]: withToestellen,
+    [`${base}/assets`]: [toestel],
+    [`POST ${base}/bank/lines/l1/book`]: entry(),
+  });
+  renderAt(page);
+  const row = within(await screen.findByRole("listitem", { name: /Goodoo BV/ }));
+  const pick = await row.findByRole("combobox", { name: "Toestel" });
+  await waitFor(() => expect(within(pick).getByRole("option", { name: "Straaljager" })).toBeInTheDocument());
+  await user().selectOptions(pick, "Straaljager");
+  await user().click(row.getByRole("button", { name: "Boeken" }));
+  await waitFor(() => expect(calls("POST")).toHaveLength(1));
+  expect(calls("POST")[0]).toMatchObject({ url: `${base}/bank/lines/l1/book`, body: { split: [{ accountCode: "0130", amountCents: 41280, assetId: "a1" }] } });
+});
+
+it("splits a line over a toestel on 0130 and another account", async () => {
+  open([bankLine({ suggestion: null })], {
+    [`${base}/accounts`]: withToestellen,
+    [`${base}/assets`]: [toestel],
+    [`POST ${base}/bank/lines/l1/book`]: entry(),
+  });
+  renderAt(page);
+  await tap("Verdelen");
+  await user().selectOptions(screen.getByLabelText("Rekening 1"), "0130");
+  await user().type(screen.getByLabelText("Bedrag 1"), "300");
+  await user().selectOptions(screen.getByLabelText("Rekening 2"), "4514");
+  await user().type(screen.getByLabelText("Bedrag 2"), "112,80");
+  expect(screen.getByRole("button", { name: "Boeken" })).toBeDisabled();
+  const pick = await screen.findByRole("combobox", { name: "Toestel 1" });
+  await waitFor(() => expect(within(pick).getByRole("option", { name: "Straaljager" })).toBeInTheDocument());
+  await user().selectOptions(pick, "Straaljager");
+  await tap("Boeken");
+  await waitFor(() => expect(calls("POST")).toHaveLength(1));
+  expect(calls("POST")[0]!.body).toEqual({
+    split: [
+      { accountCode: "0130", amountCents: 30000, assetId: "a1" },
+      { accountCode: "4514", amountCents: 11280 },
+    ],
+  });
+});

@@ -1,10 +1,12 @@
 // The one place that knows the boekhouding's paths and body shapes (they follow the zod schemas in
-// worker/routes/admin-ledger.ts, admin-ledger-bank.ts and admin-ledger-mollie.ts). Reads: a path for `useAdminData`. Writes: `useLedgerWrites`.
+// worker/routes/admin-ledger.ts, admin-ledger-bank.ts, admin-ledger-mollie.ts and admin-ledger-assets.ts). Reads: a path for `useAdminData`. Writes: `useLedgerWrites`.
 
 import { useMemo } from "react";
+import type { PastedAsset } from "../../../shared/asset-paste";
 import type { CamtStatement } from "../../../shared/camt";
 import type {
   AccountKind,
+  Asset,
   Attachment,
   BankLine,
   ConsentState,
@@ -30,9 +32,13 @@ export type Opening = {
   equityCents: number;
   eBoekhoudenEquityCents: number | null;
   expectedCashCents: number;
+  /** 0130 and 0135 are the totals of the toestellen pasted from e-Boekhouden, not typed. */
+  fromAssetList: boolean;
 };
 
 export type Figure = { accountCode: string; amountCents: number };
+/** A part of a booked bank line; on 0130 it names the toestel it buys. */
+export type SplitPart = Figure & { assetId?: string };
 export type Comparison = { year: number; figures: Figure[] };
 
 /** What the entry form sends: the lines add up to zero, debit positive. */
@@ -70,6 +76,8 @@ export const ledgerPath = {
   mollieMonth: (month: string) => `${LEDGER}/mollie/month?month=${month}`,
   opening: (year: number) => `${LEDGER}/opening?year=${year}`,
   comparison: (year: number) => `${LEDGER}/comparison?year=${year}`,
+  assets: `${LEDGER}/assets`,
+  depreciation: (year: number) => `${LEDGER}/depreciation?year=${year}`,
 };
 
 /** A sentence for a refusal or a failure of a write on these pages. */
@@ -90,6 +98,13 @@ export function explainWrite(status: number, error: string): string {
     enable_banking_off: "De koppeling met Enable Banking is nog niet ingesteld (de sleutel ontbreekt).",
     identifier_missing: "Vul eerst het kenmerk (IBAN) van ING betaal in.",
     invalid: "Controleer de invoer en probeer het opnieuw.",
+    depreciation_booked: "De afschrijving is al geboekt. De lijst uit e-Boekhouden kan niet meer worden vervangen.",
+    asset_linked: "Er is al op een toestel uit de lijst geboekt. De lijst uit e-Boekhouden kan niet meer worden vervangen.",
+    asset_disposed: "Dit toestel is al afgevoerd.",
+    asset_unknown: "Dit toestel bestaat niet meer. Ververs de pagina.",
+    asset_wrong_account: "Een toestel hoort bij rekening 0130.",
+    asset_booked_later: "Op dit toestel is na die datum nog geboekt. Kies een latere datum.",
+    depreciation_first: "Boek eerst de afschrijving van het jaar ervoor; daarna kan dit toestel worden afgevoerd.",
   };
   return known[error] ?? "Dat is niet gelukt. Probeer het opnieuw.";
 }
@@ -130,7 +145,15 @@ export function useLedgerWrites() {
         description: string;
         counterpartyName?: string;
       }): Promise<ApiResult<BankLine>> => write(`${LEDGER}/bank/lines`, "POST", body),
-      bookLine: (id: string, split: Figure[]): Promise<ApiResult<Entry>> => write(`${LEDGER}/bank/lines/${id}/book`, "POST", { split }),
+      bookLine: (id: string, split: SplitPart[]): Promise<ApiResult<Entry>> => write(`${LEDGER}/bank/lines/${id}/book`, "POST", { split }),
+      /** The list read from e-Boekhouden: replaces the toestellen taken over before. */
+      pasteAssets: (assets: PastedAsset[]): Promise<ApiResult<Asset[]>> => write(`${LEDGER}/assets/paste`, "POST", { assets }),
+      /** A toestel bought later; its cost is what is booked on 0130 for it. */
+      addAsset: (body: { name: string; lifeYears: number; residualCents: number }): Promise<ApiResult<Asset>> => write(`${LEDGER}/assets`, "POST", body),
+      patchAsset: (id: string, body: { name?: string; lifeYears?: number; residualCents?: number }): Promise<ApiResult<Asset>> =>
+        write(`${LEDGER}/assets/${encodeURIComponent(id)}`, "PATCH", body),
+      disposeAsset: (id: string, date: string): Promise<ApiResult<Entry>> => write(`${LEDGER}/assets/${encodeURIComponent(id)}/dispose`, "POST", { date }),
+      bookDepreciation: (year: number): Promise<ApiResult<Entry>> => write(`${LEDGER}/depreciation`, "POST", { year }),
       createEntry: (body: EntryBody): Promise<ApiResult<Entry>> => write(`${LEDGER}/entries`, "POST", body),
       saveEntry: (id: string, body: EntryBody): Promise<ApiResult<Entry>> => write(`${LEDGER}/entries/${id}`, "PUT", body),
       emptyEntry: (id: string): Promise<ApiResult<Entry>> => write(`${LEDGER}/entries/${id}/empty`, "POST"),

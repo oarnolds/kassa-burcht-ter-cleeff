@@ -4,6 +4,7 @@ import { formatEuro } from "../../shared/money";
 import { businessDate, shiftDate } from "../../shared/time";
 import { sha256Hex } from "../lib/crypto";
 import { type Entry, type EntryLine } from "../../shared/ledger-types";
+import { checkAssetLinks } from "./assets";
 import { dayMonthYear } from "./kassa-ledger";
 import { createEntry, editEntry, LedgerError, upsertSourcedStatements } from "./ledger";
 import { endOfDay } from "./opening";
@@ -457,7 +458,7 @@ const entryLines = (line: BankLine, split: { accountCode: string; amountCents: n
 /**
  * Books a line: the money account gets the line's amount, `split` the other side. The entry is `bank`, with the
  * line's id as reference and its booking date. A line that is booked already has its entry edited, history kept;
- * one that a sync booked (a payout of Mollie) is refused.
+ * one that a sync booked (a payout of Mollie) is refused. A part on 0130 with an `assetId` is the cost of that toestel.
  */
 export async function bookLine(
   db: D1Database,
@@ -468,6 +469,8 @@ export async function bookLine(
   const line = await getBankLine(db, lineId);
   if (!line) throw new LedgerError("not_found", 404);
   if (input.split.some((part) => part.accountCode === line.accountCode)) throw new LedgerError("same_account", 400);
+  // A line on 0130 may buy a toestel of the list: one that is there and still in use.
+  await checkAssetLinks(db, input.split.map((part) => ({ accountCode: part.accountCode, assetId: part.assetId ?? null })));
   const content = { date: line.date, description: input.description ?? entryDescription(line), lines: entryLines(line, input.split) };
   // Looked up by reference, not only by `entry_id`: an entry made a moment before its line was marked still counts.
   const existing = await db.prepare("SELECT id FROM ledger_entries WHERE source = 'bank' AND source_ref = ?").bind(lineId).first<{ id: string }>();

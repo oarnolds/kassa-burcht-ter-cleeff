@@ -9,6 +9,7 @@ import { SalesPage } from "./beheer/SalesPage";
 import { SettingsPage } from "./beheer/SettingsPage";
 import { SetupPage } from "./beheer/SetupPage";
 import { StockPage } from "./beheer/StockPage";
+import { AssetsPage } from "./beheer/boekhouding/AssetsPage";
 import { BankReturnPage } from "./beheer/boekhouding/BankReturnPage";
 import { ComparisonPage } from "./beheer/boekhouding/ComparisonPage";
 import { EntriesPage } from "./beheer/boekhouding/EntriesPage";
@@ -56,7 +57,7 @@ export function AppRoutes() {
           <Route path="boekingen/:id" element={<EntryPage />} />
           <Route path="rapporten" element={<ReportsLedgerPage />} />
           <Route path="mollie" element={<MolliePage />} />
-          <Route path="toestellen" element={<LedgerPlaceholder title="Toestellen" />} />
+          <Route path="toestellen" element={<AssetsPage />} />
           <Route path="jaar" element={<YearPlaceholder />} />
           <Route path="jaar/:year/afdruk" element={<LedgerPlaceholder title="Afdruk" />} />
           <Route path="instellingen" element={<SettingsLedgerPage />} />

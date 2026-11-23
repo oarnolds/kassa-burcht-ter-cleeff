@@ -94,3 +94,33 @@ it("refuses to save an amount that cannot be read", async () => {
   expect(screen.queryByText("Dit bedrag kan ik niet lezen.")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Opslaan" })).toBeEnabled();
 });
+
+it("shows 0130 and 0135 from the list of speeltoestellen, not to be typed", async () => {
+  mockLoggedIn();
+  const withToestellen = [account("0130", "Speeltoestellen", "asset"), ...accounts];
+  const opening = {
+    year: 2027,
+    lines: [
+      { accountCode: "0130", amountCents: 5395321 },
+      { accountCode: "0135", amountCents: 3975048 },
+      { accountCode: "1010", amountCents: 100000 },
+    ],
+    equityCents: 1520273,
+    eBoekhoudenEquityCents: null,
+    expectedCashCents: 0,
+    fromAssetList: true,
+  };
+  mockApi({ [`${base}/accounts`]: withToestellen, [`${base}/opening`]: opening, [`PUT ${base}/opening`]: opening });
+  renderAt("/beheer/boekhouding/beginbalans");
+  expect(await screen.findByLabelText("ING betaalrekening")).toHaveValue("1000,00");
+  expect(screen.queryByLabelText("Speeltoestellen")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Afschrijving")).not.toBeInTheDocument();
+  expect(screen.getAllByText("uit de lijst speeltoestellen")).toHaveLength(2);
+  expect(screen.getByText("€ 53.953,21")).toBeInTheDocument();
+  expect(screen.getByText("€ 39.750,48")).toBeInTheDocument();
+  expect(screen.getByText("Eigen vermogen (uitgerekend)").parentElement).toHaveTextContent("€ 15.202,73");
+
+  await tap("Opslaan");
+  await waitFor(() => expect(calls("PUT")).toHaveLength(1));
+  expect(calls("PUT")[0]!.body).toEqual({ lines: [{ accountCode: "1010", amountCents: 100000 }], eBoekhoudenEquityCents: null });
+});

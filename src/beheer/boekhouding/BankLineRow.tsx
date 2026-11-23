@@ -1,16 +1,20 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import type { BankLine, Entry, LedgerAccount } from "../../../shared/ledger-types";
+import { readLifeYears } from "../../../shared/asset-paste";
+import type { Asset, BankLine, Entry, LedgerAccount } from "../../../shared/ledger-types";
 import { formatEuro } from "../../../shared/money";
 import { formatDateNl } from "../../../shared/time";
 import { Button } from "../../ui/Button";
 import { Problem, field, textLink } from "../parts";
+import { useAdminData } from "../useAdmin";
 import { AmountField } from "./AmountField";
+import { ASSET_ACCOUNT, AssetPick, NEW_ASSET, assetReady, noAsset, type AssetChoice } from "./AssetPick";
 import { AttachmentButton } from "./AttachmentButton";
-import { entryRoute, explainWrite, useLedgerWrites } from "./ledger-api";
+import { entryRoute, explainWrite, ledgerPath, useLedgerWrites, type SplitPart } from "./ledger-api";
 import { useBusy } from "./useBusy";
 
-type SplitRow = { accountCode: string; cents: number | null };
+/** A part of the split; on 0130 it names the toestel it buys. */
+type SplitRow = { accountCode: string; cents: number | null; choice: AssetChoice };
 
 /** What is said after booking when the receipt did not make it. */
 export type BookedNotice = { entryId: string; attachmentProblem: string | null };
@@ -32,7 +36,11 @@ export function BankLineRow({ line, accounts, onBooked }: { line: BankLine; acco
   const [busy, run] = useBusy();
   const choices = accounts.filter((account) => !account.hidden && account.code !== line.accountCode);
   const [code, setCode] = useState(choices.some((account) => account.code === line.suggestion) ? line.suggestion! : "");
+  const [choice, setChoice] = useState<AssetChoice>(noAsset);
   const [rows, setRows] = useState<SplitRow[] | null>(null);
+  // The toestellen, only once a part of the line is on 0130.
+  const needsAssets = rows === null ? code === ASSET_ACCOUNT : rows.some((row) => row.accountCode === ASSET_ACCOUNT);
+  const assets = useAdminData<Asset[]>(needsAssets ? ledgerPath.assets : null);
   const [unreadable, setUnreadable] = useState<Set<number>>(new Set());
   const [file, setFile] = useState<File | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -42,8 +50,12 @@ export function BankLineRow({ line, accounts, onBooked }: { line: BankLine; acco
   const total = Math.abs(line.amountCents);
   const sum = rows?.reduce((all, row) => all + (row.cents ?? 0), 0) ?? 0;
   const off = total - sum;
-  const rowsReady = rows !== null && off === 0 && unreadable.size === 0 && rows.every((row) => row.accountCode !== "" && row.cents !== null && row.cents > 0);
-  const ready = rows === null ? code !== "" : rowsReady;
+  const rowsReady =
+    rows !== null &&
+    off === 0 &&
+    unreadable.size === 0 &&
+    rows.every((row) => row.accountCode !== "" && row.cents !== null && row.cents > 0 && (row.accountCode !== ASSET_ACCOUNT || assetReady(row.choice)));
+  const ready = rows === null ? code !== "" && (code !== ASSET_ACCOUNT || assetReady(choice)) : rowsReady;
 
   const mark = (index: number) => (bad: boolean) =>
     setUnreadable((before) => {
@@ -53,12 +65,32 @@ export function BankLineRow({ line, accounts, onBooked }: { line: BankLine; acco
       return next;
     });
   const change = (index: number, part: Partial<SplitRow>) => setRows((before) => before!.map((row, i) => (i === index ? { ...row, ...part } : row)));
+  /** `index` -1 is the line booked whole. */
+  const changeChoice = (index: number) => (part: Partial<AssetChoice>) =>
+    index === -1
+      ? setChoice((before) => ({ ...before, ...part }))
+      : setRows((before) => before!.map((row, i) => (i === index ? { ...row, choice: { ...row.choice, ...part } } : row)));
 
   const book = () =>
     run(async () => {
       setProblem(null);
-      const split =
-        rows === null ? [{ accountCode: code, amountCents: sign * total }] : rows.map((row) => ({ accountCode: row.accountCode, amountCents: sign * row.cents! }));
+      const parts =
+        rows === null
+          ? [{ index: -1, accountCode: code, cents: total, choice }]
+          : rows.map((row, index) => ({ index, accountCode: row.accountCode, cents: row.cents!, choice: row.choice }));
+      const split: SplitPart[] = [];
+      for (const part of parts) {
+        let assetId = part.accountCode === ASSET_ACCOUNT ? part.choice.asset : "";
+        if (assetId === NEW_ASSET) {
+          const made = await api.addAsset({ name: part.choice.name.trim(), lifeYears: readLifeYears(part.choice.years)!, residualCents: part.choice.residualCents ?? 0 });
+          if (!made.ok) return setProblem(explainWrite(made.status, made.error));
+          assetId = made.data.id;
+          // Made once: tapped again after a booking that failed, the line is booked on it instead of making another.
+          changeChoice(part.index)({ asset: assetId });
+          assets.reload();
+        }
+        split.push({ accountCode: part.accountCode, amountCents: sign * part.cents, ...(assetId ? { assetId } : {}) });
+      }
       const answer = await api.bookLine(line.id, split);
       if (!answer.ok) return setProblem(explainWrite(answer.status, answer.error));
       const entry: Entry = answer.data;
@@ -86,11 +118,17 @@ export function BankLineRow({ line, accounts, onBooked }: { line: BankLine; acco
       {!closed && (
         <>
           {rows === null ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <AccountSelect label="Rekening" value={code} accounts={choices} onChange={setCode} />
-              <Button onClick={() => setRows([{ accountCode: code, cents: null }, { accountCode: "", cents: null }])} disabled={busy}>
-                Verdelen
-              </Button>
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <AccountSelect label="Rekening" value={code} accounts={choices} onChange={setCode} />
+                <Button
+                  onClick={() => setRows([{ accountCode: code, cents: null, choice }, { accountCode: "", cents: null, choice: noAsset() }])}
+                  disabled={busy}
+                >
+                  Verdelen
+                </Button>
+              </div>
+              {code === ASSET_ACCOUNT && <AssetPick assets={assets.data ?? []} value={choice} onChange={changeChoice(-1)} />}
             </div>
           ) : (
             <div className="flex flex-col gap-2">
@@ -115,11 +153,16 @@ export function BankLineRow({ line, accounts, onBooked }: { line: BankLine; acco
                       Weghalen
                     </Button>
                   )}
+                  {row.accountCode === ASSET_ACCOUNT && (
+                    <div className="basis-full">
+                      <AssetPick assets={assets.data ?? []} value={row.choice} onChange={changeChoice(index)} suffix={` ${index + 1}`} />
+                    </div>
+                  )}
                 </div>
               ))}
               {off !== 0 && <p className="font-semibold text-redbrown">{`Het verdeelde bedrag klopt niet: verschil ${formatEuro(Math.abs(off))}`}</p>}
               <div className="flex flex-wrap gap-2">
-                <Button onClick={() => setRows([...rows, { accountCode: "", cents: null }])}>Rij erbij</Button>
+                <Button onClick={() => setRows([...rows, { accountCode: "", cents: null, choice: noAsset() }])}>Rij erbij</Button>
                 <Button
                   onClick={() => {
                     setRows(null);
@@ -138,6 +181,7 @@ export function BankLineRow({ line, accounts, onBooked }: { line: BankLine; acco
               Boeken
             </Button>
           </div>
+          {needsAssets && assets.error && <Problem>{`De toestellen zijn niet geladen. ${assets.error}`}</Problem>}
           {problem && <Problem>{problem}</Problem>}
         </>
       )}

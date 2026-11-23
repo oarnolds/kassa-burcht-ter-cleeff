@@ -154,3 +154,24 @@ export type LedgerOverview = {
   mollieInTransitCents: number;
   lastNightly: NightlyReport | null;
 };
+
+/**
+ * A toestel of the list behind 0130 and 0135 (spec §12). `costCents`: pasted from e-Boekhouden, or for one bought
+ * later what is booked on 0130 for it; `purchaseDate` is then the date of its first 0130 line (null while there is
+ * none). `writtenOffCents`: up to 31 December 2026 from e-Boekhouden plus what is on 0135 for it since. A toestel
+ * that is disposed of has nothing left: `writtenOffCents` = `costCents`, `bookValueCents` 0.
+ */
+export type Asset = {
+  id: string;
+  name: string;
+  purchaseDate: string | null;
+  costCents: number;
+  residualCents: number;
+  lifeYears: number;
+  writtenOffCents: number;
+  bookValueCents: number;
+  disposedOn: string | null;
+};
+
+/** What "Afschrijving {jaar} boeken" books: a row per toestel with something to write off. `booked`: the year's entry has lines. */
+export type DepreciationPlan = { year: number; rows: { assetId: string; name: string; cents: number }[]; totalCents: number; booked: boolean };

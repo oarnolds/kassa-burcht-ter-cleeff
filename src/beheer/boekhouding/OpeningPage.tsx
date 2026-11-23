@@ -13,11 +13,14 @@ const YEAR = 2027;
 const EQUITY = "1400";
 /** An asset that is shown the other way round: it is subtracted from the assets. */
 const DEPRECIATION = "0135";
+/** Once the toestellen are taken over from e-Boekhouden, these two are the totals of that list (spec §9). */
+const FROM_ASSET_LIST = ["0130", DEPRECIATION];
 
 function OpeningForm({ accounts, opening }: { accounts: LedgerAccount[]; opening: Opening }) {
   const api = useLedgerWrites();
   const toast = useToast();
   const saved = new Map(opening.lines.map((line) => [line.accountCode, line.amountCents]));
+  const fromList = (code: string) => opening.fromAssetList && FROM_ASSET_LIST.includes(code);
   const rows = accounts.filter(
     (account) => account.code !== EQUITY && (account.kind === "asset" || account.kind === "liability") && (!account.hidden || saved.has(account.code)),
   );
@@ -41,7 +44,7 @@ function OpeningForm({ accounts, opening }: { accounts: LedgerAccount[]; opening
 
   const save = async () => {
     setProblem(null);
-    const lines = rows.filter((row) => cents[row.code]).map((row) => ({ accountCode: row.code, amountCents: cents[row.code]! }));
+    const lines = rows.filter((row) => cents[row.code] && !fromList(row.code)).map((row) => ({ accountCode: row.code, amountCents: cents[row.code]! }));
     const answer = await api.putOpening(YEAR, { lines, eBoekhoudenEquityCents: eBoekhouden });
     if (!answer.ok) return setProblem(answer.status === 0 ? "Geen verbinding. Probeer het opnieuw." : "Opslaan is niet gelukt. Probeer het opnieuw.");
     toast.show("Opgeslagen.");
@@ -56,13 +59,20 @@ function OpeningForm({ accounts, opening }: { accounts: LedgerAccount[]; opening
               <span className="text-lg">
                 <span className="tabular-nums">{row.code}</span> {row.name}
               </span>
-              <AmountField
-                label={row.name}
-                onUnreadable={mark(row.code)}
-                valueCents={cents[row.code] ?? null}
-                onChange={(value) => setCents((before) => ({ ...before, [row.code]: value }))}
-                className="w-40 text-right tabular-nums"
-              />
+              {fromList(row.code) ? (
+                <span className="flex flex-col items-end">
+                  <span className="text-lg tabular-nums">{formatEuro(cents[row.code] ?? 0)}</span>
+                  <span className="text-sm text-ink/70">uit de lijst speeltoestellen</span>
+                </span>
+              ) : (
+                <AmountField
+                  label={row.name}
+                  onUnreadable={mark(row.code)}
+                  valueCents={cents[row.code] ?? null}
+                  onChange={(value) => setCents((before) => ({ ...before, [row.code]: value }))}
+                  className="w-40 text-right tabular-nums"
+                />
+              )}
             </li>
           ))}
         </ul>
