@@ -85,7 +85,7 @@ it("never returns the same bank reference twice in one call", async () => {
   expect(result.ok && result.data.filter((line) => line.bankRef === "ref-1")).toEqual([expect.objectContaining({ amountCents: 1250 })]);
 });
 
-it("stops at 20 pages", async () => {
+it("stops at 10 pages", async () => {
   eb.current.transactions = Array.from({ length: 60 }, (_, i) => ({
     entry_reference: `r${i}`,
     status: "BOOK",
@@ -94,8 +94,8 @@ it("stops at 20 pages", async () => {
     credit_debit_indicator: "CRDT",
   }));
   const result = await (await client()).transactions("acc-1", "2027-01-01");
-  expect(eb.current.requests).toHaveLength(20);
-  expect(result.ok && result.data).toHaveLength(40);
+  expect(eb.current.requests).toHaveLength(10);
+  expect(result.ok && result.data).toHaveLength(20);
 });
 
 it("reads the closing booked balance, else the interim booked one", async () => {

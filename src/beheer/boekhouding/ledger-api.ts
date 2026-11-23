@@ -1,9 +1,21 @@
 // The one place that knows the boekhouding's paths and body shapes (they follow the zod schemas in
-// worker/routes/admin-ledger.ts and admin-ledger-bank.ts). Reads: a path for `useAdminData`. Writes: `useLedgerWrites`.
+// worker/routes/admin-ledger.ts, admin-ledger-bank.ts and admin-ledger-mollie.ts). Reads: a path for `useAdminData`. Writes: `useLedgerWrites`.
 
 import { useMemo } from "react";
 import type { CamtStatement } from "../../../shared/camt";
-import type { AccountKind, Attachment, BankLine, ConsentState, Entry, ImportResult, LedgerAccount, MoneyAccount, MoneySource, NightlyReport } from "../../../shared/ledger-types";
+import type {
+  AccountKind,
+  Attachment,
+  BankLine,
+  ConsentState,
+  Entry,
+  ImportResult,
+  LedgerAccount,
+  MoneyAccount,
+  MoneySource,
+  MollieRule,
+  NightlyReport,
+} from "../../../shared/ledger-types";
 import type { ApiResult } from "../../lib/api";
 import { useAdminWrite } from "../useAdmin";
 
@@ -54,6 +66,7 @@ export const ledgerPath = {
   moneyAccounts: `${LEDGER}/money-accounts`,
   ingConsent: `${LEDGER}/bank/ing`,
   categoryAccounts: `${LEDGER}/category-accounts`,
+  mollieRules: `${LEDGER}/mollie/rules`,
   opening: (year: number) => `${LEDGER}/opening?year=${year}`,
   comparison: (year: number) => `${LEDGER}/comparison?year=${year}`,
 };
@@ -93,6 +106,10 @@ export function useLedgerWrites() {
       syncNow: (): Promise<ApiResult<NightlyReport>> => write(`${LEDGER}/sync`, "POST"),
       putCategoryAccounts: (body: { categoryId: string; accountCode: string }[]): Promise<ApiResult<CategoryAccount[]>> =>
         write(`${LEDGER}/category-accounts`, "PUT", body),
+      /** Without `id` a new rule at the end; with `id` that rule changed. */
+      saveMollieRule: (body: { id?: string; keyword: string; accountCode: string }): Promise<ApiResult<MollieRule>> =>
+        write(`${LEDGER}/mollie/rules`, "POST", body),
+      deleteMollieRule: (id: string): Promise<ApiResult<{ ok: true }>> => write(`${LEDGER}/mollie/rules/${encodeURIComponent(id)}`, "DELETE"),
       putOpening: (year: number, body: { lines: Figure[]; eBoekhoudenEquityCents: number | null }): Promise<ApiResult<Opening>> =>
         write(ledgerPath.opening(year), "PUT", body),
       putComparison: (year: number, figures: Figure[]): Promise<ApiResult<Comparison>> =>

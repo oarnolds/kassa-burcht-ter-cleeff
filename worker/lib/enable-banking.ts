@@ -11,8 +11,8 @@ export const ENABLE_BANKING_API = "https://api.enablebanking.com";
 
 // Same patience as the Mollie client: a slow answer is treated as no answer.
 const TIMEOUT_MS = 8000;
-// The free plan allows 50 external calls per run; more pages than this wait for the next run.
-const MAX_PAGES = 20;
+// The free plan allows 50 external calls per run, Mollie's included; more pages than this wait for the next run.
+const MAX_PAGES = 10;
 
 /**
  * Why a call gave nothing to work with. `unauthorized`: the key is wrong or the consent is gone (expired,

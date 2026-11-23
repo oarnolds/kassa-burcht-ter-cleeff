@@ -29,7 +29,7 @@ const KASVERSCHILLEN = "4515";
 /** Where a category without a row in `category_accounts` books. */
 const KIOSK = "8011";
 
-type Amounts = Map<string, number>;
+export type Amounts = Map<string, number>;
 type Booked = { id: string; year: number; amounts: Amounts };
 type HandoverRow = { id: string; counted_at: string; expected_cents: number; received_cents: number; left_cents: number; difference_cents: number; note: string | null };
 type Kind = "days" | "late" | "handovers";
@@ -42,30 +42,30 @@ const later = (a: string, b: string) => (a > b ? a : b);
 const earlier = (a: string, b: string) => (a < b ? a : b);
 
 /** `d-m-jjjj`, as in "Kassa 6-3-2027". */
-const dayMonthYear = (date: string) => {
+export const dayMonthYear = (date: string) => {
   const [year, month, day] = date.split("-");
   return `${Number(day)}-${Number(month)}-${year}`;
 };
 
-function add(amounts: Amounts, code: string, cents: number): void {
+export function add(amounts: Amounts, code: string, cents: number): void {
   amounts.set(code, (amounts.get(code) ?? 0) + cents);
 }
 
 /** `a − b`, account by account, without the accounts that come to zero. */
-function minus(a: Amounts, b: Amounts | undefined): Amounts {
+export function minus(a: Amounts, b: Amounts | undefined): Amounts {
   const out = new Map(a);
   for (const [code, cents] of b ?? []) add(out, code, -cents);
   for (const [code, cents] of out) if (cents === 0) out.delete(code);
   return out;
 }
 
-function sameAmounts(a: Amounts, b: Amounts): boolean {
+export function sameAmounts(a: Amounts, b: Amounts): boolean {
   const left = minus(a, undefined);
   const right = minus(b, undefined);
   return left.size === right.size && [...left].every(([code, cents]) => right.get(code) === cents);
 }
 
-const toLines = (amounts: Amounts): EntryLine[] =>
+export const toLines = (amounts: Amounts): EntryLine[] =>
   [...amounts]
     .filter(([, cents]) => cents !== 0)
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))

@@ -11,12 +11,13 @@ import { MOLLIE_API, type MollieFailure, type MollieResult } from "./mollie";
 
 // Same patience as the kassa's client: a slow answer is treated as no answer.
 const TIMEOUT_MS = 8000;
-// A cron run may make 50 external calls; no list takes more than this many pages, the rest waits for the next run.
-const MAX_PAGES = 10;
+// A cron run may make 50 external calls, ING's included: no list takes more than this many calls (pages and a payout's
+// own reads alike), the rest waits for the next run. Four lists, the profile and the balance stay within 26.
+const MAX_PAGES = 6;
 const PROFILE_KEY = "mollie_profile_id";
 
 export type MolliePaymentRow = { id: string; method: string; amountCents: number; description: string; status: string; paidAt: string | null; settlementId: string | null };
-export type MollieRefundRow = { id: string; paymentId: string; amountCents: number; createdAt: string; description: string };
+export type MollieRefundRow = { id: string; paymentId: string; amountCents: number; createdAt: string; description: string; status: string };
 export type MollieChargebackRow = { id: string; paymentId: string; amountCents: number; createdAt: string };
 export type MollieSettlementRow = { id: string; reference: string; status: string; settledAt: string | null; amountCents: number; costsCents: number };
 
@@ -211,6 +212,7 @@ export function mollieReadFor(env: Env): MollieRead | null {
         amountCents: cents(units(item.amount)),
         createdAt: need(text(item.createdAt)),
         description: text(item.description) ?? "",
+        status: need(text(item.status)),
       })),
 
     chargebacksSince: (fromIso) =>

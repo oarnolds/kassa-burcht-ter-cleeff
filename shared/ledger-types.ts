@@ -93,6 +93,9 @@ export type ImportResult = { added: number; known: number; beforeStart: number; 
 /** Where the consent for ING (Enable Banking) stands. `daysLeft` is whole days until `validUntil` (0 on the last day); below 0 once the consent has ended, also when it ended early (`validUntil` is then the day it was noticed). */
 export type ConsentState = { status: "none" | "pending" | "active" | "expired"; validUntil: string | null; daysLeft: number | null };
 
+/** The penningmeester's rule for Mollie's other payments: a description that holds `keyword` (case ignored) books on `accountCode`. */
+export type MollieRule = { id: string; keyword: string; accountCode: string };
+
 export type NightlyStep = "kassa" | "ing" | "mollie";
 /** What the nightly run did, step by step; a string other than ok/skipped is the error code of a step that failed. */
 export type NightlyReport = { at: string; steps: Partial<Record<NightlyStep, "ok" | "skipped" | string>> };

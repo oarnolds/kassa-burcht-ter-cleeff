@@ -26,7 +26,7 @@ type Amount = { currency: string; value: string };
 const eur = (value: string): Amount => ({ currency: "EUR", value });
 
 export type FakeOrgPayment = { id: string; method: string; amount: string; description: string; status: string; createdAt: string; paidAt: string | null; settlementId: string | null };
-export type FakeRefund = { id: string; paymentId: string; amount: string; description: string | null; createdAt: string };
+export type FakeRefund = { id: string; paymentId: string; amount: string; description: string | null; createdAt: string; status: string };
 export type FakeChargeback = { id: string; paymentId: string; amount: string; createdAt: string };
 export type FakeSettlement = {
   id: string;
@@ -129,7 +129,7 @@ export function createFakeMollie(opts: { key: string; origin: string }): FakeMol
       return payment;
     },
     addRefund(input) {
-      const refund: FakeRefund = { id: `re_org${++orgMade}`, description: null, ...input };
+      const refund: FakeRefund = { id: `re_org${++orgMade}`, description: null, status: "refunded", ...input };
       fake.refunds.push(refund);
       return refund;
     },
@@ -359,7 +359,7 @@ export function createFakeMollie(opts: { key: string; origin: string }): FakeMol
       }));
     }
     if (path === "/v2/refunds") {
-      return page(url, newestFirst(fake.refunds), "refunds", (refund: FakeRefund) => ({ resource: "refund", id: refund.id, paymentId: refund.paymentId, amount: eur(refund.amount), description: refund.description, createdAt: refund.createdAt, status: "refunded" }));
+      return page(url, newestFirst(fake.refunds), "refunds", (refund: FakeRefund) => ({ resource: "refund", id: refund.id, paymentId: refund.paymentId, amount: eur(refund.amount), description: refund.description, createdAt: refund.createdAt, status: refund.status }));
     }
     return page(url, newestFirst(fake.chargebacks), "chargebacks", (chargeback: FakeChargeback) => ({ resource: "chargeback", id: chargeback.id, paymentId: chargeback.paymentId, amount: eur(chargeback.amount), createdAt: chargeback.createdAt }));
   }

@@ -30,6 +30,9 @@ const LEDGER_TABLES: [table: string, order: string, columns?: string][] = [
   ["bank_consents", "created_at, id", "id, state, status, account_uid, valid_until, created_at, used_at"],
   ["category_accounts", "category_id"],
   ["comparison_figures", "year, account_code"],
+  ["mollie_payments", "paid_date, id"],
+  ["mollie_settlements", "id"],
+  ["mollie_rules", "sort, id"],
 ];
 
 const IN_USE_KEY = "in_use_since";

@@ -63,7 +63,7 @@ it("reads refunds and chargebacks", async () => {
   fake.addChargeback({ id: "chb_1", paymentId: "tr_3", amount: "20.00", createdAt: "2027-03-02T08:00:00+00:00" });
   expect(await read().refundsSince("2027-02-01T00:00:00.000Z")).toEqual({
     ok: true,
-    data: [{ id: "re_1", paymentId: "tr_2", amountCents: 450, createdAt: "2027-03-01T08:00:00+00:00", description: "Dubbel betaald" }],
+    data: [{ id: "re_1", paymentId: "tr_2", amountCents: 450, createdAt: "2027-03-01T08:00:00+00:00", description: "Dubbel betaald", status: "refunded" }],
   });
   expect(await read().chargebacksSince("2027-02-01T00:00:00.000Z")).toEqual({
     ok: true,
@@ -141,13 +141,13 @@ it("follows the next link page by page and stops at the first old item", async (
   expect(lists().every((r) => r.authorization === "Bearer org_fake")).toBe(true);
 });
 
-it("reads at most ten pages of a list", async () => {
+it("reads at most six pages of a list", async () => {
   const fake = mollie.current;
   fake.pageSize = 1;
   for (let i = 1; i <= 15; i++) fake.addPayment({ id: `tr_${i}`, method: "ideal", amount: "1.00", createdAt: `2027-03-${String(i).padStart(2, "0")}T10:00:00+00:00` });
   const result = await read().paymentsSince("2027-01-01T00:00:00.000Z");
-  expect(result.ok && result.data).toHaveLength(10);
-  expect(lists()).toHaveLength(10);
+  expect(result.ok && result.data).toHaveLength(6);
+  expect(lists()).toHaveLength(6);
 });
 
 it("reads settlement pages until one holds nothing open or recent", async () => {
@@ -262,12 +262,12 @@ it("reads a settlement's periods one by one when the list omits them, and fails 
   expect(await read().settlementsSince("2027-01-01T00:00:00.000Z")).toMatchObject({ ok: false, failure: "unreachable", status: 500 });
 });
 
-it("counts the settlement detail reads within the ten calls of the list", async () => {
+it("counts the settlement detail reads within the six calls of the list", async () => {
   const fake = mollie.current;
   fake.periodsInList = false;
   for (let i = 1; i <= 15; i++) fake.addSettlement({ id: `stl_${i}`, amount: "1.00", costs: { "2027": { "01": ["0.10"] } } });
   const result = await read().settlementsSince("2027-01-01T00:00:00.000Z");
   expect(result.ok).toBe(true);
-  expect(fake.requests).toHaveLength(10); // 1 list + 9 detail reads, the rest waits for the next run
-  expect(result.ok && result.data).toHaveLength(9);
+  expect(fake.requests).toHaveLength(6); // 1 list + 5 detail reads, the rest waits for the next run
+  expect(result.ok && result.data).toHaveLength(5);
 });

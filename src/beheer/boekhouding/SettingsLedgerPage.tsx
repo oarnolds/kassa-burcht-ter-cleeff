@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router";
-import type { AccountKind, ConsentState, LedgerAccount, MoneyAccount, MoneySource } from "../../../shared/ledger-types";
+import type { AccountKind, ConsentState, LedgerAccount, MollieRule, MoneyAccount, MoneySource } from "../../../shared/ledger-types";
 import { businessDate, formatDateNl } from "../../../shared/time";
 import { leavePage } from "../../lib/leave";
 import { Button } from "../../ui/Button";
@@ -19,6 +19,7 @@ function explain(status: number, error: string): string {
   if (error === "money_account") return "Een geldrekening kan niet worden verborgen.";
   if (error === "account_exists") return "Dit rekeningnummer bestaat al.";
   if (error === "source_fixed") return "De bron van deze rekening ligt vast.";
+  if (error === "not_income_account") return "Kies een opbrengstrekening.";
   if (error === "invalid") return "Controleer de invoer en probeer het opnieuw.";
   return "Opslaan is niet gelukt. Probeer het opnieuw.";
 }
@@ -273,11 +274,72 @@ function CategoryForm({ categories, accounts }: { categories: CategoryAccount[];
   );
 }
 
-/** Boekhouding → Instellingen: the chart of accounts, the money accounts and where the kassa's turnover goes. */
+/** The rules for Mollie's other payments (website and QR code): each as a sentence with "Weghalen", and a form to add one. */
+function MollieRules({ rules, accounts, onChanged }: { rules: MollieRule[]; accounts: LedgerAccount[]; onChanged(): void }) {
+  const api = useLedgerWrites();
+  const toast = useToast();
+  const income = accounts.filter((one) => one.kind === "income" && !one.hidden);
+  const [keyword, setKeyword] = useState("");
+  const [accountCode, setAccountCode] = useState(income[0]?.code ?? "");
+  const [problem, setProblem] = useState<string | null>(null);
+  const accountText = (code: string) => [code, accounts.find((one) => one.code === code)?.name].filter(Boolean).join(" ");
+
+  const add = async (event: FormEvent) => {
+    event.preventDefault();
+    setProblem(null);
+    const answer = await api.saveMollieRule({ keyword: keyword.trim(), accountCode });
+    if (!answer.ok) return setProblem(explain(answer.status, answer.error));
+    setKeyword("");
+    toast.show("Opgeslagen.");
+    onChanged();
+  };
+
+  const remove = async (id: string) => {
+    setProblem(null);
+    const answer = await api.deleteMollieRule(id);
+    if (!answer.ok) return setProblem(explain(answer.status, answer.error));
+    toast.show("Weggehaald.");
+    onChanged();
+  };
+
+  return (
+    <>
+      <ul>
+        {rules.map((rule) => (
+          <li key={rule.id} className="flex flex-wrap items-center justify-between gap-3 border-t border-sand px-2 py-3 first:border-t-0 sm:px-3">
+            <span className="min-w-0 text-lg">{`Omschrijving bevat '${rule.keyword}' → ${accountText(rule.accountCode)}`}</span>
+            <Button onClick={() => void remove(rule.id)}>Weghalen</Button>
+          </li>
+        ))}
+      </ul>
+      <form onSubmit={(event) => void add(event)} className="mt-4 flex flex-wrap items-end gap-3 border-t-2 border-sand px-2 pt-4 sm:px-3">
+        <label className={label}>
+          Omschrijving bevat
+          <input className={field} value={keyword} maxLength={40} onChange={(event) => setKeyword(event.target.value)} />
+        </label>
+        <label className={label}>
+          Rekening
+          <select className={field} value={accountCode} onChange={(event) => setAccountCode(event.target.value)}>
+            {income.map((account) => (
+              <option key={account.code} value={account.code}>{`${account.code} ${account.name}`}</option>
+            ))}
+          </select>
+        </label>
+        <Button type="submit" variant="primary" disabled={keyword.trim().length < 2 || !accountCode}>
+          Regel toevoegen
+        </Button>
+        {problem && <Problem>{problem}</Problem>}
+      </form>
+    </>
+  );
+}
+
+/** Boekhouding → Instellingen: the chart of accounts, the money accounts, where the kassa's turnover goes and Mollie's rules. */
 export function SettingsLedgerPage() {
   const accounts = useAdminData<LedgerAccount[]>(ledgerPath.accounts);
   const money = useAdminData<MoneyAccount[]>(ledgerPath.moneyAccounts);
   const categories = useAdminData<CategoryAccount[]>(ledgerPath.categoryAccounts);
+  const mollieRules = useAdminData<MollieRule[]>(ledgerPath.mollieRules);
 
   return (
     <div>
@@ -311,6 +373,14 @@ export function SettingsLedgerPage() {
       <Section title="Omzet van de kassa" note="Op welke opbrengstrekening de omzet van elke kassa-categorie komt.">
         <Loaded from={categories}>
           {(list) => (accounts.data ? <CategoryForm categories={list} accounts={accounts.data} /> : null)}
+        </Loaded>
+      </Section>
+      <Section
+        title="Regels voor Mollie"
+        note="Voor betalingen via de website en de QR-code. De eerste regel die past, bepaalt de rekening; hoofdletters tellen niet. Past er geen, dan komt de betaling in Te boeken. Een regel veranderen of weghalen verandert niets aan wat al geboekt is."
+      >
+        <Loaded from={mollieRules}>
+          {(list) => (accounts.data ? <MollieRules rules={list} accounts={accounts.data} onChanged={mollieRules.reload} /> : null)}
         </Loaded>
       </Section>
       <Section title="Eenmalig">

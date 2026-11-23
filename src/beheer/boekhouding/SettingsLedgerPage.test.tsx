@@ -46,6 +46,7 @@ const open = async (extra: Record<string, unknown> = {}) => {
       { categoryId: "ijs", categoryName: "IJs", accountCode: "8011" },
       { categoryId: "entree", categoryName: "Entree", accountCode: "8011" },
     ],
+    [`${base}/mollie/rules`]: [],
     ...extra,
   });
   renderAt("/beheer/boekhouding/instellingen");
@@ -176,4 +177,51 @@ it("asks for the identifier first", async () => {
 it("shows the day an early end was noticed", async () => {
   await open({ [`${base}/bank/ing`]: { status: "expired", validUntil: "2027-03-02T02:00:00.000Z", daysLeft: -1 } });
   await waitFor(() => expect(within(ing()).getByText("Verlopen op 02-03-2027")).toBeInTheDocument());
+});
+
+const rules = () => screen.getByRole("region", { name: "Regels voor Mollie" });
+
+it("lets the penningmeester set the rules for Mollie's other payments", async () => {
+  let list = [
+    { id: "r1", keyword: "dagkaart", accountCode: "8012" },
+    { id: "r2", keyword: "lidm", accountCode: "8011" },
+  ];
+  await open({
+    [`${base}/mollie/rules`]: () => list,
+    [`POST ${base}/mollie/rules`]: (req: { body: any }) => {
+      const rule = { id: "r3", ...req.body };
+      list = [...list, rule];
+      return [201, rule];
+    },
+    [`DELETE ${base}/mollie/rules/r1`]: () => {
+      list = list.filter((rule) => rule.id !== "r1");
+      return { ok: true };
+    },
+  });
+  await waitFor(() => expect(within(rules()).getByText("Omschrijving bevat 'dagkaart' → 8012 Entree")).toBeInTheDocument());
+  expect(within(rules()).getByText("Omschrijving bevat 'lidm' → 8011 Verkoop kassa")).toBeInTheDocument();
+
+  // Only income accounts to choose from.
+  const account = within(rules()).getByLabelText("Rekening") as HTMLSelectElement;
+  expect(within(account).getByRole("option", { name: "8012 Entree" })).toBeInTheDocument();
+  expect(within(account).queryByRole("option", { name: /4507/ })).not.toBeInTheDocument();
+  await user().type(within(rules()).getByLabelText("Omschrijving bevat"), " Donatie ");
+  await user().selectOptions(account, "8012");
+  await user().click(within(rules()).getByRole("button", { name: "Regel toevoegen" }));
+  await waitFor(() => expect(calls("POST").find((c) => c.url === `${base}/mollie/rules`)?.body).toEqual({ keyword: "Donatie", accountCode: "8012" }));
+  expect(await within(rules()).findByText("Omschrijving bevat 'Donatie' → 8012 Entree")).toBeInTheDocument();
+  expect(within(rules()).getByLabelText("Omschrijving bevat")).toHaveValue("");
+
+  const first = within(within(rules()).getByText("Omschrijving bevat 'dagkaart' → 8012 Entree").closest("li")!);
+  await user().click(first.getByRole("button", { name: "Weghalen" }));
+  await waitFor(() => expect(calls("DELETE").some((c) => c.url === `${base}/mollie/rules/r1`)).toBe(true));
+  await waitFor(() => expect(within(rules()).queryByText("Omschrijving bevat 'dagkaart' → 8012 Entree")).not.toBeInTheDocument());
+});
+
+it("explains a rule that is refused", async () => {
+  await open({ [`POST ${base}/mollie/rules`]: [400, { error: "not_income_account" }] });
+  await waitFor(() => expect(within(rules()).getByLabelText("Omschrijving bevat")).toBeInTheDocument());
+  await user().type(within(rules()).getByLabelText("Omschrijving bevat"), "kosten");
+  await user().click(within(rules()).getByRole("button", { name: "Regel toevoegen" }));
+  expect(await within(rules()).findByText("Kies een opbrengstrekening.")).toBeInTheDocument();
 });
