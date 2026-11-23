@@ -6,6 +6,7 @@ import { overview } from "../worker/db/ledger-reports";
 import { exportAll } from "../worker/db/maintenance";
 import type { Env } from "../worker/env";
 import { runNightly } from "../worker/nightly";
+import { shiftDate } from "../shared/time";
 import { api, asAdmin, resetData, TEST_EB_APP_ID, testRsaKey, useFakeEnableBanking } from "./helpers";
 
 const eb = useFakeEnableBanking();
@@ -120,7 +121,8 @@ it("fetches new lines at night and books kasstortings", async () => {
     { entry_reference: "ref-k", transaction_id: null, status: "BOOK", booking_date: "2027-03-05", transaction_amount: { currency: "EUR", amount: "250.00" }, credit_debit_indicator: "CRDT", remittance_information: ["Kasstorting maart"] },
     { entry_reference: "ref-x", transaction_id: null, status: "BOOK", booking_date: "2027-03-04", transaction_amount: { currency: "EUR", amount: "20.00" }, credit_debit_indicator: "DBIT", creditor: { name: "Bakker" }, remittance_information: ["Factuur"] },
   ];
-  expect(await fetchIng(ebEnv, NOW)).toBe("ok");
+  // The night after 5 March: ING is asked up to that day (R36).
+  expect(await fetchIng(ebEnv, new Date("2027-03-06T02:00:00.000Z"))).toBe("ok");
   const lines = await env.DB.prepare("SELECT origin, status, amount_cents FROM bank_lines WHERE account_code = '1010' ORDER BY amount_cents").all();
   expect(lines.results).toEqual([
     { origin: "enable_banking", status: "open", amount_cents: -2000 },
@@ -132,7 +134,7 @@ it("fetches new lines at night and books kasstortings", async () => {
   });
   // The next night looks back a week from the newest line.
   eb.current.requests = [];
-  expect(await fetchIng(ebEnv, new Date("2027-03-06T02:00:00.000Z"))).toBe("ok");
+  expect(await fetchIng(ebEnv, new Date("2027-03-07T02:00:00.000Z"))).toBe("ok");
   expect(eb.current.requests.find((r) => r.path === "/accounts/acc-1/transactions")!.query.date_from).toBe("2027-02-26");
   expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM bank_lines").first<{ n: number }>())!.n).toBe(2);
 });
@@ -203,4 +205,110 @@ it("is for the penningmeester only", async () => {
   for (const [method, path] of [["GET", "/bank/ing"], ["POST", "/bank/ing/connect"], ["POST", "/bank/ing/callback"]] as const) {
     expect((await api(`${base}${path}`, { method })).status, path).toBe(401);
   }
+});
+
+// ---- ING in windows of two weeks (R36) ----
+
+/** A booked line of ING on `date`, with its own reference. */
+const ingTx = (date: string, n: number) => ({
+  entry_reference: `w-${date}-${n}`,
+  transaction_id: null,
+  status: "BOOK",
+  booking_date: date,
+  transaction_amount: { currency: "EUR", amount: `${n}.00` },
+  credit_debit_indicator: "DBIT",
+  creditor: { name: `Leverancier ${n}` },
+  remittance_information: [`Factuur ${n}`],
+});
+const windowsAsked = () => eb.current.requests.filter((r) => r.path === "/accounts/acc-1/transactions" && !r.query.continuation_key).map((r) => [r.query.date_from, r.query.date_to]);
+const transactionCalls = () => eb.current.requests.filter((r) => r.path === "/accounts/acc-1/transactions").length;
+const balanceCalls = () => eb.current.requests.filter((r) => r.path === "/accounts/acc-1/balances").length;
+const ingLines = async () => (await env.DB.prepare("SELECT COUNT(*) AS n FROM bank_lines WHERE account_code = '1010'").first<{ n: number }>())!.n;
+const newestIng = async () => (await env.DB.prepare("SELECT MAX(booking_date) AS d FROM bank_lines WHERE account_code = '1010'").first<{ d: string | null }>())!.d;
+
+it("asks ING in windows of two weeks, oldest first, from the start up to today", async () => {
+  await connect();
+  eb.current.pageSize = 50;
+  // A line every three days from 2 January to 14 March.
+  eb.current.transactions = Array.from({ length: 25 }, (_, i) => ingTx(shiftDate("2027-01-02", i * 3), i + 1));
+  expect(await fetchIng(ebEnv, new Date("2027-03-15T02:00:00.000Z"))).toBe("ok");
+  expect(windowsAsked()).toEqual([
+    ["2027-01-01", "2027-01-14"],
+    ["2027-01-15", "2027-01-28"],
+    ["2027-01-29", "2027-02-11"],
+    ["2027-02-12", "2027-02-25"],
+    ["2027-02-26", "2027-03-11"],
+    ["2027-03-12", "2027-03-15"],
+  ]);
+  expect(await ingLines()).toBe(25);
+  expect(balanceCalls()).toBe(1);
+});
+
+it("keeps nothing of a window that was cut short, stops there with ing_cut_short, and keeps the windows before it", async () => {
+  await connect();
+  // Two pages in the first window; in the second more lines than the rest of the run may ask for.
+  eb.current.transactions = [
+    ingTx("2027-01-05", 1),
+    ingTx("2027-01-06", 2),
+    ingTx("2027-01-07", 3),
+    ...Array.from({ length: 30 }, (_, i) => ingTx("2027-01-20", 100 + i)),
+    ingTx("2027-02-01", 4),
+  ];
+  const report = await runNightly(ebEnv, new Date("2027-02-03T02:00:00.000Z"));
+  expect(report.steps.ing).toBe("ing_cut_short");
+  expect(transactionCalls()).toBe(10);
+  expect(balanceCalls()).toBe(0);
+  const { results } = await env.DB.prepare("SELECT booking_date FROM bank_lines WHERE account_code = '1010' ORDER BY booking_date").all<{ booking_date: string }>();
+  expect(results.map((row) => row.booking_date)).toEqual(["2027-01-05", "2027-01-06", "2027-01-07"]);
+});
+
+it("leaves the windows after the run's ten calls for the next night, which goes on from there", async () => {
+  await connect();
+  // Three lines in each of six windows, two pages each: the ten calls of a night end after five windows; the sixth waits.
+  eb.current.transactions = ["2027-01-02", "2027-01-16", "2027-01-30", "2027-02-13", "2027-02-27", "2027-03-13"].flatMap((date, w) =>
+    [1, 2, 3].map((n) => ingTx(date, w * 10 + n)),
+  );
+  const first = new Date("2027-03-15T02:00:00.000Z");
+  expect(await fetchIng(ebEnv, first)).toBe("ok");
+  expect(transactionCalls()).toBe(10);
+  expect(windowsAsked()).toHaveLength(5);
+  expect(await ingLines()).toBe(15);
+  expect(await newestIng()).toBe("2027-02-27");
+  // Not up to today yet: no balance, so the overview shows no difference that is only lines not fetched yet.
+  expect(balanceCalls()).toBe(0);
+
+  eb.current.requests = [];
+  expect(await fetchIng(ebEnv, new Date("2027-03-16T02:00:00.000Z"))).toBe("ok");
+  expect(windowsAsked()).toEqual([
+    ["2027-02-20", "2027-03-05"],
+    ["2027-03-06", "2027-03-16"],
+  ]);
+  expect(await ingLines()).toBe(18);
+  expect(balanceCalls()).toBe(1);
+});
+
+it("starts from the newest line of ING or a bank file, not from a typed one", async () => {
+  await connect();
+  eb.current.transactions = [];
+  // A typed line far ahead (as could be typed before 400 date_in_future) and one of the kwartaalrekening do not count.
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO bank_lines (id, account_code, booking_date, amount_cents, description, content_key, origin, status, imported_at)
+       VALUES ('t1', '1010', '2027-09-01', 100, 'Getypt', 'k-t1', 'typed', 'open', '2027-02-01T00:00:00Z'),
+              ('s1', '1011', '2027-03-10', 100, 'Rente', 'k-s1', 'file', 'open', '2027-02-01T00:00:00Z')`,
+    ),
+  ]);
+  expect(await fetchIng(ebEnv, new Date("2027-03-15T02:00:00.000Z"))).toBe("ok");
+  expect(windowsAsked()[0]).toEqual(["2027-01-01", "2027-01-14"]);
+  // A line from a bank file of 1010 does count: the windows start a week before it.
+  await env.DB.prepare(
+    `INSERT INTO bank_lines (id, account_code, booking_date, amount_cents, description, content_key, origin, status, imported_at)
+     VALUES ('f1', '1010', '2027-03-01', 100, 'Uit bestand', 'k-f1', 'file', 'open', '2027-03-02T00:00:00Z')`,
+  ).run();
+  eb.current.requests = [];
+  expect(await fetchIng(ebEnv, new Date("2027-03-15T02:00:00.000Z"))).toBe("ok");
+  expect(windowsAsked()).toEqual([
+    ["2027-02-22", "2027-03-07"],
+    ["2027-03-08", "2027-03-15"],
+  ]);
 });

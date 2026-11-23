@@ -3,8 +3,9 @@
 // browser, never logged, never in a copy. A failure is named by a fixed code, never by what the bank said.
 
 import { type ConsentState, LEDGER_START } from "../../shared/ledger-types";
-import { shiftDate } from "../../shared/time";
-import { enableBankingFor, type EbFailure } from "../lib/enable-banking";
+import type { CamtLine } from "../../shared/camt";
+import { businessDate, shiftDate } from "../../shared/time";
+import { enableBankingFor, type EbFailure, MAX_TRANSACTION_CALLS } from "../lib/enable-banking";
 import type { Env } from "../env";
 import { autoBook, importLines, recordBalance } from "./bank";
 import { LedgerError } from "./ledger";
@@ -17,6 +18,8 @@ const DAY_MS = 86_400_000;
 const STATE_LIFETIME_MS = 30 * 60_000;
 /** A new fetch looks this many days before the newest line it has, to catch lines the bank booked late. */
 const LOOK_BACK_DAYS = 7;
+/** ING is asked for this many days at a time (R36). */
+const WINDOW_DAYS = 14;
 
 const normal = (value: string) => value.replace(/\s+/g, "").toUpperCase();
 const refusal = (failure: EbFailure) => new LedgerError(`enable_banking_${failure}`, 502);
@@ -99,7 +102,16 @@ export async function consentState(db: D1Database, now: Date): Promise<ConsentSt
   return { status, validUntil: row.valid_until, daysLeft: status === "expired" ? Math.min(days, -1) : days };
 }
 
-/** Nightly: new lines and the balance of 1010, when its source is Enable Banking and the consent is active. */
+/**
+ * Nightly: new lines and the balance of 1010, when its source is Enable Banking and the consent is active (R36).
+ * ING is asked in windows of two weeks (`date_from`/`date_to`), oldest first, from a week before the newest line of
+ * 1010 that came from ING or a bank file (a typed line does not count; never before LEDGER_START) up to today, in
+ * at most MAX_TRANSACTION_CALLS calls. A window is kept whole or not at all: one the bank cuts short (a page left
+ * after the calls ran out) keeps nothing, the run stops there and says `ing_cut_short`; the windows before it are
+ * kept. When the calls run out between windows, the later ones wait for the next night, which starts again a week
+ * before the newest line. The balance is asked only once the lines are read up to today, so that a backlog does not
+ * show as a difference. A failure keeps the windows read before it.
+ */
 export async function fetchIng(env: Env, now: Date): Promise<"ok" | "skipped" | string> {
   const db = env.DB;
   const account = await db.prepare("SELECT source FROM money_accounts WHERE account_code = ?").bind(ACCOUNT).first<{ source: string }>();
@@ -119,14 +131,43 @@ export async function fetchIng(env: Env, now: Date): Promise<"ok" | "skipped" | 
     return "consent_expired";
   };
 
-  const newest = await db.prepare("SELECT MAX(booking_date) AS date FROM bank_lines WHERE account_code = ?").bind(ACCOUNT).first<{ date: string | null }>();
+  const newest = await db
+    .prepare("SELECT MAX(booking_date) AS date FROM bank_lines WHERE account_code = ? AND origin IN ('enable_banking', 'file')")
+    .bind(ACCOUNT)
+    .first<{ date: string | null }>();
   const back = newest?.date ? shiftDate(newest.date, -LOOK_BACK_DAYS) : LEDGER_START;
-  const from = back < LEDGER_START ? LEDGER_START : back;
+  const today = businessDate(now.toISOString());
 
-  const lines = await client.transactions(consent.account_uid, from);
-  if (!lines.ok) return gone(lines.failure);
-  await importLines(db, ACCOUNT, lines.data, "enable_banking", now);
+  const lines: CamtLine[] = [];
+  const seen = new Set<string>();
+  let outcome = "ok";
+  let calls = 0;
+  let from = back < LEDGER_START ? LEDGER_START : back;
+  while (from <= today && calls < MAX_TRANSACTION_CALLS) {
+    const last = shiftDate(from, WINDOW_DAYS - 1);
+    const to = last < today ? last : today;
+    const window = await client.transactions(consent.account_uid, { from, to }, MAX_TRANSACTION_CALLS - calls);
+    if (!window.ok) {
+      outcome = await gone(window.failure);
+      break;
+    }
+    calls += window.data.pages;
+    if (!window.data.complete) {
+      outcome = "ing_cut_short";
+      break;
+    }
+    for (const line of window.data.lines) {
+      // A line the bank lists in two windows (by another of its dates) counts once.
+      if (line.bankRef !== null && seen.has(line.bankRef)) continue;
+      if (line.bankRef !== null) seen.add(line.bankRef);
+      lines.push(line);
+    }
+    from = shiftDate(to, 1);
+  }
+
+  await importLines(db, ACCOUNT, lines, "enable_banking", now);
   await autoBook(db, now);
+  if (outcome !== "ok" || from <= today) return outcome;
   const balance = await client.balance(consent.account_uid);
   if (!balance.ok) return gone(balance.failure);
   if (balance.data) await recordBalance(db, ACCOUNT, balance.data, "enable_banking");

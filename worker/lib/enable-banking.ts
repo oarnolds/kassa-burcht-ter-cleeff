@@ -11,8 +11,11 @@ export const ENABLE_BANKING_API = "https://api.enablebanking.com";
 
 // Same patience as the Mollie client: a slow answer is treated as no answer.
 const TIMEOUT_MS = 8000;
-// The free plan allows 50 external calls per run, Mollie's included; more pages than this wait for the next run.
-const MAX_PAGES = 10;
+/**
+ * The free plan allows 50 external calls per run, Mollie's included: one run asks ING for at most this many pages of
+ * lines (the balance comes on top). What does not fit waits for the next run.
+ */
+export const MAX_TRANSACTION_CALLS = 10;
 
 /**
  * Why a call gave nothing to work with. `unauthorized`: the key is wrong or the consent is gone (expired,
@@ -28,8 +31,16 @@ export type EbClient = {
   /** The page at the bank where the penningmeester gives consent. `validUntil` is an ISO date-time. */
   startAuth(input: { validUntil: string; redirectUrl: string; state: string }): Promise<EbResult<{ url: string }>>;
   createSession(code: string): Promise<EbResult<{ sessionId: string; validUntil: string; accounts: { uid: string; iban: string | null }[] }>>;
-  /** Booked lines from `dateFrom` (YYYY-MM-DD), every page, each bank reference at most once. */
-  transactions(accountUid: string, dateFrom: string): Promise<EbResult<CamtLine[]>>;
+  /**
+   * Booked lines from `from` to `to` (YYYY-MM-DD, both included), each bank reference at most once, in at most
+   * `maxPages` calls (`pages`: how many it made). `complete` is false when the bank still had a page after the last
+   * one asked for: the list is cut short, and the caller must not take it for all there is (R36).
+   */
+  transactions(
+    accountUid: string,
+    window: { from: string; to: string },
+    maxPages: number,
+  ): Promise<EbResult<{ lines: CamtLine[]; complete: boolean; pages: number }>>;
   /** Closing booked, else interim booked; null when the bank gives neither. */
   balance(accountUid: string): Promise<EbResult<{ date: string; cents: number } | null>>;
 };
@@ -213,12 +224,15 @@ export function enableBankingFor(env: Env): EbClient | null {
       });
       return { ok: true, data: { sessionId, validUntil, accounts } };
     },
-    async transactions(accountUid, dateFrom) {
+    async transactions(accountUid, window, maxPages) {
       const lines: CamtLine[] = [];
       const seen = new Set<string>();
       let key: string | null = null;
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const query: string = `date_from=${encodeURIComponent(dateFrom)}${key === null ? "" : `&continuation_key=${encodeURIComponent(key)}`}`;
+      let pages = 0;
+      while (pages < maxPages) {
+        pages++;
+        const dates = `date_from=${encodeURIComponent(window.from)}&date_to=${encodeURIComponent(window.to)}`;
+        const query: string = `${dates}${key === null ? "" : `&continuation_key=${encodeURIComponent(key)}`}`;
         const result = await call("GET", `/accounts/${encodeURIComponent(accountUid)}/transactions?${query}`);
         if (!result.ok) return result; // a page that fails fails the call: a half-read list must not look complete
         const raw = result.data;
@@ -236,7 +250,7 @@ export function enableBankingFor(env: Env): EbClient | null {
         key = text(raw.continuation_key);
         if (key === null) break;
       }
-      return { ok: true, data: lines };
+      return { ok: true, data: { lines, complete: key === null, pages } };
     },
     async balance(accountUid) {
       const result = await call("GET", `/accounts/${encodeURIComponent(accountUid)}/balances`);

@@ -4,6 +4,8 @@ import { ENABLE_BANKING_API, enableBankingFor, signJwt } from "../worker/lib/ena
 import { TEST_EB_APP_ID, testRsaKey, useFakeEnableBanking } from "./helpers";
 
 const eb = useFakeEnableBanking();
+/** A window over all of 2027: every line of the fake. */
+const YEAR = { from: "2027-01-01", to: "2027-12-31" };
 const client = async (over: Record<string, string> = {}) => {
   const { pem } = await testRsaKey();
   return enableBankingFor({ ...env, ENABLE_BANKING_APP_ID: TEST_EB_APP_ID, ENABLE_BANKING_PRIVATE_KEY: pem, ...over })!;
@@ -58,34 +60,47 @@ it("turns the code into a session with its accounts", async () => {
   expect(await (await client()).createSession("bad-code")).toMatchObject({ ok: false, failure: "refused", status: 422 });
 });
 
-it("reads every page of transactions as bank lines", async () => {
-  const result = await (await client()).transactions("acc-1", "2027-01-01");
+it("reads every page of transactions in a window as bank lines", async () => {
+  const result = await (await client()).transactions("acc-1", YEAR, 10);
   expect(eb.current.requests.map((r) => r.query.continuation_key)).toEqual([undefined, "2", "4"]);
-  expect(eb.current.requests[0]!.query.date_from).toBe("2027-01-01");
+  expect(eb.current.requests.map((r) => [r.query.date_from, r.query.date_to])).toEqual([
+    ["2027-01-01", "2027-12-31"],
+    ["2027-01-01", "2027-12-31"],
+    ["2027-01-01", "2027-12-31"],
+  ]);
   expect(result).toEqual({
     ok: true,
-    data: [
-      { bookingDate: "2027-03-01", amountCents: 1250, description: "Contributie maart", counterpartyName: "Jansen", counterpartyIban: "NL91ABNA0417164300", bankRef: "ref-1" },
-      { bookingDate: "2027-03-02", amountCents: -10005, description: "Factuur 12", counterpartyName: "Bakker BV", counterpartyIban: "NL86INGB0002445588", bankRef: "ref-2" },
-      { bookingDate: "2027-03-04", amountCents: 50, description: "", counterpartyName: null, counterpartyIban: null, bankRef: "tid-4" },
-      { bookingDate: "2027-03-05", amountCents: -2000, description: "Kantoor", counterpartyName: null, counterpartyIban: null, bankRef: "ref-5" },
-      { bookingDate: "2027-03-06", amountCents: 700, description: "", counterpartyName: "Pietersen", counterpartyIban: null, bankRef: "ref-6" },
-    ],
+    data: {
+      lines: [
+        { bookingDate: "2027-03-01", amountCents: 1250, description: "Contributie maart", counterpartyName: "Jansen", counterpartyIban: "NL91ABNA0417164300", bankRef: "ref-1" },
+        { bookingDate: "2027-03-02", amountCents: -10005, description: "Factuur 12", counterpartyName: "Bakker BV", counterpartyIban: "NL86INGB0002445588", bankRef: "ref-2" },
+        { bookingDate: "2027-03-04", amountCents: 50, description: "", counterpartyName: null, counterpartyIban: null, bankRef: "tid-4" },
+        { bookingDate: "2027-03-05", amountCents: -2000, description: "Kantoor", counterpartyName: null, counterpartyIban: null, bankRef: "ref-5" },
+        { bookingDate: "2027-03-06", amountCents: 700, description: "", counterpartyName: "Pietersen", counterpartyIban: null, bankRef: "ref-6" },
+      ],
+      complete: true,
+      pages: 3,
+    },
   });
+  // Only the days asked for.
+  eb.current.requests = [];
+  const window = await (await client()).transactions("acc-1", { from: "2027-03-02", to: "2027-03-04" }, 10);
+  expect(window.ok && window.data.lines.map((line) => line.bankRef)).toEqual(["ref-2", "tid-4"]);
+  expect(eb.current.requests[0]!.query).toMatchObject({ date_from: "2027-03-02", date_to: "2027-03-04" });
 });
 
 it("ignores a pending transaction", async () => {
-  const result = await (await client()).transactions("acc-1", "2027-01-01");
-  expect(result.ok && result.data.some((line) => line.description === "wacht")).toBe(false);
+  const result = await (await client()).transactions("acc-1", YEAR, 10);
+  expect(result.ok && result.data.lines.some((line) => line.description === "wacht")).toBe(false);
 });
 
 it("never returns the same bank reference twice in one call", async () => {
   eb.current.transactions.push({ ...eb.current.transactions[0]!, transaction_amount: { currency: "EUR", amount: "99.00" } });
-  const result = await (await client()).transactions("acc-1", "2027-01-01");
-  expect(result.ok && result.data.filter((line) => line.bankRef === "ref-1")).toEqual([expect.objectContaining({ amountCents: 1250 })]);
+  const result = await (await client()).transactions("acc-1", YEAR, 10);
+  expect(result.ok && result.data.lines.filter((line) => line.bankRef === "ref-1")).toEqual([expect.objectContaining({ amountCents: 1250 })]);
 });
 
-it("stops at 10 pages", async () => {
+it("stops at the pages it may ask for, and says the window was cut short", async () => {
   eb.current.transactions = Array.from({ length: 60 }, (_, i) => ({
     entry_reference: `r${i}`,
     status: "BOOK",
@@ -93,9 +108,17 @@ it("stops at 10 pages", async () => {
     transaction_amount: { currency: "EUR", amount: "1.00" },
     credit_debit_indicator: "CRDT",
   }));
-  const result = await (await client()).transactions("acc-1", "2027-01-01");
+  const result = await (await client()).transactions("acc-1", YEAR, 10);
   expect(eb.current.requests).toHaveLength(10);
-  expect(result.ok && result.data).toHaveLength(20);
+  expect(result.ok && [result.data.lines.length, result.data.complete, result.data.pages]).toEqual([20, false, 10]);
+  eb.current.requests = [];
+  const fewer = await (await client()).transactions("acc-1", YEAR, 3);
+  expect(eb.current.requests).toHaveLength(3);
+  expect(fewer.ok && [fewer.data.complete, fewer.data.pages]).toEqual([false, 3]);
+  // Exactly as many pages as there are: complete.
+  eb.current.transactions = eb.current.transactions.slice(0, 6);
+  const all = await (await client()).transactions("acc-1", YEAR, 3);
+  expect(all.ok && [all.data.lines.length, all.data.complete, all.data.pages]).toEqual([6, true, 3]);
 });
 
 it("reads the closing booked balance, else the interim booked one", async () => {
@@ -121,7 +144,7 @@ it("tells a refusal from no answer", async () => {
 
 it("treats an expired session as unauthorized, whatever the status", async () => {
   eb.current.expireSession();
-  expect(await (await client()).transactions("acc-1", "2027-01-01")).toEqual({ ok: false, failure: "unauthorized", status: 401 });
+  expect(await (await client()).transactions("acc-1", YEAR, 10)).toEqual({ ok: false, failure: "unauthorized", status: 401 });
 });
 
 it("has no client without the key", async () => {
@@ -147,13 +170,13 @@ it("fails the whole call when a later page fails", async () => {
   const inner = globalThis.fetch;
   let calls = 0;
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => (++calls === 2 ? Promise.reject(new Error("down")) : inner(input, init)));
-  expect(await c.transactions("acc-1", "2027-01-01")).toEqual({ ok: false, failure: "unreachable", status: 0 });
+  expect(await c.transactions("acc-1", YEAR, 10)).toEqual({ ok: false, failure: "unreachable", status: 0 });
 });
 
 it("treats a gone consent as unauthorized, whatever the status", async () => {
   const c = await client();
   eb.current.failNext(403, "REVOKED_SESSION");
-  expect(await c.transactions("acc-1", "2027-01-01")).toEqual({ ok: false, failure: "unauthorized", status: 403 });
+  expect(await c.transactions("acc-1", YEAR, 10)).toEqual({ ok: false, failure: "unauthorized", status: 403 });
   eb.current.failNext(422, "CLOSED_SESSION");
   expect(await c.balance("acc-1")).toEqual({ ok: false, failure: "unauthorized", status: 422 });
   eb.current.expireSession(408);
@@ -179,16 +202,16 @@ it("falls back from booking_date to value_date, then transaction_date", async ()
     booked({ entry_reference: "a", booking_date: null, value_date: "2027-04-01", transaction_date: "2027-05-01" }),
     booked({ entry_reference: "b", booking_date: null, transaction_date: "2027-05-02" }),
   ];
-  const result = await (await client()).transactions("acc-1", "2027-01-01");
-  expect(result.ok && result.data.map((line) => line.bookingDate)).toEqual(["2027-04-01", "2027-05-02"]);
+  const result = await (await client()).transactions("acc-1", YEAR, 10);
+  expect(result.ok && result.data.lines.map((line) => line.bookingDate)).toEqual(["2027-04-01", "2027-05-02"]);
 });
 
 it("accepts trailing zero decimals but not extra digits", async () => {
   eb.current.transactions = [booked({ transaction_amount: { currency: "EUR", amount: "12.500" } })];
-  const ok = await (await client()).transactions("acc-1", "2027-01-01");
-  expect(ok.ok && ok.data[0]!.amountCents).toBe(1250);
+  const ok = await (await client()).transactions("acc-1", YEAR, 10);
+  expect(ok.ok && ok.data.lines[0]!.amountCents).toBe(1250);
   eb.current.transactions = [booked({ transaction_amount: { currency: "EUR", amount: "12.505" } })];
-  expect(await (await client()).transactions("acc-1", "2027-01-01")).toEqual({ ok: false, failure: "unreadable", status: 0 });
+  expect(await (await client()).transactions("acc-1", YEAR, 10)).toEqual({ ok: false, failure: "unreadable", status: 0 });
 });
 
 it("fails the call on a booked line it cannot read, instead of losing it", async () => {
@@ -198,6 +221,6 @@ it("fails the call on a booked line it cannot read, instead of losing it", async
     booked({ transaction_amount: undefined }),
   ]) {
     eb.current.transactions = [booked({ entry_reference: "fine" }), bad];
-    expect(await (await client()).transactions("acc-1", "2027-01-01")).toEqual({ ok: false, failure: "unreadable", status: 0 });
+    expect(await (await client()).transactions("acc-1", YEAR, 10)).toEqual({ ok: false, failure: "unreadable", status: 0 });
   }
 });

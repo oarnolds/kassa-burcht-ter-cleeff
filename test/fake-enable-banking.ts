@@ -12,8 +12,10 @@ export type FakeEnableBanking = {
   requests: { method: string; path: string; query: Record<string, string>; body: any; jwt: { header: any; claims: any } | null }[];
   /** What GET /aspsps answers with, as ASPSP records. */
   aspsps: { name: string; country: string; psu_types: string[]; maximum_consent_validity: number }[];
-  /** What /accounts/:uid/transactions pages through (2 per page). Includes one pending line. */
+  /** What /accounts/:uid/transactions pages through (`pageSize` per page), within `date_from`/`date_to`. Includes one pending line. */
   transactions: FakeTransaction[];
+  /** Lines per page of transactions; 2 unless a test sets it. */
+  pageSize: number;
   balances: Record<string, unknown>[];
   /** From now on every call answers with this status (401) and `error` (EXPIRED_SESSION). */
   expireSession(status?: number, error?: string): void;
@@ -109,6 +111,7 @@ export function createFakeEnableBanking(opts: { appId: string; publicKey: Crypto
     requests: [],
     aspsps: freshAspsps(),
     transactions: freshTransactions(),
+    pageSize: 2,
     balances: freshBalances(),
     expireSession(status = 401, error = "EXPIRED_SESSION") {
       expired = { status, error };
@@ -120,6 +123,7 @@ export function createFakeEnableBanking(opts: { appId: string; publicKey: Crypto
       fake.requests = [];
       fake.aspsps = freshAspsps();
       fake.transactions = freshTransactions();
+      fake.pageSize = 2;
       fake.balances = freshBalances();
       failures = [];
       expired = null;
@@ -203,10 +207,18 @@ export function createFakeEnableBanking(opts: { appId: string; publicKey: Crypto
     if (method === "GET" && account) {
       if (!["acc-1", "acc-2"].includes(account[1]!)) return problem(404, "NOT_FOUND", "No such account");
       if (account[2] === "balances") return json({ balances: fake.balances });
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get("date_from") ?? "")) return problem(422, "VALIDATION_ERROR", "date_from is missing");
+      const from = url.searchParams.get("date_from") ?? "";
+      const to = url.searchParams.get("date_to");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return problem(422, "VALIDATION_ERROR", "date_from is missing");
+      if (to !== null && !/^\d{4}-\d{2}-\d{2}$/.test(to)) return problem(422, "VALIDATION_ERROR", "date_to is not a date");
+      // The bank's own date of a line; one without any date is always sent (the client must refuse it).
+      const dated = fake.transactions.filter((t) => {
+        const date = [t.booking_date, t.value_date, t.transaction_date].find((d) => typeof d === "string") as string | undefined;
+        return date === undefined || (date.slice(0, 10) >= from && (to === null || date.slice(0, 10) <= to));
+      });
       const offset = Number(url.searchParams.get("continuation_key") ?? "0");
-      const page = fake.transactions.slice(offset, offset + 2);
-      const next = offset + 2 < fake.transactions.length ? String(offset + 2) : null;
+      const page = dated.slice(offset, offset + fake.pageSize);
+      const next = offset + fake.pageSize < dated.length ? String(offset + fake.pageSize) : null;
       return json({ transactions: page, continuation_key: next });
     }
     return problem(404, "NOT_FOUND", "The fake Enable Banking does not know this route");
