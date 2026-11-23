@@ -4,8 +4,8 @@ import type { AccountKind, LedgerAccount, MoneyAccount, MoneySource } from "../.
 import { Button } from "../../ui/Button";
 import { useToast } from "../../ui/Toast";
 import { Loaded, PageTitle, Problem, Section, field, textLink } from "../parts";
-import { useAdminData, useAdminWrite } from "../useAdmin";
-import { LEDGER, type CategoryAccount } from "./ledger-api";
+import { useAdminData } from "../useAdmin";
+import { ledgerPath, useLedgerWrites, type CategoryAccount } from "./ledger-api";
 
 const label = "flex flex-col gap-1 font-semibold";
 const kindName: Record<AccountKind, string> = { asset: "bezit", liability: "schuld", equity: "vermogen", expense: "kosten", income: "opbrengst" };
@@ -22,7 +22,7 @@ function explain(status: number, error: string): string {
 }
 
 function AccountRow({ account, onChanged }: { account: LedgerAccount; onChanged(): void }) {
-  const write = useAdminWrite();
+  const api = useLedgerWrites();
   const toast = useToast();
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(account.name);
@@ -30,7 +30,7 @@ function AccountRow({ account, onChanged }: { account: LedgerAccount; onChanged(
 
   const patch = async (body: { name?: string; hidden?: boolean }) => {
     setProblem(null);
-    const answer = await write<LedgerAccount>(`${LEDGER}/accounts/${account.code}`, "PATCH", body);
+    const answer = await api.patchAccount(account.code, body);
     if (!answer.ok) return setProblem(explain(answer.status, answer.error));
     setRenaming(false);
     toast.show("Opgeslagen.");
@@ -81,7 +81,7 @@ function AccountRow({ account, onChanged }: { account: LedgerAccount; onChanged(
 }
 
 function AddAccount({ onAdded }: { onAdded(): void }) {
-  const write = useAdminWrite();
+  const api = useLedgerWrites();
   const toast = useToast();
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
@@ -91,7 +91,7 @@ function AddAccount({ onAdded }: { onAdded(): void }) {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setProblem(null);
-    const answer = await write(`${LEDGER}/accounts`, "POST", { code: code.trim(), name: name.trim(), kind });
+    const answer = await api.addAccount({ code: code.trim(), name: name.trim(), kind });
     if (!answer.ok) return setProblem(explain(answer.status, answer.error));
     setCode("");
     setName("");
@@ -128,7 +128,7 @@ function AddAccount({ onAdded }: { onAdded(): void }) {
 }
 
 function MoneyRow({ initial }: { initial: MoneyAccount }) {
-  const write = useAdminWrite();
+  const api = useLedgerWrites();
   const toast = useToast();
   const [account, setAccount] = useState(initial);
   const [identifier, setIdentifier] = useState(initial.identifier ?? "");
@@ -137,7 +137,7 @@ function MoneyRow({ initial }: { initial: MoneyAccount }) {
 
   const patch = async (body: { identifier?: string | null; source?: MoneySource }) => {
     setProblem(null);
-    const answer = await write<MoneyAccount>(`${LEDGER}/money-accounts/${account.accountCode}`, "PATCH", body);
+    const answer = await api.patchMoneyAccount(account.accountCode, body);
     if (!answer.ok) return setProblem(explain(answer.status, answer.error));
     setAccount(answer.data);
     toast.show("Opgeslagen.");
@@ -186,7 +186,7 @@ function MoneyRow({ initial }: { initial: MoneyAccount }) {
 }
 
 function CategoryForm({ categories, accounts }: { categories: CategoryAccount[]; accounts: LedgerAccount[] }) {
-  const write = useAdminWrite();
+  const api = useLedgerWrites();
   const toast = useToast();
   const [chosen, setChosen] = useState(() => Object.fromEntries(categories.map((one) => [one.categoryId, one.accountCode])));
   const [problem, setProblem] = useState<string | null>(null);
@@ -194,11 +194,7 @@ function CategoryForm({ categories, accounts }: { categories: CategoryAccount[];
 
   const save = async () => {
     setProblem(null);
-    const answer = await write(
-      `${LEDGER}/category-accounts`,
-      "PUT",
-      categories.map((one) => ({ categoryId: one.categoryId, accountCode: chosen[one.categoryId] })),
-    );
+    const answer = await api.putCategoryAccounts(categories.map((one) => ({ categoryId: one.categoryId, accountCode: chosen[one.categoryId]! })));
     if (!answer.ok) return setProblem(explain(answer.status, answer.error));
     toast.show("Opgeslagen.");
   };
@@ -233,9 +229,9 @@ function CategoryForm({ categories, accounts }: { categories: CategoryAccount[];
 
 /** Boekhouding → Instellingen: the chart of accounts, the money accounts and where the kassa's turnover goes. */
 export function SettingsLedgerPage() {
-  const accounts = useAdminData<LedgerAccount[]>(`${LEDGER}/accounts`);
-  const money = useAdminData<MoneyAccount[]>(`${LEDGER}/money-accounts`);
-  const categories = useAdminData<CategoryAccount[]>(`${LEDGER}/category-accounts`);
+  const accounts = useAdminData<LedgerAccount[]>(ledgerPath.accounts);
+  const money = useAdminData<MoneyAccount[]>(ledgerPath.moneyAccounts);
+  const categories = useAdminData<CategoryAccount[]>(ledgerPath.categoryAccounts);
 
   return (
     <div>

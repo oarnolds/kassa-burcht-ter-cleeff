@@ -3,9 +3,9 @@ import type { LedgerAccount } from "../../../shared/ledger-types";
 import { Button } from "../../ui/Button";
 import { useToast } from "../../ui/Toast";
 import { Loaded, PageTitle, Problem, Section } from "../parts";
-import { useAdminData, useAdminWrite } from "../useAdmin";
+import { useAdminData } from "../useAdmin";
 import { AmountField } from "./AmountField";
-import { LEDGER, type Comparison } from "./ledger-api";
+import { ledgerPath, useLedgerWrites, type Comparison } from "./ledger-api";
 
 const YEAR = 2026;
 
@@ -13,7 +13,7 @@ const YEAR = 2026;
 const joined = (items: string[]): string => (items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} en ${items.at(-1)}`);
 
 function ComparisonForm({ accounts, comparison }: { accounts: LedgerAccount[]; comparison: Comparison }) {
-  const write = useAdminWrite();
+  const api = useLedgerWrites();
   const toast = useToast();
   const rows = accounts.filter((account) => account.kind === "income" || account.kind === "expense");
   const typed = new Map(comparison.figures.map((figure) => [figure.accountCode, figure.amountCents]));
@@ -31,7 +31,7 @@ function ComparisonForm({ accounts, comparison }: { accounts: LedgerAccount[]; c
   const save = async () => {
     setProblem(null);
     const figures = rows.filter((row) => cents[row.code] !== null).map((row) => ({ accountCode: row.code, amountCents: cents[row.code]! }));
-    const answer = await write(`${LEDGER}/comparison?year=${YEAR}`, "PUT", { figures });
+    const answer = await api.putComparison(YEAR, figures);
     if (!answer.ok) return setProblem(answer.status === 0 ? "Geen verbinding. Probeer het opnieuw." : "Opslaan is niet gelukt. Probeer het opnieuw.");
     toast.show("Opgeslagen.");
   };
@@ -45,7 +45,7 @@ function ComparisonForm({ accounts, comparison }: { accounts: LedgerAccount[]; c
             <li key={row.code} className="flex flex-wrap items-center justify-between gap-2 border-t border-sand py-2 first:border-t-0">
               <span className="text-lg">
                 <span className="tabular-nums">{row.code}</span> {row.name}
-                {(row.formerly.length !== 1 || row.formerly[0] !== row.code) && (
+                {row.formerly.some((old) => old !== row.code) && (
                   <span className="block text-sm text-ink/70">{`was ${joined(row.formerly)}`}</span>
                 )}
               </span>
@@ -78,8 +78,8 @@ function ComparisonForm({ accounts, comparison }: { accounts: LedgerAccount[]; c
 
 /** The 2026 result per account as e-Boekhouden has it, typed once, so 2027 can be read next to it. */
 export function ComparisonPage() {
-  const accounts = useAdminData<LedgerAccount[]>(`${LEDGER}/accounts`);
-  const comparison = useAdminData<Comparison>(`${LEDGER}/comparison?year=${YEAR}`);
+  const accounts = useAdminData<LedgerAccount[]>(ledgerPath.accounts);
+  const comparison = useAdminData<Comparison>(ledgerPath.comparison(YEAR));
   return (
     <div>
       <PageTitle>Cijfers 2026</PageTitle>

@@ -4,9 +4,9 @@ import type { LedgerAccount } from "../../../shared/ledger-types";
 import { Button } from "../../ui/Button";
 import { useToast } from "../../ui/Toast";
 import { Loaded, PageTitle, Problem, Section } from "../parts";
-import { useAdminData, useAdminWrite } from "../useAdmin";
+import { useAdminData } from "../useAdmin";
 import { AmountField } from "./AmountField";
-import { LEDGER, type Opening } from "./ledger-api";
+import { ledgerPath, useLedgerWrites, type Opening } from "./ledger-api";
 
 const YEAR = 2027;
 /** The account that is the other side of the opening: worked out, never typed. */
@@ -15,7 +15,7 @@ const EQUITY = "1400";
 const DEPRECIATION = "0135";
 
 function OpeningForm({ accounts, opening }: { accounts: LedgerAccount[]; opening: Opening }) {
-  const write = useAdminWrite();
+  const api = useLedgerWrites();
   const toast = useToast();
   const saved = new Map(opening.lines.map((line) => [line.accountCode, line.amountCents]));
   const rows = accounts.filter(
@@ -42,7 +42,7 @@ function OpeningForm({ accounts, opening }: { accounts: LedgerAccount[]; opening
   const save = async () => {
     setProblem(null);
     const lines = rows.filter((row) => cents[row.code]).map((row) => ({ accountCode: row.code, amountCents: cents[row.code]! }));
-    const answer = await write(`${LEDGER}/opening?year=${YEAR}`, "PUT", { lines, eBoekhoudenEquityCents: eBoekhouden });
+    const answer = await api.putOpening(YEAR, { lines, eBoekhoudenEquityCents: eBoekhouden });
     if (!answer.ok) return setProblem(answer.status === 0 ? "Geen verbinding. Probeer het opnieuw." : "Opslaan is niet gelukt. Probeer het opnieuw.");
     toast.show("Opgeslagen.");
   };
@@ -100,8 +100,8 @@ function OpeningForm({ accounts, opening }: { accounts: LedgerAccount[]; opening
 
 /** The balance on 1 January 2027, typed from e-Boekhouden: one entry, replaced on every save. */
 export function OpeningPage() {
-  const accounts = useAdminData<LedgerAccount[]>(`${LEDGER}/accounts`);
-  const opening = useAdminData<Opening>(`${LEDGER}/opening?year=${YEAR}`);
+  const accounts = useAdminData<LedgerAccount[]>(ledgerPath.accounts);
+  const opening = useAdminData<Opening>(ledgerPath.opening(YEAR));
   return (
     <div>
       <PageTitle>Beginbalans 1 januari 2027</PageTitle>

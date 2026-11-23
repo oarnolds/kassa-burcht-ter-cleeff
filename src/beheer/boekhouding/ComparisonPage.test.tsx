@@ -57,3 +57,14 @@ it("refuses to save an amount that cannot be read", async () => {
   expect(screen.getByRole("button", { name: "Opslaan" })).toBeDisabled();
   expect(calls("PUT")).toHaveLength(0);
 });
+
+it("shows no 'was' for an account without old numbers", async () => {
+  mockLoggedIn();
+  mockApi({
+    [`${base}/accounts`]: [account("4600", "Nieuw", "expense", []), account("4507", "Kantoorkosten", "expense")],
+    [`${base}/comparison`]: { year: 2026, figures: [] },
+  });
+  renderAt("/beheer/boekhouding/vergelijking");
+  await screen.findByLabelText("Nieuw");
+  expect(screen.queryByText(/^was/)).not.toBeInTheDocument();
+});

@@ -1,9 +1,12 @@
-// The boekhouding's routes in the Worker, one small typed call each. Every call answers like `adminApi`: the data or a reason.
+// The one place that knows the boekhouding's paths and body shapes (they follow the zod schemas in
+// worker/routes/admin-ledger.ts and admin-ledger-bank.ts). Reads: a path for `useAdminData`. Writes: `useLedgerWrites`.
 
+import { useMemo } from "react";
 import type { AccountKind, LedgerAccount, MoneyAccount, MoneySource } from "../../../shared/ledger-types";
-import { adminApi, type ApiResult } from "../../lib/api";
+import type { ApiResult } from "../../lib/api";
+import { useAdminWrite } from "../useAdmin";
 
-export const LEDGER = "/api/admin/boekhouding";
+const LEDGER = "/api/admin/boekhouding";
 
 export type CategoryAccount = { categoryId: string; categoryName: string; accountCode: string };
 
@@ -19,32 +22,33 @@ export type Opening = {
 export type Figure = { accountCode: string; amountCents: number };
 export type Comparison = { year: number; figures: Figure[] };
 
-export const listAccounts = (): Promise<ApiResult<LedgerAccount[]>> => adminApi(`${LEDGER}/accounts`);
+/** Where to read from. */
+export const ledgerPath = {
+  accounts: `${LEDGER}/accounts`,
+  moneyAccounts: `${LEDGER}/money-accounts`,
+  categoryAccounts: `${LEDGER}/category-accounts`,
+  opening: (year: number) => `${LEDGER}/opening?year=${year}`,
+  comparison: (year: number) => `${LEDGER}/comparison?year=${year}`,
+};
 
-export const addAccount = (body: { code: string; name: string; kind: AccountKind }): Promise<ApiResult<LedgerAccount>> =>
-  adminApi(`${LEDGER}/accounts`, { method: "POST", json: body });
-
-export const patchAccount = (code: string, body: { name?: string; hidden?: boolean }): Promise<ApiResult<LedgerAccount>> =>
-  adminApi(`${LEDGER}/accounts/${code}`, { method: "PATCH", json: body });
-
-export const getCategoryAccounts = (): Promise<ApiResult<CategoryAccount[]>> => adminApi(`${LEDGER}/category-accounts`);
-
-export const putCategoryAccounts = (body: { categoryId: string; accountCode: string }[]): Promise<ApiResult<CategoryAccount[]>> =>
-  adminApi(`${LEDGER}/category-accounts`, { method: "PUT", json: body });
-
-export const getOpening = (year: number): Promise<ApiResult<Opening>> => adminApi(`${LEDGER}/opening?year=${year}`);
-
-export const putOpening = (
-  year: number,
-  body: { lines: Figure[]; eBoekhoudenEquityCents: number | null },
-): Promise<ApiResult<Opening>> => adminApi(`${LEDGER}/opening?year=${year}`, { method: "PUT", json: body });
-
-export const getComparison = (year: number): Promise<ApiResult<Comparison>> => adminApi(`${LEDGER}/comparison?year=${year}`);
-
-export const putComparison = (year: number, figures: Figure[]): Promise<ApiResult<Comparison>> =>
-  adminApi(`${LEDGER}/comparison?year=${year}`, { method: "PUT", json: { figures } });
-
-export const listMoneyAccounts = (): Promise<ApiResult<MoneyAccount[]>> => adminApi(`${LEDGER}/money-accounts`);
-
-export const patchMoneyAccount = (code: string, body: { identifier?: string | null; source?: MoneySource }): Promise<ApiResult<MoneyAccount>> =>
-  adminApi(`${LEDGER}/money-accounts/${code}`, { method: "PATCH", json: body });
+/** Every change the boekhouding's settings pages send. A 401 leads back to login, as with `useAdminWrite`. */
+export function useLedgerWrites() {
+  const write = useAdminWrite();
+  return useMemo(
+    () => ({
+      addAccount: (body: { code: string; name: string; kind: AccountKind }): Promise<ApiResult<LedgerAccount>> =>
+        write(`${LEDGER}/accounts`, "POST", body),
+      patchAccount: (code: string, body: { name?: string; hidden?: boolean }): Promise<ApiResult<LedgerAccount>> =>
+        write(`${LEDGER}/accounts/${code}`, "PATCH", body),
+      putCategoryAccounts: (body: { categoryId: string; accountCode: string }[]): Promise<ApiResult<CategoryAccount[]>> =>
+        write(`${LEDGER}/category-accounts`, "PUT", body),
+      putOpening: (year: number, body: { lines: Figure[]; eBoekhoudenEquityCents: number | null }): Promise<ApiResult<Opening>> =>
+        write(ledgerPath.opening(year), "PUT", body),
+      putComparison: (year: number, figures: Figure[]): Promise<ApiResult<Comparison>> =>
+        write(ledgerPath.comparison(year), "PUT", { figures }),
+      patchMoneyAccount: (code: string, body: { identifier?: string | null; source?: MoneySource }): Promise<ApiResult<MoneyAccount>> =>
+        write(`${LEDGER}/money-accounts/${code}`, "PATCH", body),
+    }),
+    [write],
+  );
+}
