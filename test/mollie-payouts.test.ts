@@ -201,6 +201,62 @@ it("books one payout once, also when the night runs twice", async () => {
   expect((await balancesOn(env.DB, "2027-12-31")).get("1030")).toBe(-10000);
 });
 
+it("lets him book a waiting payout line by hand, and the payout that follows books nothing twice", async () => {
+  await ingLine("2027-03-09", 9812, "05665564.2703.01 Mollie");
+  expect(await autoBook(env.DB, NOW)).toBe(0);
+  const line = (await lineOf("05665564.2703.01 Mollie"))!;
+  expect(line).toMatchObject({ status: "waiting", waiting_for: "mollie" });
+
+  // He does not wait for Mollie: he books it himself, costs and all.
+  const own = await bookLine(env.DB, line.id, { split: [{ accountCode: "4511", amountCents: 188 }, { accountCode: "1030", amountCents: -10000 }] }, NOW);
+  expect(own).toMatchObject({ source: "bank", sourceRef: line.id });
+  expect(await lineOf("05665564.2703.01 Mollie")).toMatchObject({ status: "booked", waiting_for: null, entry_id: own.id });
+
+  // Mollie's payout comes in later: the line and his entry stay as they are, and nothing books it again.
+  const snapshot = async () => ({
+    entries: (await env.DB.prepare("SELECT id, source, updated_at FROM ledger_entries ORDER BY id").all()).results,
+    lines: (await env.DB.prepare("SELECT * FROM ledger_lines ORDER BY id").all()).results,
+    bank: (await env.DB.prepare("SELECT * FROM bank_lines ORDER BY id").all()).results,
+  });
+  const before = await snapshot();
+  mollie.current.addSettlement({ reference: "05665564.2703.01", amount: "98.12", settledAt: "2027-03-08T06:00:00+00:00", costs: { "2027": { "03": ["1.88"] } } });
+  expect(await settle(new Date("2027-03-17T02:00:00.000Z"))).toBe("ok");
+  expect(await count("mollie_settlements")).toBe(1);
+  expect(await autoBook(env.DB, NOW)).toBe(0);
+  expect(await snapshot()).toEqual(before);
+  expect(await count("ledger_entries WHERE source = 'mollie_settlement'")).toBe(0);
+});
+
+it("leaves a payout of 2026 to the penningmeester", async () => {
+  // Settled before the books begin, it lands on ING in January: the line comes in first and waits.
+  await ingLine("2027-01-04", 9812, "05665564.2612.03 Mollie");
+  expect(await autoBook(env.DB, NOW)).toBe(0);
+  expect(await lineOf("05665564.2612.03 Mollie")).toMatchObject({ status: "waiting", waiting_for: "mollie" });
+
+  // The first read of the payouts reaches back to 1 December 2026, so late December is known (November is not).
+  mollie.current.addSettlement({ reference: "05665564.2611.04", amount: "50.00", settledAt: "2026-11-20T06:00:00+00:00", costs: { "2026": { "11": ["1.00"] } } });
+  const december = mollie.current.addSettlement({ reference: "05665564.2612.03", amount: "98.12", settledAt: "2026-12-30T06:00:00+00:00", costs: { "2026": { "12": ["1.88"] } } });
+  expect(await settle(new Date("2027-01-05T02:00:00.000Z"))).toBe("ok");
+  expect((await env.DB.prepare("SELECT id FROM mollie_settlements").all()).results).toEqual([{ id: december.id }]);
+
+  // Its costs are 2026's, booked in e-Boekhouden: the app does not book it, and says what to do.
+  expect(await lineOf("05665564.2612.03 Mollie")).toMatchObject({
+    status: "open",
+    waiting_for: null,
+    note: "Uitbetaling 05665564.2612.03 is van 30-12-2026 (2026): boek hem tegen 1080 Kruisposten als hij in de beginbalans onderweg stond.",
+    entry_id: null,
+  });
+  expect(await autoBook(env.DB, NOW)).toBe(0);
+  expect(await count("ledger_entries")).toBe(0);
+
+  // He books it against 1080, and that is that.
+  const line = (await lineOf("05665564.2612.03 Mollie"))!;
+  await bookLine(env.DB, line.id, { split: [{ accountCode: "1080", amountCents: -9812 }] }, NOW);
+  expect(await autoBook(env.DB, NOW)).toBe(0);
+  expect(await lineOf("05665564.2612.03 Mollie")).toMatchObject({ status: "booked" });
+  expect(await count("ledger_entries WHERE source = 'mollie_settlement'")).toBe(0);
+});
+
 it("compares the kassa's pin with Mollie's, payment by payment", async () => {
   const kept = "sale_kept";
   await env.DB.batch([

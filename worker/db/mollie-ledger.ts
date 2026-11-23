@@ -33,6 +33,11 @@ const PER_INSERT = 500;
 const RESUME_KEY = "mollie_payments_resume";
 /** A run reads the payouts from this long before the newest one settled that it has, to catch a late change. */
 const PAYOUT_LOOK_BACK_MS = 7 * 86_400_000;
+/**
+ * The first read of the payouts starts here: a payout settled in late December 2026 lands on ING in January, and
+ * its line is told apart from the ledger's own payouts only when the payout is known.
+ */
+const FIRST_PAYOUT_DATE = "2026-12-01";
 
 type Kind = "kassa" | "rule" | "line";
 type Paid = MolliePaymentRow & { paidAt: string; paidDate: string };
@@ -354,7 +359,7 @@ async function storeReversals(
 
 /**
  * Nightly, after the payments: Mollie's payouts (settlements) that are still open or were settled since a week
- * before the newest one kept (or since LEDGER_START), each kept once by its id, a later read bringing its status,
+ * before the newest one kept (or, the first time, since 1 December 2026), each kept once by its id, a later read bringing its status,
  * date, amount and costs up to date (the costs with Mollie's sign). Then `autoBook`, which books a payout line on
  * ING that waited for it. A failure of Mollie gives its name, logged as a fixed text with that name only.
  */
@@ -368,7 +373,7 @@ export async function syncSettlements(env: Env, now: Date): Promise<"ok" | "skip
   const db = env.DB;
   try {
     const newest = await db.prepare("SELECT MAX(settled_at) AS at FROM mollie_settlements").first<{ at: string | null }>();
-    const from = newest?.at ? new Date(Date.parse(newest.at) - PAYOUT_LOOK_BACK_MS).toISOString() : startOfDay(LEDGER_START);
+    const from = newest?.at ? new Date(Date.parse(newest.at) - PAYOUT_LOOK_BACK_MS).toISOString() : startOfDay(FIRST_PAYOUT_DATE);
     const read = await client.settlementsSince(from);
     if (!read.ok) return failed(read.failure);
     // A payout still being made up has no reference yet: none, never an empty one (the reference is unique).

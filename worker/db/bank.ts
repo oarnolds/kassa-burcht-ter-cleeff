@@ -4,6 +4,7 @@ import { formatEuro } from "../../shared/money";
 import { businessDate, shiftDate } from "../../shared/time";
 import { sha256Hex } from "../lib/crypto";
 import { type Entry, type EntryLine } from "../../shared/ledger-types";
+import { dayMonthYear } from "./kassa-ledger";
 import { createEntry, editEntry, LedgerError, upsertSourcedStatements } from "./ledger";
 
 export type LineOrigin = "file" | "enable_banking" | "typed" | "mollie";
@@ -454,7 +455,7 @@ type OpenRow = {
   note: string | null;
 };
 /** A payout of Mollie as read by worker/db/mollie-ledger.ts; `booked` once its entry is there. */
-type PayoutRow = { id: string; reference: string; amount_cents: number; costs_cents: number; booked: number };
+type PayoutRow = { id: string; reference: string; settled_at: string | null; amount_cents: number; costs_cents: number; booked: number };
 /** The statements for one line; `books` when the last of them marks the line booked. */
 type Work = { statements: D1PreparedStatement[]; books: boolean };
 
@@ -465,8 +466,9 @@ const payoutReference = (row: OpenRow): string | null =>
 /**
  * Lines that book themselves. A payout of Mollie on ING betaal, by the reference in its description: known with the
  * same amount, it is booked with Mollie's costs (debit 1010 the payout, debit 4511 the costs, credit 1030 both);
- * not known yet, it waits for Mollie; known with another amount, or booked already from another line, it stays open
- * with the reason, and the app never guesses. Own transfers and kasstortings, of `open` lines only, against 1080.
+ * not known yet, it waits for Mollie; settled before LEDGER_START, known with another amount, or booked already from
+ * another line, it stays open with the reason, and the app never guesses. A line booked by hand (also one that
+ * waited) is left alone. Own transfers and kasstortings, of `open` lines only, against 1080.
  * Lines in years that are not closed; a second run finds nothing more. In batches, not one call per line. Gives how
  * many lines were booked.
  */
@@ -484,7 +486,7 @@ export async function autoBook(db: D1Database, now: Date): Promise<number> {
       .bind(LEDGER_START, AUTO_LINES_PER_RUN),
     db.prepare("SELECT account_code, identifier FROM money_accounts WHERE identifier IS NOT NULL AND trim(identifier) <> ''"),
     db.prepare(
-      `SELECT s.id, s.reference, s.amount_cents, s.costs_cents,
+      `SELECT s.id, s.reference, s.settled_at, s.amount_cents, s.costs_cents,
          EXISTS (SELECT 1 FROM ledger_entries e WHERE e.source = 'mollie_settlement' AND e.source_ref = s.id) AS booked
        FROM mollie_settlements s WHERE s.reference IS NOT NULL`,
     ),
@@ -527,6 +529,16 @@ export async function autoBook(db: D1Database, now: Date): Promise<number> {
     if (reference !== null) {
       const payout = payouts.get(reference);
       if (!payout) return mark(row, "waiting", "mollie", null);
+      // Settled before the books begin: its costs are in e-Boekhouden, and the money may stand in the opening as underway.
+      const settled = payout.settled_at === null ? null : businessDate(payout.settled_at);
+      if (settled !== null && settled < LEDGER_START) {
+        return mark(
+          row,
+          "open",
+          null,
+          `Uitbetaling ${reference} is van ${dayMonthYear(settled)} (${settled.slice(0, 4)}): boek hem tegen 1080 Kruisposten als hij in de beginbalans onderweg stond.`,
+        );
+      }
       if (payout.amount_cents !== row.amount_cents) return mark(row, "open", null, `Bedrag wijkt af van de uitbetaling bij Mollie (${formatEuro(payout.amount_cents)})`);
       if (taken.has(payout.id)) return mark(row, "open", null, `Uitbetaling ${reference} is al geboekt`);
       taken.add(payout.id);

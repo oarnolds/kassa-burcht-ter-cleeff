@@ -81,15 +81,27 @@ it("posts a credit line with negative amounts", async () => {
   expect(calls("POST")[0]!.body).toEqual({ split: [{ accountCode: "8020", amountCents: -609147 }] });
 });
 
-it("shows a waiting line and a line in a closed year without a Boeken button", async () => {
-  open([
-    bankLine({ id: "w", status: "waiting", waitingFor: "mollie", counterpartyName: "Mollie", suggestion: null }),
-    bankLine({ id: "c", counterpartyName: "Oud", date: "2026-12-30", inClosedYear: true }),
-  ]);
+it("lets him book a line that waits for Mollie, and shows a line in a closed year without a Boeken button", async () => {
+  open(
+    [
+      bankLine({ id: "w", status: "waiting", waitingFor: "mollie", counterpartyName: "Mollie", amountCents: 9812, suggestion: null }),
+      bankLine({ id: "c", counterpartyName: "Oud", date: "2026-12-30", inClosedYear: true }),
+    ],
+    { [`POST ${base}/bank/lines/w/book`]: entry() },
+  );
   renderAt(page);
-  expect(await screen.findByText("wacht op Mollie")).toBeInTheDocument();
-  expect(screen.getByText("valt in afgesloten jaar 2026")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Boeken" })).not.toBeInTheDocument();
+  const waiting = within(await screen.findByRole("listitem", { name: /^Mollie/ }));
+  expect(waiting.getByText("wacht op Mollie")).toBeInTheDocument();
+  expect(waiting.getByRole("button", { name: "Verdelen" })).toBeInTheDocument();
+  expect(waiting.getByLabelText("Bijlage")).toBeInTheDocument();
+  await user().selectOptions(waiting.getByRole("combobox", { name: "Rekening" }), "4514");
+  await user().click(waiting.getByRole("button", { name: "Boeken" }));
+  await waitFor(() => expect(calls("POST")).toHaveLength(1));
+  expect(calls("POST")[0]).toMatchObject({ url: `${base}/bank/lines/w/book`, body: { split: [{ accountCode: "4514", amountCents: -9812 }] } });
+
+  const closed = within(screen.getByRole("listitem", { name: /^Oud/ }));
+  expect(closed.getByText("valt in afgesloten jaar 2026")).toBeInTheDocument();
+  expect(closed.queryByRole("button", { name: "Boeken" })).not.toBeInTheDocument();
 });
 
 it("tells why a payout of Mollie was not booked by itself, and lets him book it", async () => {
