@@ -58,6 +58,18 @@ export async function pair(page: Page, code: string): Promise<void> {
   await expect(page.locator("[data-product-tile]").first()).toBeVisible();
 }
 
+/**
+ * Opens beheer in this browser, logged in with the session of `prepare`. The login page cannot do it here: its
+ * cookie is Secure, and WebKit keeps no Secure cookie for http://localhost. So the browser gets the same cookie
+ * without that flag, on the same path.
+ */
+export async function openBeheer(page: Page, cookie: string): Promise<void> {
+  const [name = "", value = ""] = cookie.split(/=(.*)/s);
+  await page.context().addCookies([{ name, value, domain: "localhost", path: "/api/admin", httpOnly: true, sameSite: "Strict" }]);
+  await page.goto("/beheer");
+  await expect(page.getByRole("navigation", { name: "Beheer" })).toBeVisible();
+}
+
 /** The Amsterdam date of now, as the reports count their days. */
 export function today(): string {
   return businessDate(new Date().toISOString());

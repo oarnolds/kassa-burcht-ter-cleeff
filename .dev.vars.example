@@ -1,3 +1,7 @@
 SETUP_TOKEN=dev-setup-token
 # De testsleutel van Mollie (begint met test_). Zelf invullen in .dev.vars; nooit in een bericht of in de code.
 MOLLIE_API_KEY=
+# De boekhouding: het id en de privésleutel (.pem) van de applicatie bij Enable Banking, en de organisatiesleutel van Mollie (alleen lezen). Zelf invullen in .dev.vars; nooit in een bericht of in de code. Leeg mag: dan werkt de boekhouding met bankbestanden.
+ENABLE_BANKING_APP_ID=
+ENABLE_BANKING_PRIVATE_KEY=
+MOLLIE_ORG_TOKEN=
