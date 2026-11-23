@@ -57,3 +57,14 @@ button {
 button:disabled {
   cursor: not-allowed;
 }
+
+/* On paper (the jaaroverzicht's afdruk, "Bewaar als PDF"): white, to the edges; the menus hide themselves (print:hidden). */
+@media print {
+  body {
+    background-color: white;
+  }
+
+  #root {
+    padding: 0;
+  }
+}

@@ -18,7 +18,7 @@ const tab = ({ isActive }: { isActive: boolean }) =>
 export function LedgerLayout() {
   return (
     <div>
-      <nav aria-label="Boekhouding" className="-mx-2 mb-6 flex flex-wrap gap-1 border-b-2 border-sand pb-3">
+      <nav aria-label="Boekhouding" className="-mx-2 mb-6 flex flex-wrap gap-1 border-b-2 border-sand pb-3 print:hidden">
         {tabs.map(([path, name]) => (
           <NavLink key={path} to={path} end className={tab}>
             {name}

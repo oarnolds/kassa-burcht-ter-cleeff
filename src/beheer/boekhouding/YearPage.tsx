@@ -1,32 +1,14 @@
 import { useId, useState } from "react";
 import { Link } from "react-router";
 import type { LedgerYear, YearCheck } from "../../../shared/ledger-types";
-import { businessDate } from "../../../shared/time";
 import { Button } from "../../ui/Button";
 import { useToast } from "../../ui/Toast";
 import { Loaded, PageTitle, Problem, Section, field, pillLink, textLink, today } from "../parts";
 import { useAdminData } from "../useAdmin";
 import { explainWrite, ledgerPath, useLedgerWrites } from "./ledger-api";
 import { useBusy } from "./useBusy";
-
-/** `d-m-jjjj` of a `YYYY-MM-DD` day: 15-1-2028. */
-const dayMonthYear = (date: string): string => {
-  const [year, month, day] = date.split("-");
-  return `${Number(day)}-${Number(month)}-${year}`;
-};
-/** The day of a moment in the Netherlands, as d-m-jjjj. */
-const dayOf = (iso: string): string => dayMonthYear(businessDate(iso));
-
-/** What each check looks at; the Worker says what it found. */
-const CHECK_NAMES: Record<YearCheck["key"], string> = {
-  bank_lines: "Alle bankregels geboekt",
-  bank_balances: "Saldo's gelijk aan de bank",
-  cash: "Kas gelijk aan de kassa",
-  mollie: "Mollie gelijk aan het saldo bij Mollie",
-  depreciation: "Afschrijving geboekt",
-  in_transit: "Kruisposten (1080) op nul",
-  assets: "0130 en 0135 gelijk aan de lijst toestellen",
-};
+import { CHECK_NAMES, dayOf } from "./year-labels";
+import { YearExportButtons } from "./YearExportButtons";
 
 const label = "flex flex-col gap-1 font-semibold";
 
@@ -165,11 +147,14 @@ function YearBlock({ year, earlierOpen, reopenable, onChanged }: { year: LedgerY
             </ul>
           </div>
         )}
-        <p>
-          <Link to={`/beheer/boekhouding/jaar/${year.year}/afdruk`} className={textLink}>
-            Jaaroverzicht
-          </Link>
-        </p>
+        <div className="flex flex-col gap-2">
+          <p>
+            <Link to={ledgerPath.yearPrint(year.year)} className={textLink}>
+              Jaaroverzicht
+            </Link>
+          </p>
+          <YearExportButtons year={year.year} />
+        </div>
       </div>
     </Section>
   );

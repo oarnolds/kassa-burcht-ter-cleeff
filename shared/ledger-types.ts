@@ -206,3 +206,29 @@ export type DepreciationPlan = {
   upToDate: boolean;
   laterBooked: number | null;
 };
+
+/**
+ * What the jaaroverzicht reads in one call (spec §13, R35); the entries and their changes come in pages of
+ * `YEAR_PAGE`. `opening`: everything dated before 1 January (the closing entries of earlier years included) plus the
+ * year's own opening entry. `closing`: the balance on 31 December, the year's result apart (R8). `result`: next to
+ * the year before. `accounts`: every account, in order, for the names in the Excel file.
+ */
+export type YearExport = {
+  year: number;
+  status: "open" | "closed";
+  opening: BalanceReport;
+  closing: BalanceReport;
+  result: ResultReport;
+  checks: YearCheck[];
+  events: LedgerYear["events"];
+  assets: Asset[];
+  depreciation: DepreciationPlan;
+  entryCount: number;
+  accounts: Pick<LedgerAccount, "code" | "name" | "kind">[];
+};
+
+/** A change of one of the year's entries, for the jaaroverzicht; `id` orders them and asks for the next page. */
+export type YearChange = EntryChange & { id: number; entryId: string; number: number };
+
+/** At most this many entries or changes in one page of the jaaroverzicht, so one request stays within the CPU limit. */
+export const YEAR_PAGE = 500;

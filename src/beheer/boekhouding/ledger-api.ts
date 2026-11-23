@@ -18,6 +18,7 @@ import type {
   MollieRule,
   NightlyReport,
 } from "../../../shared/ledger-types";
+import { YEAR_PAGE } from "../../../shared/ledger-types";
 import type { ApiResult } from "../../lib/api";
 import { useAdminWrite } from "../useAdmin";
 
@@ -82,7 +83,24 @@ export const ledgerPath = {
   /** Every year, oldest first, with its closing and reopening. */
   years: `${LEDGER}/years`,
   yearChecks: (year: number) => `${LEDGER}/year/${year}/checks`,
+  /** What the jaaroverzicht reads in one go; the entries and their changes come in pages of YEAR_PAGE. */
+  yearExport: (year: number) => `${LEDGER}/year/${year}/export`,
+  yearEntries: (year: number, after: number) => `${LEDGER}/year/${year}/entries?after=${after}&limit=${YEAR_PAGE}`,
+  yearChanges: (year: number, after: number) => `${LEDGER}/year/${year}/changes?after=${after}`,
+  /** The page to print the jaaroverzicht from; `print` opens the print dialog ("Bewaar als PDF") right away. */
+  yearPrint: (year: number, print = false) => `/beheer/boekhouding/jaar/${year}/afdruk${print ? "?print=1" : ""}`,
 };
+
+/** The file of an attachment as bytes, for the zip. A failure is the status the Worker answered (0: no connection). */
+export async function attachmentBytes(id: string): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; status: number }> {
+  try {
+    const response = await fetch(ledgerPath.attachment(id), { credentials: "same-origin", signal: AbortSignal.timeout(60_000) });
+    if (!response.ok) return { ok: false, status: response.status };
+    return { ok: true, bytes: new Uint8Array(await response.arrayBuffer()) };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
 
 /** A sentence for a refusal or a failure of a write on these pages. */
 export function explainWrite(status: number, error: string): string {

@@ -1,8 +1,8 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import type { LedgerYear, YearCheck } from "../../../shared/ledger-types";
-import { calls, mockApi, mockLoggedIn, renderAt, user } from "../../test-utils";
-import { base } from "./ledger-test-data";
+import { calls, mockApi, mockLoggedIn, mockOffline, renderAt, user } from "../../test-utils";
+import { base, entry, yearChanges, yearData } from "./ledger-test-data";
 
 const page = "/beheer/boekhouding/jaar";
 
@@ -196,4 +196,140 @@ it("reopens the newest closed year with a reason, and only that one", async () =
   await waitFor(() => expect(calls("POST")).toHaveLength(1));
   expect(calls("POST")[0]).toMatchObject({ url: `${base}/year/2028/reopen`, body: { reason: "abc fout in de kas" } });
   expect(await screen.findByText("Heropend.")).toBeInTheDocument();
+});
+
+// ---- The jaaroverzicht as files ----
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+/** Catches what the page offers to save: the file's name and what is in it. */
+function catchDownloads() {
+  const saved: { name: string; blob: Blob }[] = [];
+  const blobs = new Map<string, Blob>();
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: vi.fn((blob: Blob) => {
+      const url = `blob:test/${blobs.size + 1}`;
+      blobs.set(url, blob);
+      return url;
+    }),
+  });
+  Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+    saved.push({ name: this.download, blob: blobs.get(this.href)! });
+  });
+  return saved;
+}
+
+/** `count` entries of 2027, numbered from 1; the first has two attachments. */
+const manyEntries = (count: number) =>
+  Array.from({ length: count }, (_, i) =>
+    entry({ id: `e${i + 1}`, number: i + 1, attachments: i === 0 ? [{ id: "a1", filename: "bon-goodoo.pdf", contentType: "application/pdf", sizeBytes: 3, uploadedAt: "2027-01-04T10:00:00.000Z" }, { id: "a2", filename: "foto.jpg", contentType: "image/jpeg", sizeBytes: 3, uploadedAt: "2027-01-04T10:00:00.000Z" }] : [] }),
+  );
+const after = (url: string) => Number(new URL(url, "http://localhost").searchParams.get("after"));
+
+/** The year's pages as the Worker gives them: 500 at a time, after a number. */
+function yearPages(entries: ReturnType<typeof manyEntries>) {
+  return {
+    [`${base}/year/2027/export`]: yearData({ entryCount: entries.length }),
+    [`${base}/year/2027/entries`]: ({ url }: { url: string }) => entries.filter((one) => one.number > after(url)).slice(0, 500),
+    [`${base}/year/2027/changes`]: ({ url }: { url: string }) => (after(url) === 0 ? yearChanges() : []),
+  };
+}
+
+/** Holds back the requests whose address contains `part` until `release` is called. */
+function holdBack(part: string) {
+  const fake = globalThis.fetch;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).includes(part)) await gate;
+    return fake(input, init);
+  });
+  return release;
+}
+
+it("makes the jaaroverzicht as Excel, page by page, and shows how far it is", async () => {
+  inJanuary2029();
+  const saved = catchDownloads();
+  const entries = manyEntries(501);
+  open([closed2027, open2028], allGood, yearPages(entries));
+  const release = holdBack("after=500");
+  renderAt(page);
+  const y2027 = within(await region("2027"));
+  await user().click(y2027.getByRole("button", { name: "Excel" }));
+  expect(await y2027.findByText("Bezig met 500 van 501 boekingen …")).toBeInTheDocument();
+  expect(y2027.getByRole("button", { name: "Excel" })).toBeDisabled();
+  release();
+  await waitFor(() => expect(saved).toHaveLength(1));
+  expect(saved[0]!.name).toBe("jaaroverzicht-2027.xlsx");
+  expect(saved[0]!.blob.type).toBe("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  expect(calls("GET").map((call) => call.url).filter((url) => url.includes("/year/2027/"))).toEqual([
+    `${base}/year/2027/export`,
+    `${base}/year/2027/entries?after=0&limit=500`,
+    `${base}/year/2027/entries?after=500&limit=500`,
+    `${base}/year/2027/changes?after=0`,
+  ]);
+  await waitFor(() => expect(y2027.queryByText(/Bezig met/)).not.toBeInTheDocument());
+  expect(y2027.getByRole("button", { name: "Excel" })).toBeEnabled();
+});
+
+it("opens the afdruk for the PDF in a new tab", async () => {
+  inJanuary2029();
+  const opened = vi.spyOn(window, "open").mockReturnValue(null);
+  open([closed2027, open2028]);
+  renderAt(page);
+  await user().click(within(await region("2028")).getByRole("button", { name: "PDF" }));
+  expect(opened).toHaveBeenCalledWith("/beheer/boekhouding/jaar/2028/afdruk?print=1", "_blank");
+  opened.mockRestore();
+});
+
+it("puts the attachments in a zip, named after their entry", async () => {
+  inJanuary2029();
+  const saved = catchDownloads();
+  open([closed2027, open2028], allGood, {
+    ...yearPages(manyEntries(3)),
+    [`${base}/attachments/a1`]: { bytes: "bon" },
+    [`${base}/attachments/a2`]: { bytes: "foto" },
+  });
+  renderAt(page);
+  await user().click(within(await region("2027")).getByRole("button", { name: "Bijlagen (zip)" }));
+  await waitFor(() => expect(saved).toHaveLength(1));
+  expect(saved[0]!.name).toBe("bijlagen-2027.zip");
+  const { unzipSync } = await import("fflate");
+  expect(Object.keys(unzipSync(new Uint8Array(await saved[0]!.blob.arrayBuffer())))).toEqual(["1-1-bon-goodoo.pdf", "1-2-foto.jpg"]);
+  expect(calls("GET").map((call) => call.url).filter((url) => url.includes("/attachments/"))).toEqual([`${base}/attachments/a1`, `${base}/attachments/a2`]);
+});
+
+it("says so when a year has no attachments", async () => {
+  inJanuary2029();
+  const saved = catchDownloads();
+  open([closed2027, open2028], allGood, { ...yearPages([entry({ number: 1, attachments: [] })]) });
+  renderAt(page);
+  const y2027 = within(await region("2027"));
+  await user().click(y2027.getByRole("button", { name: "Bijlagen (zip)" }));
+  expect(await y2027.findByText("Er zijn geen bijlagen in 2027.")).toBeInTheDocument();
+  expect(saved).toHaveLength(0);
+});
+
+it("says what went wrong when a page or an attachment does not come", async () => {
+  inJanuary2029();
+  const saved = catchDownloads();
+  open([closed2027, open2028], allGood, { ...yearPages(manyEntries(3)), [`${base}/year/2027/entries`]: [500, { error: "server" }] });
+  renderAt(page);
+  const y2027 = within(await region("2027"));
+  await user().click(y2027.getByRole("button", { name: "Excel" }));
+  expect(await y2027.findByRole("alert")).toHaveTextContent("Het jaaroverzicht kon niet worden gemaakt. Probeer het opnieuw.");
+  expect(y2027.getByRole("button", { name: "Excel" })).toBeEnabled();
+
+  mockApi({ ...yearPages(manyEntries(3)), [`${base}/attachments/a1`]: { bytes: "bon" }, [`${base}/attachments/a2`]: [404, { error: "not_found" }] });
+  await user().click(y2027.getByRole("button", { name: "Bijlagen (zip)" }));
+  expect(await y2027.findByText("Bijlage foto.jpg van boeking 1 kon niet worden opgehaald. Probeer het opnieuw.")).toBeInTheDocument();
+
+  mockOffline();
+  await user().click(y2027.getByRole("button", { name: "Excel" }));
+  expect(await y2027.findByText("Geen verbinding. Probeer het opnieuw.")).toBeInTheDocument();
+  expect(saved).toHaveLength(0);
 });

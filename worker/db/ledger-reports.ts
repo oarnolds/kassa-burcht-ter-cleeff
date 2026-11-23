@@ -53,6 +53,31 @@ const shown = (kind: AccountKind, cents: number) => (kind === "income" ? 0 - cen
  */
 export async function balanceReport(db: D1Database, date: string): Promise<BalanceReport> {
   const [accounts, sum] = await Promise.all([allAccounts(db), sums(db, "0000-01-01", date, "before_to")]);
+  return balanceOf(date, accounts, sum);
+}
+
+/**
+ * The balance at the start of `year` for the jaaroverzicht (R35): every entry dated before 1 January, the closing
+ * entries of the years before included, and the year's own opening entry; not what else is dated on 1 January.
+ */
+export async function openingReport(db: D1Database, year: number): Promise<BalanceReport> {
+  const date = `${year}-01-01`;
+  const [accounts, { results }] = await Promise.all([
+    allAccounts(db),
+    db
+      .prepare(
+        `SELECT l.account_code, SUM(l.amount_cents) AS cents FROM ledger_lines l
+         WHERE l.entry_id IN (SELECT e.id FROM ledger_entries e WHERE e.date < ?1 OR (e.source = 'opening' AND e.source_ref = ?2))
+         GROUP BY l.account_code`,
+      )
+      .bind(date, String(year))
+      .all<{ account_code: string; cents: number }>(),
+  ]);
+  return balanceOf(date, accounts, new Map(results.map((row) => [row.account_code, row.cents])));
+}
+
+/** A balance from the sum per account of the lines it counts. */
+function balanceOf(date: string, accounts: AccountRow[], sum: Map<string, number>): BalanceReport {
   const rows: BalanceReport["rows"] = [];
   let assetsCents = 0;
   let liabilitiesAndEquityCents = 0;

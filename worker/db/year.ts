@@ -1,4 +1,4 @@
-import { type EntryLine, LEDGER_START, type LedgerYear, type YearCheck } from "../../shared/ledger-types";
+import { type EntryLine, LEDGER_START, type LedgerYear, type YearCheck, type YearExport } from "../../shared/ledger-types";
 import { formatEuro } from "../../shared/money";
 import { businessDate } from "../../shared/time";
 import type { Env } from "../env";
@@ -6,6 +6,7 @@ import { planOf, planStatements, toAssets } from "./assets";
 import { moneyAccountsFrom, moneyAccountsOnStatement, payoutsInTransitStatement } from "./bank";
 import { dayMonthYear } from "./kassa-ledger";
 import { LedgerError, upsertSourcedStatements } from "./ledger";
+import { balanceReport, openingReport, resultReport } from "./ledger-reports";
 import { endOfDay, expectedCashStatement } from "./opening";
 
 // Closing a year (spec §13): the checks, then one entry on 31 December that brings every income and expense account
@@ -13,7 +14,7 @@ import { endOfDay, expectedCashStatement } from "./opening";
 // balances add up over the years, so the next year's opening needs no entry. Reopening, with a reason, empties that
 // entry again; only the newest closed year can be reopened.
 
-export type { LedgerYear, YearCheck };
+export type { LedgerYear, YearCheck, YearExport };
 
 const FIRST_YEAR = Number(LEDGER_START.slice(0, 4));
 const CASH = "1000";
@@ -32,6 +33,9 @@ const closingEntry = (year: number, lines: EntryLine[]) => ({
   sourceRef: String(year),
   lines,
 });
+
+/** Where the depreciation plan's statements start in `checkStatements`. */
+const PLAN_AT = 6;
 
 /** Bank lines dated in the year (`?4` to `?5`) that still need booking. */
 const OPEN_LINES = "SELECT 1 FROM bank_lines WHERE status IN ('open', 'waiting') AND booking_date >= ?4 AND booking_date <= ?5";
@@ -65,7 +69,9 @@ function checkStatements(db: D1Database, year: number): D1PreparedStatement[] {
 const check = (key: YearCheck["key"], ok: boolean, detail: string, required = false): YearCheck => ({ key, ok, detail, required });
 
 /** The checks, from what `checkStatements` read. */
-function checksFrom(year: number, [lines, accounts, sums, cash, mollie, transit, ...plan]: D1Result[]): YearCheck[] {
+function checksFrom(year: number, read: D1Result[]): YearCheck[] {
+  const [lines, accounts, sums, cash, mollie, transit] = read;
+  const plan = read.slice(PLAN_AT);
   const end = lastDay(year);
   const on = dayMonthYear(end);
   const ledger = new Map((sums!.results as { account_code: string; cents: number }[]).map((row) => [row.account_code, row.cents]));
@@ -283,4 +289,44 @@ export async function listYears(db: D1Database): Promise<LedgerYear[]> {
     closeNote: row.close_note,
     events: eventRows.filter((event) => event.year === row.year).map((event) => ({ at: event.at, kind: event.kind, note: event.note })),
   }));
+}
+
+/**
+ * What the jaaroverzicht reads in one go (spec §13, R35), for an open year too: the balance at the start (`openingReport`)
+ * and on 31 December, the result next to the year before, the checks, the closing and reopening, the toestellen on
+ * 31 December with the year's depreciation, how many entries there are, and the accounts. The entries and their
+ * changes come in pages (`entriesPage`, `changesPage`). Eight calls to the database, side by side.
+ */
+export async function yearExport(env: Env, year: number, _now: Date): Promise<YearExport> {
+  if (year < FIRST_YEAR) throw new LedgerError("year_unknown", 400);
+  const db = env.DB;
+  const [[status, events, count, accounts, ...read], opening, closing, result] = await Promise.all([
+    db.batch([
+      statusStatement(db, year),
+      db.prepare("SELECT at, kind, note FROM ledger_year_events WHERE year = ? ORDER BY id").bind(year),
+      db.prepare("SELECT COUNT(*) AS n FROM ledger_entries WHERE year = ?").bind(year),
+      db.prepare("SELECT code, name, kind FROM ledger_accounts ORDER BY sort"),
+      ...checkStatements(db, year),
+    ]),
+    openingReport(db, year),
+    balanceReport(db, lastDay(year)),
+    resultReport(db, firstDay(year), lastDay(year)),
+  ]);
+  const current = statusOf(status);
+  if (current === null) throw new LedgerError("year_unknown", 400);
+  // The plan's first statement is the list of toestellen at the end of the year, as `listAssets` gives it.
+  const plan = read.slice(PLAN_AT);
+  return {
+    year,
+    status: current,
+    opening,
+    closing,
+    result,
+    checks: checksFrom(year, read),
+    events: events!.results as YearExport["events"],
+    assets: toAssets(plan[0]!, lastDay(year)),
+    depreciation: planOf(year, plan),
+    entryCount: (count!.results[0] as { n: number }).n,
+    accounts: accounts!.results as YearExport["accounts"],
+  };
 }

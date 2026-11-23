@@ -1,4 +1,4 @@
-import { type Attachment, type Entry, type EntryChange, type EntryLine, type EntrySource, LEDGER_START } from "../../shared/ledger-types";
+import { type Attachment, type Entry, type EntryChange, type EntryLine, type EntrySource, LEDGER_START, type YearChange } from "../../shared/ledger-types";
 
 /** A refusal with a reason the beheer pages can show. */
 export class LedgerError extends Error {
@@ -157,7 +157,12 @@ function toEntries(entries: D1Result, lines: D1Result, attachments: D1Result): E
     list.push({ id: row.id, filename: row.filename, contentType: row.content_type, sizeBytes: row.size_bytes, uploadedAt: row.uploaded_at });
     attachmentsOf.set(row.entry_id, list);
   }
-  return (entries.results as EntryRow[]).map((row) => ({
+  return (entries.results as EntryRow[]).map((row) => ({ ...toEntry(row), lines: linesOf.get(row.id) ?? [], attachments: attachmentsOf.get(row.id) ?? [] }));
+}
+
+/** An entry's own fields; its lines and attachments are added by the caller. */
+function toEntry(row: EntryRow): Omit<Entry, "lines" | "attachments"> {
+  return {
     id: row.id,
     year: row.year,
     number: row.number,
@@ -165,11 +170,9 @@ function toEntries(entries: D1Result, lines: D1Result, attachments: D1Result): E
     description: row.description,
     source: row.source,
     sourceRef: row.source_ref,
-    lines: linesOf.get(row.id) ?? [],
-    attachments: attachmentsOf.get(row.id) ?? [],
     editable: EDITABLE_SOURCES.includes(row.source) && row.year_status === "open",
     changed: row.changed === 1,
-  }));
+  };
 }
 
 async function readEntries(db: D1Database, where: string, values: unknown[]): Promise<Entry[]> {
@@ -219,6 +222,64 @@ export async function entryHistory(db: D1Database, id: string): Promise<EntryCha
     .bind(id)
     .all<{ at: string; before_json: string | null; after_json: string; note: string | null }>();
   return results.map((row) => ({
+    at: row.at,
+    note: row.note,
+    before: row.before_json === null ? null : (JSON.parse(row.before_json) as EntryChange["before"]),
+    after: JSON.parse(row.after_json) as EntryChange["after"],
+  }));
+}
+
+/**
+ * A page of the year's entries for the jaaroverzicht: those numbered after `after`, by number, at most `limit`, with
+ * their lines and visible attachments. One statement through the index on (year, number), each entry's lines and
+ * attachments gathered as JSON beside it: what a page reads stays at its entries, their lines and one step past
+ * each entry's lines, however large the year is. (Sorting inside the aggregate would read every line once more, so
+ * the rows carry their id and are put in order here.)
+ */
+export async function entriesPage(db: D1Database, year: number, after: number, limit: number): Promise<Entry[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT e.id, e.year, e.number, e.date, e.description, e.source, e.source_ref,
+         (SELECT status FROM ledger_years WHERE year = ?1) AS year_status,
+         EXISTS (SELECT 1 FROM ledger_history h WHERE h.entry_id = e.id) AS changed,
+         (SELECT json_group_array(json_array(l.id, l.account_code, l.amount_cents, l.note, l.asset_id))
+          FROM ledger_lines l WHERE l.entry_id = e.id) AS lines_json,
+         (SELECT json_group_array(json_array(a.rowid, a.id, a.filename, a.content_type, a.size_bytes, a.uploaded_at))
+          FROM ledger_attachments a WHERE a.entry_id = e.id AND a.hidden_at IS NULL) AS attachments_json
+       FROM ledger_entries e WHERE e.year = ?1 AND e.number > ?2 ORDER BY e.number LIMIT ?3`,
+    )
+    .bind(year, after, limit)
+    .all<EntryRow & { lines_json: string; attachments_json: string }>();
+  type LineJson = [id: number, accountCode: string, amountCents: number, note: string | null, assetId: string | null];
+  type AttachmentJson = [rowid: number, id: string, filename: string, contentType: string, sizeBytes: number, uploadedAt: string];
+  return results.map((row) => ({
+    ...toEntry(row),
+    lines: (JSON.parse(row.lines_json) as LineJson[])
+      .sort((a, b) => a[0] - b[0])
+      .map(([, accountCode, amountCents, note, assetId]) => ({ accountCode, amountCents, note, assetId })),
+    attachments: (JSON.parse(row.attachments_json) as AttachmentJson[])
+      .sort((a, b) => a[5].localeCompare(b[5]) || a[0] - b[0])
+      .map(([, id, filename, contentType, sizeBytes, uploadedAt]) => ({ id, filename, contentType, sizeBytes, uploadedAt })),
+  }));
+}
+
+/**
+ * A page of the history of the year's entries for the jaaroverzicht: the changes after `after`, by id, at most
+ * `limit`. The history leads (CROSS JOIN keeps it the outer loop), so a page reads from `after` on and never the
+ * whole year's entries.
+ */
+export async function changesPage(db: D1Database, year: number, after: number, limit: number): Promise<YearChange[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT h.id, h.entry_id, e.number, h.at, h.before_json, h.after_json, h.note FROM ledger_history h
+       CROSS JOIN ledger_entries e ON e.id = h.entry_id WHERE h.id > ?2 AND e.year = ?1 ORDER BY h.id LIMIT ?3`,
+    )
+    .bind(year, after, limit)
+    .all<{ id: number; entry_id: string; number: number; at: string; before_json: string | null; after_json: string; note: string | null }>();
+  return results.map((row) => ({
+    id: row.id,
+    entryId: row.entry_id,
+    number: row.number,
     at: row.at,
     note: row.note,
     before: row.before_json === null ? null : (JSON.parse(row.before_json) as EntryChange["before"]),

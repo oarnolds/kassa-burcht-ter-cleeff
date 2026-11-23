@@ -83,7 +83,7 @@ export function BeheerLayout() {
             <Logo />
           </Link>
         </div>
-        <nav aria-label="Beheer" className="mx-auto flex max-w-5xl flex-wrap items-center gap-1 px-2 py-2">
+        <nav aria-label="Beheer" className="mx-auto flex max-w-5xl flex-wrap items-center gap-1 px-2 py-2 print:hidden">
           {pages.map(([path, name]) => (
             <NavLink key={path} to={path} end={path === "/beheer"} className={navLink}>
               {name}
