@@ -4,7 +4,17 @@ Hoort bij het plan `2026-11-23-boekhouding.md` en het ontwerp `../specs/2026-11-
 
 Tijdens het bouwen (23 november 2026, taak voor taak, met per taak een frisse bouwer en een frisse controleur, en aan het eind een controle van de hele tak) heeft de bouwer (Claude) besluiten genomen waar het plan of het ontwerp geen antwoord gaf, of waar het plan niet klopte. Hieronder staan ze allemaal, met wat het kost als het besluit verkeerd blijkt. Daarna volgen de punten die live nog moeten worden nagekeken, en de kleine punten uit de controles die bewust zijn blijven liggen. Onderaan staan de oorspronkelijke regels uit het bouwlogboek, letterlijk (in het Engels).
 
-Stand: taken 1 tot en met 21 zijn af. Taak 22 (online zetten) is alleen voorbereid: niets is online, er is geen migratie op de live database gedaan, geen bucket aangemaakt en geen geheim gezet.
+Stand: taken 1 tot en met 21 zijn af. Taak 22, online zetten, met het ja van de penningmeester op 23 november 2026:
+
+- De drie geheimen zijn door de penningmeester zelf gezet: `ENABLE_BANKING_APP_ID`, `ENABLE_BANKING_PRIVATE_KEY` en `MOLLIE_ORG_TOKEN`.
+- `main` is bijgewerkt met de tak (fast-forward naar `6a57362`).
+- De R2-bucket `boekhouding-bijlagen` is aangemaakt.
+- Vóór de migraties: 22:23:59 UTC, Time Travel-bookmark `00000016-00000000-0000512c-4def7f56e395455b19e38f656ed9ff33`.
+- De migraties 0005–0010 zijn op de live database gedraaid. Daarna stonden er 44 rekeningen, het jaar 2027 open, 6 geldrekeningen, 7 regels voor Mollie, en de kassacategorieën met hun rekening (entree op 8012, de rest op 8011).
+- Deploy: versie `78c82db7-4209-42b7-8e6a-e8e710187590`, crons `0 3 * * MON` en `0 2 * * *`.
+- Live nagekeken: `/api/health` geeft ok, de kassa en `/beheer/boekhouding` laden, de boekhouding-API weigert zonder inlog (401), en het opstartbestand van de kassa (385 kB) bevat geen boekhoudcode.
+
+Nog te doen: de live controles hieronder, en de eigen stappen van de penningmeester in het handboek (kenmerken, beginbalans, ING koppelen).
 
 ## Besluiten
 
