@@ -9,7 +9,26 @@ export type ExportFile = {
   stockOrders: unknown[];
   stockOrderLines: unknown[];
   stockMovements: unknown[];
+  /** Every table of the boekhouding, by name. The attachment files themselves live in their own bucket. */
+  ledger: Record<string, unknown[]>;
 };
+
+/** The boekhouding's tables and the order each is written in the copy. */
+const LEDGER_TABLES: [table: string, order: string][] = [
+  ["ledger_accounts", "sort, code"],
+  ["ledger_years", "year"],
+  ["ledger_entries", "date, id"],
+  ["ledger_lines", "entry_id, id"],
+  ["ledger_history", "id"],
+  ["ledger_year_events", "id"],
+  ["ledger_attachments", "id"],
+  ["ledger_settings", "key"],
+  ["money_accounts", "account_code"],
+  ["bank_lines", "id"],
+  ["bank_balances", "account_code, date"],
+  ["category_accounts", "category_id"],
+  ["comparison_figures", "year, account_code"],
+];
 
 const IN_USE_KEY = "in_use_since";
 const NOT_IN_USE = `NOT EXISTS (SELECT 1 FROM settings WHERE key = '${IN_USE_KEY}')`;
@@ -41,7 +60,7 @@ export async function wipeTrialData(db: D1Database, final: boolean, now: Date): 
 }
 
 export async function exportAll(db: D1Database, now: Date): Promise<ExportFile> {
-  const [categories, products, sales, saleLines, handovers, stockOrders, stockOrderLines, stockMovements] = await db.batch([
+  const [categories, products, sales, saleLines, handovers, stockOrders, stockOrderLines, stockMovements, ...ledger] = await db.batch([
     db.prepare("SELECT * FROM categories ORDER BY sort, id"),
     db.prepare("SELECT * FROM products ORDER BY sort, id"),
     db.prepare("SELECT * FROM sales ORDER BY sold_at, id"),
@@ -50,6 +69,7 @@ export async function exportAll(db: D1Database, now: Date): Promise<ExportFile> 
     db.prepare("SELECT * FROM stock_orders ORDER BY created_at, id"),
     db.prepare("SELECT * FROM stock_order_lines ORDER BY id"),
     db.prepare("SELECT * FROM stock_movements ORDER BY id"),
+    ...LEDGER_TABLES.map(([table, order]) => db.prepare(`SELECT * FROM ${table} ORDER BY ${order}`)),
   ]);
   return {
     exportedAt: now.toISOString(),
@@ -61,5 +81,6 @@ export async function exportAll(db: D1Database, now: Date): Promise<ExportFile> 
     stockOrders: stockOrders!.results,
     stockOrderLines: stockOrderLines!.results,
     stockMovements: stockMovements!.results,
+    ledger: Object.fromEntries(LEDGER_TABLES.map(([table], i) => [table, ledger[i]!.results])),
   };
 }

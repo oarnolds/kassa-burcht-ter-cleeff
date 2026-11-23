@@ -102,6 +102,7 @@ it("downloads everything except secrets", async () => {
     "categories",
     "exportedAt",
     "handovers",
+    "ledger",
     "products",
     "saleLines",
     "sales",

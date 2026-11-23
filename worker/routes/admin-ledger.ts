@@ -6,6 +6,7 @@ import { addAccount, categoryAccounts, listAccounts, patchAccount, setCategoryAc
 import { accountLines, balanceReport, getComparison, overview, resultReport, setComparison } from "../db/ledger-reports";
 import { getOpening, setOpening } from "../db/opening";
 import type { AppEnv } from "../env";
+import { runNightly } from "../nightly";
 import { parseDate } from "../lib/params";
 
 const cents = z.number().int();
@@ -67,6 +68,8 @@ adminLedger.patch("/accounts/:code", async (c) => {
   if (!body.success) return c.json({ error: "invalid" }, 400);
   return c.json(await patchAccount(c.env.DB, c.req.param("code"), body.data));
 });
+
+adminLedger.post("/sync", async (c) => c.json(await runNightly(c.env, new Date())));
 
 adminLedger.get("/category-accounts", async (c) => c.json(await categoryAccounts(c.env.DB)));
 

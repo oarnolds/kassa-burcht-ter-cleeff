@@ -1,5 +1,6 @@
 import type { AccountKind, LedgerAccount } from "../../shared/ledger-types";
 import { LedgerError } from "./ledger";
+import { deleteLedgerSettingStatement } from "./ledger-settings";
 
 type Row = { code: string; name: string; kind: AccountKind; money: number; hidden: number; formerly: string };
 
@@ -83,13 +84,15 @@ export async function setCategoryAccounts(db: D1Database, input: { categoryId: s
     chosen.set(item.categoryId, item.accountCode);
   }
   if (chosen.size > 0) {
-    await db.batch(
-      [...chosen].map(([categoryId, accountCode]) =>
+    await db.batch([
+      ...[...chosen].map(([categoryId, accountCode]) =>
         db
           .prepare("INSERT INTO category_accounts (category_id, account_code) VALUES (?, ?) ON CONFLICT(category_id) DO UPDATE SET account_code = excluded.account_code")
           .bind(categoryId, accountCode),
       ),
-    );
+      // The next syncs look at every open day again, under the new mapping.
+      deleteLedgerSettingStatement(db, "ledger_kassa_synced_at"),
+    ]);
   }
   return categoryAccounts(db);
 }

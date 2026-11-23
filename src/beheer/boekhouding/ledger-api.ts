@@ -3,7 +3,7 @@
 
 import { useMemo } from "react";
 import type { CamtStatement } from "../../../shared/camt";
-import type { AccountKind, Attachment, BankLine, Entry, ImportResult, LedgerAccount, MoneyAccount, MoneySource } from "../../../shared/ledger-types";
+import type { AccountKind, Attachment, BankLine, Entry, ImportResult, LedgerAccount, MoneyAccount, MoneySource, NightlyReport } from "../../../shared/ledger-types";
 import type { ApiResult } from "../../lib/api";
 import { useAdminWrite } from "../useAdmin";
 
@@ -86,6 +86,8 @@ export function useLedgerWrites() {
         write(`${LEDGER}/accounts`, "POST", body),
       patchAccount: (code: string, body: { name?: string; hidden?: boolean }): Promise<ApiResult<LedgerAccount>> =>
         write(`${LEDGER}/accounts/${code}`, "PATCH", body),
+      /** Brings the books up to date now, as the nightly run does. */
+      syncNow: (): Promise<ApiResult<NightlyReport>> => write(`${LEDGER}/sync`, "POST"),
       putCategoryAccounts: (body: { categoryId: string; accountCode: string }[]): Promise<ApiResult<CategoryAccount[]>> =>
         write(`${LEDGER}/category-accounts`, "PUT", body),
       putOpening: (year: number, body: { lines: Figure[]; eBoekhoudenEquityCents: number | null }): Promise<ApiResult<Opening>> =>

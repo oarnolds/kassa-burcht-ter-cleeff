@@ -75,7 +75,7 @@ const toLines = (amounts: Amounts): EntryLine[] =>
  * Brings the kassa's paid sales and handovers into the ledger; at most `maxItems` per run, oldest first.
  *
  * The days looked at are those (from the ingebruikname and from LEDGER_START) with a sale received or settled
- * after the marker, and those with a paid sale but no entry yet. Of those, only a day whose entry differs from
+ * after the marker (in a closed year: after that year was closed, so a mapping change never touches it), and those with a paid sale but no entry yet. Of those, only a day whose entry differs from
  * the kassa is written. The marker moves to the newest change read at the start (at most up to MARGIN_MS before
  * `now`), and only when nothing was left for the next run: a run never skips a later day, and the next one
  * carries on where this one stopped.
@@ -100,6 +100,10 @@ export async function syncKassa(db: D1Database, now: Date, maxItems = 40): Promi
     db
       .prepare(
         `SELECT business_date AS date FROM sales WHERE business_date >= ?1 AND (received_at > ?2 OR settled_at > ?2)
+           AND NOT EXISTS (
+             SELECT 1 FROM ledger_years y
+             WHERE y.status = 'closed' AND y.year = CAST(substr(sales.business_date, 1, 4) AS INTEGER)
+               AND sales.received_at <= y.closed_at AND COALESCE(sales.settled_at, '') <= y.closed_at)
          UNION
          SELECT d.date FROM (SELECT DISTINCT business_date AS date FROM sales WHERE business_date >= ?1 AND status = 'paid') d
          WHERE NOT EXISTS (SELECT 1 FROM ledger_entries e WHERE e.source IN ('kassa_day', 'kassa_late') AND e.source_ref = d.date)

@@ -4,10 +4,12 @@ import {
   type BalanceReport,
   LEDGER_START,
   type LedgerOverview,
+  type NightlyReport,
   type ResultReport,
 } from "../../shared/ledger-types";
 import { businessDate, shiftDate } from "../../shared/time";
 import { LedgerError } from "./ledger";
+import { getLedgerSetting } from "./ledger-settings";
 import { moneyAccounts } from "./bank";
 import { endOfDay, expectedCashAt } from "./opening";
 
@@ -173,18 +175,29 @@ export async function setComparison(db: D1Database, year: number, figures: { acc
   ]);
 }
 
-/** What beheer's first page shows. `consent`, `mollieDifferenceCents` and `lastNightly` are filled by later work. */
+/** The stored report of the last nightly run; null when it never ran or the value cannot be read. */
+function parseNightly(value: string | null): NightlyReport | null {
+  if (value === null) return null;
+  try {
+    return JSON.parse(value) as NightlyReport;
+  } catch {
+    return null;
+  }
+}
+
+/** What beheer's first page shows. `consent` and `mollieDifferenceCents` are filled by later work. */
 export async function overview(db: D1Database, now: Date): Promise<LedgerOverview> {
   const today = businessDate(now.toISOString());
   const yesterday = shiftDate(today, -1);
   const year = Number(today.slice(0, 4));
-  const [counts, accounts, resultYearCents, cashDifferenceCents] = await Promise.all([
+  const [counts, accounts, resultYearCents, cashDifferenceCents, lastNightly] = await Promise.all([
     db
       .prepare(`SELECT status, COUNT(*) AS n FROM bank_lines WHERE status IN ('open','waiting') GROUP BY status`)
       .all<{ status: string; n: number }>(),
     moneyAccounts(db, now),
     year < firstYear ? Promise.resolve(0) : resultOf(db, `${year}-01-01`, today),
     cashDifference(db, yesterday),
+    getLedgerSetting(db, "ledger_nightly_last"),
   ]);
   const count = (status: string) => counts.results.find((row) => row.status === status)?.n ?? 0;
   return {
@@ -195,7 +208,7 @@ export async function overview(db: D1Database, now: Date): Promise<LedgerOvervie
     cashDifferenceCents,
     consent: null,
     mollieDifferenceCents: null,
-    lastNightly: null,
+    lastNightly: parseNightly(lastNightly),
   };
 }
 

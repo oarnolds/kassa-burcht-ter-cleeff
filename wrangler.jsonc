@@ -18,5 +18,6 @@
     // Receipts and photos of the boekhouding. Nothing in it is ever deleted (worker/db/attachments.ts).
     { "binding": "ATTACHMENTS", "bucket_name": "boekhouding-bijlagen" }
   ],
-  "triggers": { "crons": ["0 3 * * MON"] }
+  // The nightly run of the boekhouding: every day at 02:00 UTC (kassa now, ING and Mollie later).
+  "triggers": { "crons": ["0 3 * * MON", "0 2 * * *"] }
 }

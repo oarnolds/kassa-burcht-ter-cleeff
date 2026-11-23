@@ -4,6 +4,7 @@ import type { Entry } from "../shared/ledger-types";
 import { shiftDate } from "../shared/time";
 import { getCashState, recordHandover } from "../worker/db/cash";
 import { syncKassa } from "../worker/db/kassa-ledger";
+import { setCategoryAccounts } from "../worker/db/ledger-accounts";
 import { balancesOn, getEntry } from "../worker/db/ledger";
 import { exportAll } from "../worker/db/maintenance";
 import { getOpening, setOpening } from "../worker/db/opening";
@@ -533,4 +534,39 @@ it("never writes in the kassa's tables", async () => {
 
   expect(await counts()).toEqual(countsBefore);
   expect(await kassa()).toEqual(before);
+});
+
+it("rebooks an untouched open day under a new account after a mapping change, but never a closed year", async () => {
+  await sale({ date: "2027-05-01", lines: [[AARDBEITJE, 2]] });
+  await sale({ date: "2027-12-31", lines: [[AARDBEITJE, 1]] });
+  await syncKassa(env.DB, new Date("2027-12-31T20:00:00.000Z"));
+  expect(amounts(await entry("kassa_day", "2027-05-01"))).toEqual([
+    ["1000", 220],
+    ["8011", -220],
+  ]);
+  await env.DB.prepare("UPDATE ledger_years SET status = 'closed', closed_at = '2028-01-02T10:00:00.000Z' WHERE year = 2027").run();
+  await env.DB.prepare("INSERT INTO ledger_years (year, status) VALUES (2028, 'open')").run();
+  // An open day in 2028, booked before the change.
+  await sale({ date: "2028-02-01", lines: [[AARDBEITJE, 1]], receivedAt: "2028-02-01T10:00:00.000Z" });
+  await syncKassa(env.DB, new Date("2028-02-01T20:00:00.000Z"));
+  const closedDay = await entry("kassa_day", "2027-12-31");
+
+  await setCategoryAccounts(env.DB, [{ categoryId: "ijs", accountCode: "8012" }]);
+  await syncKassa(env.DB, new Date("2028-02-02T20:00:00.000Z"));
+
+  expect(amounts(await entry("kassa_day", "2028-02-01"))).toEqual([
+    ["1000", 110],
+    ["8012", -110],
+  ]);
+  // The closed year keeps its day, and no late entry appears for it.
+  expect(await entry("kassa_day", "2027-12-31")).toEqual(closedDay);
+  expect(await refs("kassa_late")).toEqual([]);
+});
+
+it("clears the marker when the mapping is saved, so the next sync looks at every open day again", async () => {
+  await sale({ date: "2027-05-01", lines: [[AARDBEITJE, 1]] });
+  await syncKassa(env.DB, new Date("2027-05-02T20:00:00.000Z"));
+  expect(await marker()).not.toBeNull();
+  await setCategoryAccounts(env.DB, [{ categoryId: "ijs", accountCode: "8012" }]);
+  expect(await marker()).toBeNull();
 });

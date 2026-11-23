@@ -68,3 +68,10 @@ it("says so when the bucket for the copies is not there, and makes no copy", asy
   expect(await made.json()).toEqual({ error: "not_available" });
   expect(await runBackup(withoutBucket, new Date("2026-08-03T03:00:00.000Z"))).toBeNull();
 });
+
+it("carries the boekhouding in the copy", async () => {
+  await runBackup(env, new Date("2026-08-03T03:00:00.000Z"));
+  const file = JSON.parse(await (await env.BACKUPS.get("kassa-2026-08-03.json"))!.text());
+  expect(file.ledger.ledger_accounts.length).toBeGreaterThan(10);
+  expect(file.ledger.ledger_entries).toEqual([]);
+});

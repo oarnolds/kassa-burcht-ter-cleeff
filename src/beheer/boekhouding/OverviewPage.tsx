@@ -1,10 +1,53 @@
+import { useState } from "react";
 import { Link } from "react-router";
-import type { LedgerOverview } from "../../../shared/ledger-types";
+import type { LedgerOverview, NightlyReport, NightlyStep } from "../../../shared/ledger-types";
 import { formatEuro } from "../../../shared/money";
-import { formatDateNl } from "../../../shared/time";
-import { Loaded, PageTitle, Section, textLink, today } from "../parts";
+import { businessDate, formatDateNl, localTime } from "../../../shared/time";
+import { Button } from "../../ui/Button";
+import { Loaded, PageTitle, Problem, Section, textLink, today } from "../parts";
 import { useAdminData } from "../useAdmin";
-import { ledgerPath } from "./ledger-api";
+import { ledgerPath, useLedgerWrites } from "./ledger-api";
+
+const STEP_NAMES: Record<NightlyStep, string> = { kassa: "kassa", ing: "ING", mollie: "Mollie" };
+
+/** "Vannacht bijgewerkt om 02:00" for a run between midnight and six this morning, else the day; then each step that failed. */
+function lastRun(report: NightlyReport): string {
+  const time = localTime(report.at);
+  const night = businessDate(report.at) === today() && time < "06:00";
+  const [year, month, day] = businessDate(report.at).split("-");
+  const when = night ? `Vannacht bijgewerkt om ${time}` : `Bijgewerkt op ${Number(day)}-${Number(month)}-${year} om ${time}`;
+  const failed = (Object.keys(STEP_NAMES) as NightlyStep[])
+    .filter((step) => report.steps[step] !== undefined && report.steps[step] !== "ok" && report.steps[step] !== "skipped")
+    .map((step) => ` (${STEP_NAMES[step]} niet gelukt)`);
+  return when + failed.join("");
+}
+
+/** The button that brings the books up to date now, and when that last happened. */
+function Update({ last, reload }: { last: NightlyReport | null; reload: () => void }) {
+  const writes = useLedgerWrites();
+  const [running, setRunning] = useState(false);
+  const [ran, setRan] = useState<NightlyReport | null>(null);
+  const [problem, setProblem] = useState(false);
+  const run = async () => {
+    setRunning(true);
+    setProblem(false);
+    const answer = await writes.syncNow();
+    setRunning(false);
+    if (!answer.ok) return setProblem(true);
+    setRan(answer.data);
+    reload();
+  };
+  const shown = ran ?? last;
+  return (
+    <div className="flex flex-col items-start gap-2 px-2 sm:px-3">
+      <Button onClick={() => void run()} disabled={running}>
+        Nu bijwerken
+      </Button>
+      {problem && <Problem>Bijwerken is niet gelukt. Probeer het opnieuw.</Problem>}
+      {shown && <p className="text-ink/70">{lastRun(shown)}</p>}
+    </div>
+  );
+}
 
 /** The first page of the boekhouding: what waits, where the money is, how the year is going. */
 export function OverviewPage() {
@@ -15,6 +58,7 @@ export function OverviewPage() {
       <Loaded from={overview}>
         {(o) => (
           <>
+            <Update last={o.lastNightly} reload={overview.reload} />
             <Section title="Te boeken">
               <p className="flex flex-wrap items-baseline gap-x-4 px-2 text-lg sm:px-3">
                 <Link className={`${textLink} inline-flex min-h-11 items-center`} to="/beheer/boekhouding/te-boeken">{`Te boeken: ${o.openLines}`}</Link>
