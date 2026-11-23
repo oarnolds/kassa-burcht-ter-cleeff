@@ -1,5 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { calls, mockApi, mockLoggedIn, renderAt, tap, user } from "../../test-utils";
 import { accounts, base, entry } from "./ledger-test-data";
 
@@ -57,4 +57,16 @@ it("keeps Opslaan off until debit and credit are equal", async () => {
       { accountCode: "1010", amountCents: -10000, note: null },
     ],
   });
+});
+
+it("chooses the year from a list, so it works without typing", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date("2027-06-01T10:00:00.000Z") });
+  mockLoggedIn();
+  mockApi({ [`${base}/accounts`]: accounts, [`${base}/entries`]: [] });
+  renderAt("/beheer/boekhouding/boekingen");
+  const year = await screen.findByRole("combobox", { name: "Jaar" });
+  expect(year).toHaveValue("2027");
+  expect(within(year).getAllByRole("option").map((option) => option.textContent)).toEqual(["2027", "2028"]);
+  await user().selectOptions(year, "2028");
+  await waitFor(() => expect(calls("GET").some((c) => c.url.startsWith(`${base}/entries?year=2028`))).toBe(true));
 });

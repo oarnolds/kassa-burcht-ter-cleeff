@@ -23,6 +23,11 @@ function useSettled<T>(value: T, ms = 300): T {
   return settled;
 }
 
+const thisYear = (): number => Math.max(Number(today().slice(0, 4)), firstYear);
+
+/** The years to choose from: the first one of the books up to next year. */
+const years = (): number[] => Array.from({ length: thisYear() + 1 - firstYear + 1 }, (_, i) => firstYear + i);
+
 /** What an entry counts for: the sum of its debit lines. */
 const amountOf = (entry: Entry): number => entry.lines.reduce((all, line) => all + Math.max(line.amountCents, 0), 0);
 
@@ -31,13 +36,13 @@ function Filters({ accounts, value, onChange }: { accounts: LedgerAccount[]; val
     <div className="flex flex-wrap items-end gap-3 px-2 sm:px-3">
       <label className={label}>
         Jaar
-        <input
-          type="number"
-          min={firstYear}
-          className={`${field} w-28`}
-          value={value.year}
-          onChange={(event) => Number(event.target.value) >= firstYear && onChange({ ...value, year: Number(event.target.value) })}
-        />
+        <select className={`${field} w-28`} value={value.year} onChange={(event) => onChange({ ...value, year: Number(event.target.value) })}>
+          {years().map((year) => (
+            <option key={year} value={year}>
+              {year}
+            </option>
+          ))}
+        </select>
       </label>
       <label className={label}>
         Van
@@ -73,7 +78,7 @@ export function EntriesPage() {
   const api = useLedgerWrites();
   const navigate = useNavigate();
   const accounts = useAdminData<LedgerAccount[]>(ledgerPath.accounts);
-  const [filter, setFilter] = useState<EntryFilter>({ year: Math.max(Number(today().slice(0, 4)), firstYear) });
+  const [filter, setFilter] = useState<EntryFilter>({ year: thisYear() });
   const settled = useSettled(filter);
   const entries = useAdminData<Entry[]>(ledgerPath.entries(settled));
   const [creating, setCreating] = useState(false);
