@@ -1,3 +1,4 @@
+import { type ComponentType, lazy, Suspense } from "react";
 import { Route, Routes } from "react-router";
 import { BeheerLayout } from "./beheer/BeheerLayout";
 import { CashPage } from "./beheer/CashPage";
@@ -9,23 +10,28 @@ import { SalesPage } from "./beheer/SalesPage";
 import { SettingsPage } from "./beheer/SettingsPage";
 import { SetupPage } from "./beheer/SetupPage";
 import { StockPage } from "./beheer/StockPage";
-import { AssetsPage } from "./beheer/boekhouding/AssetsPage";
-import { BankReturnPage } from "./beheer/boekhouding/BankReturnPage";
-import { ComparisonPage } from "./beheer/boekhouding/ComparisonPage";
-import { EntriesPage } from "./beheer/boekhouding/EntriesPage";
-import { EntryPage } from "./beheer/boekhouding/EntryPage";
-import { LedgerLayout } from "./beheer/boekhouding/LedgerLayout";
-import { MolliePage } from "./beheer/boekhouding/MolliePage";
-import { OpeningPage } from "./beheer/boekhouding/OpeningPage";
-import { OverviewPage } from "./beheer/boekhouding/OverviewPage";
-import { PrintYearPage } from "./beheer/boekhouding/PrintYearPage";
-import { ReportsLedgerPage } from "./beheer/boekhouding/ReportsLedgerPage";
-import { SettingsLedgerPage } from "./beheer/boekhouding/SettingsLedgerPage";
-import { ToBookPage } from "./beheer/boekhouding/ToBookPage";
-import { YearPage } from "./beheer/boekhouding/YearPage";
+import { LedgerLayout, PageLoading } from "./beheer/boekhouding/LedgerLayout";
 import { KassaPage } from "./kassa/KassaPage";
 import { PairPage } from "./kassa/PairPage";
 import { Logo } from "./ui/Logo";
+
+// The boekhouding's pages come in one chunk of their own, loaded when beheer first opens one (R38), so the kassa's
+// start bundle on the iPad does not carry them.
+type LedgerPages = typeof import("./beheer/boekhouding/pages");
+const ledgerPage = (name: keyof LedgerPages) => lazy(() => import("./beheer/boekhouding/pages").then((pages) => ({ default: pages[name] as ComponentType })));
+const AssetsPage = ledgerPage("AssetsPage");
+const BankReturnPage = ledgerPage("BankReturnPage");
+const ComparisonPage = ledgerPage("ComparisonPage");
+const EntriesPage = ledgerPage("EntriesPage");
+const EntryPage = ledgerPage("EntryPage");
+const MolliePage = ledgerPage("MolliePage");
+const OpeningPage = ledgerPage("OpeningPage");
+const OverviewPage = ledgerPage("OverviewPage");
+const PrintYearPage = ledgerPage("PrintYearPage");
+const ReportsLedgerPage = ledgerPage("ReportsLedgerPage");
+const SettingsLedgerPage = ledgerPage("SettingsLedgerPage");
+const ToBookPage = ledgerPage("ToBookPage");
+const YearPage = ledgerPage("YearPage");
 
 function Placeholder({ title }: { title: string }) {
   return (
@@ -65,7 +71,14 @@ export function AppRoutes() {
           <Route path="beginbalans" element={<OpeningPage />} />
           <Route path="vergelijking" element={<ComparisonPage />} />
         </Route>
-        <Route path="bank" element={<BankReturnPage />} />
+        <Route
+          path="bank"
+          element={
+            <Suspense fallback={<PageLoading />}>
+              <BankReturnPage />
+            </Suspense>
+          }
+        />
         <Route path="instellingen" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Placeholder title="Pagina niet gevonden" />} />

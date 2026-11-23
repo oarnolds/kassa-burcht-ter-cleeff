@@ -31,8 +31,14 @@ const STEPS: Record<NightlyStep, StepRunner> = {
 };
 
 /**
+ * What a failure may say in the log: a refusal's code, else the error's name. Never its message: a message can carry
+ * what a library put in it, and a key must never reach a log line.
+ */
+const kindOf = (error: unknown): string => (error instanceof LedgerError ? error.code : error instanceof Error ? error.name : "unknown");
+
+/**
  * Brings the boekhouding up to date: each step on its own, so that one failing leaves the others running.
- * A refusal of the ledger gives its code, any other failure "error" (the message goes to the log, never a secret).
+ * A refusal of the ledger gives its code, any other failure "error"; the log gets the step and the kind of error only.
  * How it went is stored in `ledger_settings` and returned.
  */
 export async function runNightly(env: Env, now: Date, steps: Record<NightlyStep, StepRunner> = STEPS): Promise<NightlyReport> {
@@ -42,7 +48,7 @@ export async function runNightly(env: Env, now: Date, steps: Record<NightlyStep,
       report.steps[step] = await steps[step](env, now);
     } catch (error) {
       report.steps[step] = error instanceof LedgerError ? error.code : "error";
-      console.error(`nightly step ${step} failed:`, error instanceof Error ? error.message : "unknown error");
+      console.error("nightly step failed:", step, kindOf(error));
     }
   }
   await setLedgerSetting(env.DB, NIGHTLY_KEY, JSON.stringify(report), now);

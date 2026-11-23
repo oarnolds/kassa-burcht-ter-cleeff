@@ -299,13 +299,16 @@ it("lets the penningmeester set each account's identifier and source", async () 
   expect(await imported("1010", statement([line()]))).toEqual(result(1, 0));
   expect(await (await patchAccount("1010", { source: "file" })).json()).toMatchObject({ identifier: "NL00 INGB 0000 0000 00", source: "file" });
   expect(await (await patchAccount("1010", { identifier: "" })).json()).toMatchObject({ identifier: null, source: "file" });
-  for (const [code, source] of [["1000", "file"], ["1030", "enable_banking"], ["1010", "kassa"], ["1011", "mollie"]] as const) {
+  // Only ING betaal (1010) is fetched through Enable Banking; the other banks stay with files.
+  for (const [code, source] of [["1000", "file"], ["1030", "enable_banking"], ["1010", "kassa"], ["1011", "mollie"], ["1011", "enable_banking"], ["1020", "enable_banking"], ["1021", "enable_banking"]] as const) {
     const res = await patchAccount(code, { source });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "source_fixed" });
   }
   expect((await patchAccount("8030", { identifier: "x" })).status).toBe(404);
   expect((await accountsByCode()).get("1000")!.source).toBe("kassa");
+  expect((await accountsByCode()).get("1020")!.source).toBe("file");
+  expect((await patchAccount("1020", { source: "file" })).status).toBe(200);
 });
 
 it("lets the penningmeester type a line by hand", async () => {

@@ -28,5 +28,6 @@ it("has its own tab bar with the eight tabs", async () => {
     "Jaar",
     "Instellingen",
   ]);
-  expect(screen.getByRole("heading", { name: "Jaar" })).toBeInTheDocument();
+  // The page itself comes in the boekhouding's own chunk, a moment after the tab bar (R38).
+  expect(await screen.findByRole("heading", { name: "Jaar" })).toBeInTheDocument();
 });

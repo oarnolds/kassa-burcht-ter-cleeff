@@ -13,6 +13,8 @@ export type LineOrigin = "file" | "enable_banking" | "typed" | "mollie";
 
 /** The sources a bank account can switch between. 1000 stays with the kassa and 1030 with Mollie. */
 const BANK_SOURCES: readonly MoneySource[] = ["file", "enable_banking"];
+/** The one account Enable Banking reads: ING betaal. */
+const ENABLE_BANKING_ACCOUNT = "1010";
 
 /**
  * The bank's balance at the start of a day is its balance at the end of the day before. The first end of a day
@@ -401,8 +403,8 @@ export async function moneyAccountOf(db: D1Database, result: D1Result): Promise<
 }
 
 /**
- * Sets what the app knows an account by (trimmed; empty is none) and, for a bank account, whether its lines come
- * from files or from Enable Banking. 1000 stays with the kassa and 1030 with Mollie.
+ * Sets what the app knows an account by (trimmed; empty is none) and, for ING betaal, whether its lines come from
+ * files or from Enable Banking; the other banks stay with files. 1000 stays with the kassa and 1030 with Mollie.
  */
 export async function setMoneyAccount(
   db: D1Database,
@@ -415,6 +417,8 @@ export async function setMoneyAccount(
   if (input.source !== undefined && !(BANK_SOURCES.includes(input.source) && BANK_SOURCES.includes(current.source))) {
     throw new LedgerError("source_fixed", 400);
   }
+  // Only ING betaal is fetched through Enable Banking (spec §10); another bank would wait for lines that never come.
+  if (input.source === "enable_banking" && code !== ENABLE_BANKING_ACCOUNT) throw new LedgerError("source_fixed", 400);
   const identifier = input.identifier === undefined ? undefined : input.identifier?.trim() || null;
   const [, read] = await db.batch([
     db

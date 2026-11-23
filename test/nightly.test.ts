@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { beforeEach, expect, it } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 import type { NightlyReport } from "../shared/ledger-types";
 import worker from "../worker/index";
 import { LedgerError } from "../worker/db/ledger";
@@ -98,4 +98,33 @@ it("lets the penningmeester bring it up to date by hand", async () => {
   expect(report.steps).toEqual({ kassa: "ok", ing: "skipped", mollie: "skipped" });
   const overview = await (await api("/api/admin/boekhouding/overview", { cookie })).json();
   expect((overview as { lastNightly: NightlyReport }).lastNightly).toEqual(report);
+});
+
+it("logs only the step and the kind of error, never its message", async () => {
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    class KeyError extends Error {
+      override name = "KeyError";
+    }
+    await runNightly(env, new Date("2027-03-07T02:00:00.000Z"), {
+      kassa: async () => {
+        throw new LedgerError("unbalanced", 400);
+      },
+      ing: async () => {
+        throw new KeyError("-----BEGIN PRIVATE KEY----- org_fake secret");
+      },
+      mollie: async () => {
+        throw "org_fake as a string";
+      },
+    });
+    const logged = JSON.stringify(log.mock.calls);
+    expect(logged).not.toMatch(/PRIVATE KEY|org_fake|secret/);
+    expect(log.mock.calls).toEqual([
+      ["nightly step failed:", "kassa", "unbalanced"],
+      ["nightly step failed:", "ing", "KeyError"],
+      ["nightly step failed:", "mollie", "unknown"],
+    ]);
+  } finally {
+    log.mockRestore();
+  }
 });

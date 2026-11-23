@@ -225,3 +225,18 @@ it("explains a rule that is refused", async () => {
   await user().click(within(rules()).getByRole("button", { name: "Regel toevoegen" }));
   expect(await within(rules()).findByText("Kies een opbrengstrekening.")).toBeInTheDocument();
 });
+
+it("offers Enable Banking only for ING betaal; another bank says it works from files", async () => {
+  await open({
+    [`${base}/money-accounts`]: [...moneyAccounts, money("1020", "ING kwartaalrekening", "file", "V00000000"), money("1021", "ASN spaarrekening", "file")],
+  });
+  const region = screen.getByRole("region", { name: "Geldrekeningen" });
+  expect(within(region).getAllByLabelText("Automatisch via Enable Banking")).toHaveLength(1);
+  expect(within(region).getByRole("radiogroup", { name: "Bron van ING betaalrekening" })).toBeInTheDocument();
+  for (const name of ["ING kwartaalrekening", "ASN spaarrekening"]) {
+    const row = within(within(region).getByText(name).closest("li")!);
+    expect(row.queryByRole("radiogroup")).not.toBeInTheDocument();
+    expect(row.getByText("Bankbestand uploaden of met de hand")).toBeInTheDocument();
+    expect(row.getByLabelText("Kenmerk (IBAN of spaarnummer)")).toBeInTheDocument();
+  }
+});

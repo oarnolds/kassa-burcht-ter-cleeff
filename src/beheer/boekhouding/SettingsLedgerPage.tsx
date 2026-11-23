@@ -130,6 +130,10 @@ function AddAccount({ onAdded }: { onAdded(): void }) {
   );
 }
 
+/** Only ING betaal can take its lines from Enable Banking (spec §10); the other banks work from files. */
+const ENABLE_BANKING_ACCOUNT = "1010";
+const FROM_FILE = "Bankbestand uploaden of met de hand";
+
 function MoneyRow({ initial }: { initial: MoneyAccount }) {
   const api = useLedgerWrites();
   const toast = useToast();
@@ -162,25 +166,29 @@ function MoneyRow({ initial }: { initial: MoneyAccount }) {
             </label>
             <Button onClick={() => void patch({ identifier: identifier.trim() || null })}>Opslaan</Button>
           </div>
-          <div role="radiogroup" aria-label={`Bron van ${account.name}`} className="flex flex-col gap-1">
-            {(
-              [
-                ["enable_banking", "Automatisch via Enable Banking"],
-                ["file", "Bankbestand uploaden of met de hand"],
-              ] as [MoneySource, string][]
-            ).map(([source, text]) => (
-              <label key={source} className="flex min-h-11 items-center gap-3 text-lg">
-                <input
-                  type="radio"
-                  name={`source-${account.accountCode}`}
-                  className="size-6"
-                  checked={account.source === source}
-                  onChange={() => void patch({ source })}
-                />
-                {text}
-              </label>
-            ))}
-          </div>
+          {account.accountCode === ENABLE_BANKING_ACCOUNT ? (
+            <div role="radiogroup" aria-label={`Bron van ${account.name}`} className="flex flex-col gap-1">
+              {(
+                [
+                  ["enable_banking", "Automatisch via Enable Banking"],
+                  ["file", FROM_FILE],
+                ] as [MoneySource, string][]
+              ).map(([source, text]) => (
+                <label key={source} className="flex min-h-11 items-center gap-3 text-lg">
+                  <input
+                    type="radio"
+                    name={`source-${account.accountCode}`}
+                    className="size-6"
+                    checked={account.source === source}
+                    onChange={() => void patch({ source })}
+                  />
+                  {text}
+                </label>
+              ))}
+            </div>
+          ) : (
+            <p>{FROM_FILE}</p>
+          )}
         </>
       )}
       {problem && <Problem>{problem}</Problem>}
