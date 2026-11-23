@@ -9,7 +9,7 @@ const WARN_DAYS = 14;
 export function consentWarning(o: LedgerOverview): "soon" | "gone" | null {
   const automatic = o.moneyAccounts.some((account) => account.accountCode === "1010" && account.source === "enable_banking");
   if (!automatic || !o.consent) return null;
-  if (o.consent.daysLeft <= 0) return "gone";
+  if (o.consent.daysLeft < 0) return "gone";
   return o.consent.daysLeft <= WARN_DAYS ? "soon" : null;
 }
 
@@ -27,7 +27,7 @@ export function ConsentWarning({ overview }: { overview: LedgerOverview }) {
     <p className="mt-3 flex flex-wrap items-center gap-x-1 px-2 text-lg font-semibold text-redbrown sm:px-3">
       {which === "soon" ? (
         <>
-          <span>{`De toestemming van ING verloopt over ${left === 1 ? "1 dag" : `${left} dagen`}. `}</span>
+          <span>{left === 0 ? "De toestemming van ING verloopt vandaag. " : `De toestemming van ING verloopt over ${left === 1 ? "1 dag" : `${left} dagen`}. `}</span>
           {renew}
         </>
       ) : (

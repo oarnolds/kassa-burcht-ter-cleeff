@@ -90,7 +90,7 @@ export type BankLine = {
 /** `known`: lines that were already there. `beforeStart`: lines before LEDGER_START, not kept. */
 export type ImportResult = { added: number; known: number; beforeStart: number; autoBooked: number };
 
-/** Where the consent for ING (Enable Banking) stands. `daysLeft` is whole days until `validUntil`, 0 or less once it has passed. */
+/** Where the consent for ING (Enable Banking) stands. `daysLeft` is whole days until `validUntil` (0 on the last day); below 0 once the consent has ended, also when it ended early (`validUntil` is then the day it was noticed). */
 export type ConsentState = { status: "none" | "pending" | "active" | "expired"; validUntil: string | null; daysLeft: number | null };
 
 export type NightlyStep = "kassa" | "ing" | "mollie";

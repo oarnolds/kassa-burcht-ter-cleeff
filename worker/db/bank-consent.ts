@@ -94,7 +94,9 @@ export async function consentState(db: D1Database, now: Date): Promise<ConsentSt
   if (row.status === "pending" || !row.valid_until) return { status: "pending", validUntil: null, daysLeft: null };
   const left = Date.parse(row.valid_until) - now.getTime();
   const status = row.status === "active" && left > 0 ? "active" : "expired";
-  return { status, validUntil: row.valid_until, daysLeft: Math.floor(left / DAY_MS) };
+  // Whole days to go; any consent that has ended is below 0, so 0 only ever means the last day.
+  const days = Math.floor(left / DAY_MS);
+  return { status, validUntil: row.valid_until, daysLeft: status === "expired" ? Math.min(days, -1) : days };
 }
 
 /** Nightly: new lines and the balance of 1010, when its source is Enable Banking and the consent is active. */
@@ -112,7 +114,8 @@ export async function fetchIng(env: Env, now: Date): Promise<"ok" | "skipped" | 
   const gone = async (failure: EbFailure) => {
     console.error("ing step failed", failure);
     if (failure !== "unauthorized") return failure;
-    await db.prepare("UPDATE bank_consents SET status = 'expired' WHERE id = ?").bind(consent.id).run();
+    // The consent ended now, whatever date it was given: that is the day to show, and the warning counts from it.
+    await db.prepare("UPDATE bank_consents SET status = 'expired', valid_until = ?2 WHERE id = ?1").bind(consent.id, now.toISOString()).run();
     return "consent_expired";
   };
 

@@ -117,3 +117,20 @@ it("does not warn when ING betaal works from files", async () => {
   await screen.findByRole("link", { name: "Te boeken: 3" });
   expect(screen.queryByRole("link", { name: "Vernieuwen" })).not.toBeInTheDocument();
 });
+
+it("says today on the last day, and expired only once it is past", async () => {
+  mockLoggedIn();
+  mockApi({ [`${base}/overview`]: withSource("enable_banking", soon(0)) });
+  renderAt("/beheer/boekhouding");
+  expect((await screen.findByRole("link", { name: "Vernieuwen" })).parentElement).toHaveTextContent("De toestemming van ING verloopt vandaag. Vernieuwen");
+  expect(screen.queryByText(/toestemming verlopen/)).not.toBeInTheDocument();
+});
+
+it("warns at once when the consent ended early (a long way from its planned end)", async () => {
+  mockLoggedIn();
+  mockApi({ [`${base}/overview`]: withSource("enable_banking", { consent: { validUntil: "2027-03-02T02:00:00.000Z", daysLeft: -1 } }) });
+  renderAt("/beheer/boekhouding");
+  expect((await screen.findByRole("link", { name: "Vernieuwen" })).parentElement).toHaveTextContent(
+    "ING haalt geen regels meer op: toestemming verlopen. Vernieuwen of upload een bankbestand.",
+  );
+});

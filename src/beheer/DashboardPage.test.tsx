@@ -67,3 +67,9 @@ it("warns on the dashboard after the end, but not for a bank that works from fil
   await screen.findByText("In het kluisje hoort");
   expect(screen.queryByRole("link", { name: "Vernieuwen" })).not.toBeInTheDocument();
 });
+
+it("warns on the dashboard at once when the consent ended early", async () => {
+  open(overview({ moneyAccounts: [moneyAccount({ accountCode: "1010", name: "ING betaalrekening", source: "enable_banking" })], consent: { validUntil: "2027-03-02T02:00:00.000Z", daysLeft: -1 } }));
+  const link = await screen.findByRole("link", { name: "Vernieuwen" });
+  expect(link.parentElement).toHaveTextContent("ING haalt geen regels meer op: toestemming verlopen. Vernieuwen of upload een bankbestand.");
+});

@@ -172,3 +172,8 @@ it("asks for the identifier first", async () => {
   await user().click(await within(ing()).findByRole("button", { name: "ING koppelen" }));
   expect(await within(ing()).findByText("Vul eerst het kenmerk (IBAN) van ING betaal in.")).toBeInTheDocument();
 });
+
+it("shows the day an early end was noticed", async () => {
+  await open({ [`${base}/bank/ing`]: { status: "expired", validUntil: "2027-03-02T02:00:00.000Z", daysLeft: -1 } });
+  await waitFor(() => expect(within(ing()).getByText("Verlopen op 02-03-2027")).toBeInTheDocument());
+});

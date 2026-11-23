@@ -157,7 +157,10 @@ it("notices that the consent ran out", async () => {
   eb.current.expireSession();
   expect(await runNightly(ebEnv, new Date("2027-03-02T02:00:00.000Z"))).toMatchObject({ steps: { ing: "consent_expired" } });
   expect((await consents()).results.map((r) => r.status)).toEqual(["expired"]);
-  expect(await consentState(env.DB, NOW)).toEqual({ status: "expired", validUntil: "2027-06-01T12:00:00.000Z", daysLeft: 92 });
+  // An early end counts from the moment it was noticed: the real day shows, and the overview warns at once.
+  const at = new Date("2027-03-02T02:00:00.000Z");
+  expect(await consentState(env.DB, at)).toEqual({ status: "expired", validUntil: at.toISOString(), daysLeft: -1 });
+  expect((await overview(env.DB, at)).consent).toEqual({ validUntil: at.toISOString(), daysLeft: -1 });
   // Next night nothing is asked any more.
   eb.current.requests = [];
   expect(await fetchIng(ebEnv, new Date("2027-03-03T02:00:00.000Z"))).toBe("skipped");
