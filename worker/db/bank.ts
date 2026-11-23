@@ -6,6 +6,7 @@ import { sha256Hex } from "../lib/crypto";
 import { type Entry, type EntryLine } from "../../shared/ledger-types";
 import { dayMonthYear } from "./kassa-ledger";
 import { createEntry, editEntry, LedgerError, upsertSourcedStatements } from "./ledger";
+import { endOfDay } from "./opening";
 
 export type LineOrigin = "file" | "enable_banking" | "typed" | "mollie";
 
@@ -314,9 +315,59 @@ const toMoneyAccount = (row: AccountRow): MoneyAccount => ({
 
 const today = (now: Date) => businessDate(now.toISOString());
 
+/** The first moment of the ledger, 1 January 2027 00:00 in Amsterdam, as a UTC ISO string. */
+const LEDGER_START_MOMENT = new Date(Date.parse(endOfDay(FIRST_BALANCE_DATE)) + 1).toISOString();
+
+/**
+ * Mollie's payouts on their way to ING at the end of Amsterdam day `date`: settled from LEDGER_START up to the end
+ * of that day (not failed), and not arrived by then: no payout entry (`mollie_settlement`) dated on or before
+ * `date`, and no booked credit on ING betaal dated on or before `date` that carries the payout's reference (a payout
+ * line booked by hand). Their amount plus costs, as `cents`: Mollie's balance has let go of them, 1030 still holds
+ * them. A payout settled before LEDGER_START is the opening's (on its way as 1080), never this. A statement, for a
+ * caller's batch; `payoutsInTransit` runs it.
+ */
+export function payoutsInTransitStatement(db: D1Database, date: string): D1PreparedStatement {
+  return db
+    .prepare(
+      `SELECT COALESCE(SUM(s.amount_cents + abs(s.costs_cents)), 0) AS cents FROM mollie_settlements s
+       WHERE s.status <> 'failed' AND s.amount_cents > 0 AND s.settled_at >= ?1 AND s.settled_at <= ?2
+         AND NOT EXISTS (SELECT 1 FROM ledger_entries e WHERE e.source = 'mollie_settlement' AND e.source_ref = s.id AND e.date <= ?3)
+         AND NOT EXISTS (
+           SELECT 1 FROM bank_lines b
+           WHERE b.account_code = '${PAYOUT_ACCOUNT}' AND b.status = 'booked' AND b.amount_cents > 0
+             AND b.booking_date >= date(substr(s.settled_at, 1, 10), '-1 day') AND b.booking_date <= ?3
+             AND s.reference IS NOT NULL AND instr(b.description, s.reference) > 0)`,
+    )
+    .bind(LEDGER_START_MOMENT, endOfDay(date), date);
+}
+
+export async function payoutsInTransit(db: D1Database, date: string): Promise<number> {
+  return (await payoutsInTransitStatement(db, date).first<{ cents: number }>())!.cents;
+}
+
+/**
+ * 1030 next to Mollie's balance leaves out the payouts on their way to ING on that balance's date (one more query,
+ * only when Mollie gave a balance); only what is left is a difference. Gives the accounts and that sum.
+ */
+async function withPayoutsInTransit(db: D1Database, accounts: MoneyAccount[]): Promise<{ accounts: MoneyAccount[]; inTransitCents: number }> {
+  const mollie = accounts.find((account) => account.accountCode === MOLLIE && account.bank !== null);
+  if (!mollie) return { accounts, inTransitCents: 0 };
+  const inTransitCents = await payoutsInTransit(db, mollie.bank!.date);
+  if (inTransitCents === 0) return { accounts, inTransitCents };
+  return {
+    accounts: accounts.map((account) => (account === mollie ? { ...account, differenceCents: account.ledgerCents - inTransitCents - account.bank!.balanceCents } : account)),
+    inTransitCents,
+  };
+}
+
 export async function moneyAccounts(db: D1Database, now: Date): Promise<MoneyAccount[]> {
+  return (await moneyAccountsWithTransit(db, now)).accounts;
+}
+
+/** The money accounts, and the payouts of Mollie on their way to ING that 1030's difference leaves out. */
+export async function moneyAccountsWithTransit(db: D1Database, now: Date): Promise<{ accounts: MoneyAccount[]; inTransitCents: number }> {
   const { results } = await accountsQuery(db, today(now), null).all<AccountRow>();
-  return results.map(toMoneyAccount);
+  return withPayoutsInTransit(db, results.map(toMoneyAccount));
 }
 
 /**
@@ -328,9 +379,12 @@ export function moneyAccountOnStatement(db: D1Database, code: string, date: stri
   return accountsQuery(db, date, code, date);
 }
 
-export function moneyAccountOf(result: D1Result): MoneyAccount | null {
+/** The account `moneyAccountOnStatement` read, with 1030's payouts on their way to ING left out of its difference. */
+export async function moneyAccountOf(db: D1Database, result: D1Result): Promise<{ account: MoneyAccount | null; inTransitCents: number }> {
   const row = result.results[0] as AccountRow | undefined;
-  return row ? toMoneyAccount(row) : null;
+  if (!row) return { account: null, inTransitCents: 0 };
+  const { accounts, inTransitCents } = await withPayoutsInTransit(db, [toMoneyAccount(row)]);
+  return { account: accounts[0]!, inTransitCents };
 }
 
 /**
@@ -358,7 +412,7 @@ export async function setMoneyAccount(
       .bind(code, identifier === undefined ? 0 : 1, identifier ?? null, input.source ?? null),
     accountsQuery(db, today(now), code),
   ]);
-  return toMoneyAccount(read!.results[0] as AccountRow);
+  return (await withPayoutsInTransit(db, [toMoneyAccount(read!.results[0] as AccountRow)])).accounts[0]!;
 }
 
 // ---- Te boeken ----

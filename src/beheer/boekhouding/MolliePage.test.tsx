@@ -15,7 +15,7 @@ const month = (extra: Partial<MollieMonth> = {}): MollieMonth => ({
     { accountCode: "8012", cents: 320 },
   ],
   costsCents: 238,
-  balance: { ledgerCents: 3520, mollieCents: 3320, differenceCents: 200 },
+  balance: { ledgerCents: 3520, mollieCents: 3320, inTransitCents: 0, differenceCents: 200 },
   ...extra,
 });
 
@@ -31,7 +31,7 @@ it("shows the month's pin, the differences and the balance", async () => {
         const asked = new URL(req.url, "http://localhost").searchParams.get("month");
         return asked === "2027-03"
           ? month()
-          : month({ month: asked!, kassaPinCents: 0, molliePosCents: 0, onlyInKassa: [], onlyAtMollie: [], otherByAccount: [], costsCents: 0, balance: { ledgerCents: 0, mollieCents: null, differenceCents: null } });
+          : month({ month: asked!, kassaPinCents: 0, molliePosCents: 0, onlyInKassa: [], onlyAtMollie: [], otherByAccount: [], costsCents: 0, balance: { ledgerCents: 0, mollieCents: null, inTransitCents: 0, differenceCents: null } });
       },
     });
     renderAt("/beheer/boekhouding/mollie");
@@ -64,7 +64,7 @@ it("says so when there are no differences", async () => {
   mockLoggedIn();
   mockApi({
     [`${base}/accounts`]: named,
-    [`${base}/mollie/month`]: month({ onlyInKassa: [], onlyAtMollie: [], otherByAccount: [], balance: { ledgerCents: 3320, mollieCents: 3320, differenceCents: 0 } }),
+    [`${base}/mollie/month`]: month({ onlyInKassa: [], onlyAtMollie: [], otherByAccount: [], balance: { ledgerCents: 3320, mollieCents: 3320, inTransitCents: 0, differenceCents: 0 } }),
   });
   renderAt("/beheer/boekhouding/mollie?maand=2027-03");
   expect(await screen.findByText("Saldo bij Mollie € 33,20, in de boekhouding € 33,20")).toBeInTheDocument();
@@ -72,4 +72,23 @@ it("says so when there are no differences", async () => {
   expect(within(screen.getByRole("region", { name: "Alleen bij Mollie" })).getByText("Geen.")).toBeInTheDocument();
   expect(within(screen.getByRole("region", { name: "Overige betalingen" })).getByText("Geen.")).toBeInTheDocument();
   expect(screen.queryByText(/verschil/)).not.toBeInTheDocument();
+});
+
+it("shows a payout on its way to ING as onderweg, and only the rest as a difference", async () => {
+  mockLoggedIn();
+  mockApi({
+    [`${base}/accounts`]: named,
+    [`${base}/mollie/month`]: month({ balance: { ledgerCents: 13320, mollieCents: 3320, inTransitCents: 10000, differenceCents: 0 } }),
+  });
+  const first = renderAt("/beheer/boekhouding/mollie?maand=2027-03");
+  const saldo = () => within(screen.getByRole("region", { name: "Saldo" }));
+  expect(await screen.findByText("Saldo bij Mollie € 33,20, in de boekhouding € 133,20")).toBeInTheDocument();
+  expect(saldo().getByText("Onderweg naar ING € 100,00")).toBeInTheDocument();
+  expect(saldo().queryByText(/verschil/)).not.toBeInTheDocument();
+  first.unmount();
+
+  mockApi({ [`${base}/mollie/month`]: month({ balance: { ledgerCents: 13320, mollieCents: 3070, inTransitCents: 10000, differenceCents: 250 } }) });
+  renderAt("/beheer/boekhouding/mollie?maand=2027-03");
+  expect(await screen.findByText("Onderweg naar ING € 100,00")).toBeInTheDocument();
+  expect(saldo().getByText("verschil € 2,50")).toBeInTheDocument();
 });

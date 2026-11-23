@@ -69,6 +69,7 @@ function MonthView({ data, names }: { data: MollieMonth; names: Map<string, stri
             ? `Saldo bij Mollie nog niet bekend, in de boekhouding ${formatEuro(balance.ledgerCents)}`
             : `Saldo bij Mollie ${formatEuro(balance.mollieCents)}, in de boekhouding ${formatEuro(balance.ledgerCents)}`}
         </p>
+        {balance.inTransitCents > 0 && <p className="mt-1 px-2 sm:px-3">{`Onderweg naar ING ${formatEuro(balance.inTransitCents)}`}</p>}
         {balance.differenceCents !== null && balance.differenceCents !== 0 && (
           <>
             <p className="mt-1 px-2 font-semibold text-redbrown sm:px-3">{`verschil ${formatEuro(balance.differenceCents)}`}</p>

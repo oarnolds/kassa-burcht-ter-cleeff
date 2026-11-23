@@ -82,6 +82,9 @@ export function OverviewPage() {
                         <strong className="tabular-nums">{formatEuro(account.bank.balanceCents)}</strong>
                       </span>
                     )}
+                    {account.accountCode === "1030" && o.mollieInTransitCents > 0 && (
+                      <span className="text-ink/70">{`Onderweg naar ING ${formatEuro(o.mollieInTransitCents)}`}</span>
+                    )}
                     {account.differenceCents !== null && account.differenceCents !== 0 && (
                       <span className="font-semibold text-redbrown">{`verschil ${formatEuro(account.differenceCents)}`}</span>
                     )}

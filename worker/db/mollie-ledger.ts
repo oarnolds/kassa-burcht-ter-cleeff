@@ -8,7 +8,7 @@
 
 import type { CamtLine } from "../../shared/camt";
 import { type AccountKind, LEDGER_START, type MollieMonth, type MollieRule } from "../../shared/ledger-types";
-import { businessDate, monthRange, shiftDate } from "../../shared/time";
+import { businessDate, localTime, monthRange, shiftDate } from "../../shared/time";
 import type { Env } from "../env";
 import { type MollieChargebackRow, type MolliePaymentRow, mollieReadFor, type MollieRefundRow, type PaymentGap } from "../lib/mollie-read";
 import { autoBook, importLines, moneyAccountOf, moneyAccountOnStatement, recordBalance } from "./bank";
@@ -62,15 +62,23 @@ function gapOf(value: string | undefined): PaymentGap | null {
   if (typeof gap?.from !== "string" || typeof gap.untilIso !== "string") throw new LedgerError("mollie_resume_unreadable", 409);
   return { from: gap.from, untilIso: gap.untilIso };
 }
+/**
+ * The day Mollie's balance is recorded for: the night's run (before six in the morning, Amsterdam) records the day
+ * that just ended; "Nu bijwerken" by day records today, as it stands now (the next night puts the whole day in place).
+ */
+function balanceDate(now: Date): string {
+  const today = businessDate(now.toISOString());
+  return localTime(now.toISOString()) < "06:00" ? shiftDate(today, -1) : today;
+}
 const kassaPayments = (db: D1Database, ids: string) =>
   db.prepare("SELECT mollie_payment_id AS id FROM sales WHERE mollie_payment_id IN (SELECT value FROM json_each(?1))").bind(ids);
 
 /**
  * Nightly: Mollie's paid payments, refunds and chargebacks since a few days before the newest payment kept (or since
- * LEDGER_START), then Mollie's balance as that of 1030 at the end of yesterday. All three lists are read before
- * anything is stored, so a failure keeps nothing and the next run reads the same window. A failure of Mollie gives its
- * name ("unauthorized", "refused", "not_found", "unreachable"), a list of reversals cut short by the page cap
- * "mollie_list_cut_short", a refusal of the ledger its code.
+ * LEDGER_START), then Mollie's balance as that of 1030 at the end of yesterday (by day: of today, so far). All three
+ * lists are read before anything is stored, so a failure keeps nothing and the next run reads the same window. A
+ * failure of Mollie gives its name ("unauthorized", "refused", "not_found", "unreachable"), a list of reversals cut
+ * short by the page cap "mollie_list_cut_short", a refusal of the ledger its code.
  */
 export async function syncMolliePayments(env: Env, now: Date): Promise<"ok" | "skipped" | string> {
   const client = mollieReadFor(env);
@@ -114,8 +122,7 @@ export async function syncMolliePayments(env: Env, now: Date): Promise<"ok" | "s
 
     const balance = await client.primaryBalance();
     if (!balance.ok) return failed(balance.failure);
-    const yesterday = shiftDate(businessDate(now.toISOString()), -1);
-    await recordBalance(db, MOLLIE, { date: yesterday, cents: balance.data.availableCents + balance.data.pendingCents }, "mollie");
+    await recordBalance(db, MOLLIE, { date: balanceDate(now), cents: balance.data.availableCents + balance.data.pendingCents }, "mollie");
     await autoBook(db, now);
     return "ok";
   } catch (error) {
@@ -418,8 +425,9 @@ export async function syncSettlements(env: Env, now: Date): Promise<"ok" | "skip
  * month. Per payment what is on one side only: a paid pin sale (not a turn-back) whose payment Mollie does not
  * have, and a terminal payment no paid sale has. The rule payments of the month per account, the costs of the
  * payouts settled in it, and 1030 next to Mollie's balance as it stood at the end of the month (or today, in the
- * current one): the newest balance on or before that day, with the ledger on that balance's own date, as the
- * Overzicht lays them.
+ * current one): the newest balance on or before that day, with the ledger on that balance's own date and the
+ * payouts then on their way to ING left out, as the Overzicht lays them. One batch, and one more read for the
+ * payouts on their way when Mollie gave a balance.
  */
 export async function mollieMonth(db: D1Database, month: string, now: Date = new Date()): Promise<MollieMonth> {
   const { first, last } = monthRange(month);
@@ -461,7 +469,7 @@ export async function mollieMonth(db: D1Database, month: string, now: Date = new
     moneyAccountOnStatement(db, MOLLIE, until),
   ]);
   const sum = (result: D1Result) => (result.results[0] as { cents: number }).cents;
-  const account = moneyAccountOf(balanceRows!);
+  const { account, inTransitCents } = await moneyAccountOf(db, balanceRows!);
   return {
     month,
     kassaPinCents: sum(kassaRows!),
@@ -473,6 +481,7 @@ export async function mollieMonth(db: D1Database, month: string, now: Date = new
     balance: {
       ledgerCents: account?.ledgerCents ?? 0,
       mollieCents: account?.bank?.balanceCents ?? null,
+      inTransitCents,
       differenceCents: account?.differenceCents ?? null,
     },
   };

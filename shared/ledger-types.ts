@@ -56,7 +56,8 @@ export type MoneySource = "file" | "enable_banking" | "kassa" | "mollie";
 
 /**
  * A money account next to what the bank said. `bank` is the newest balance the bank gave (from a file or Enable
- * Banking); `ledgerCents` is the ledger on that same date (today without one); `differenceCents` = ledger − bank.
+ * Banking); `ledgerCents` is the ledger on that same date (today without one); `differenceCents` = ledger − bank,
+ * for 1030 less the payouts of Mollie still on their way to ING on that date.
  */
 export type MoneyAccount = {
   accountCode: string;
@@ -100,8 +101,9 @@ export type MollieRule = { id: string; keyword: string; accountCode: string };
  * A month of Mollie next to the books (`month` is `YYYY-MM`). The kassa's pin (paid pin sales, turned-back ones
  * included) next to Mollie's terminal payments, with the payments found on one side only; the other payments
  * booked by rule, per account; Mollie's costs of the payouts settled in the month; and 1030 next to Mollie's
- * balance at the end of the month (today in the current one): `differenceCents` = ledger − Mollie, null without
- * a balance from Mollie.
+ * balance at the end of the month (today in the current one). `inTransitCents`: payouts that have left Mollie but
+ * are not on ING yet (amount plus costs), which 1030 still holds; `differenceCents` = ledger − in transit − Mollie,
+ * null without a balance from Mollie.
  */
 export type MollieMonth = {
   month: string;
@@ -111,7 +113,7 @@ export type MollieMonth = {
   onlyAtMollie: { paymentId: string; date: string; amountCents: number }[];
   otherByAccount: { accountCode: string; cents: number }[];
   costsCents: number;
-  balance: { ledgerCents: number; mollieCents: number | null; differenceCents: number | null };
+  balance: { ledgerCents: number; mollieCents: number | null; inTransitCents: number; differenceCents: number | null };
 };
 
 export type NightlyStep = "kassa" | "ing" | "mollie";
@@ -146,6 +148,9 @@ export type LedgerOverview = {
   resultYearCents: number;
   cashDifferenceCents: number;
   consent: { validUntil: string; daysLeft: number } | null;
+  /** 1030 against Mollie's balance, payouts on their way to ING left out; null without a balance from Mollie. */
   mollieDifferenceCents: number | null;
+  /** Payouts that have left Mollie but are not on ING yet, on the date of Mollie's newest balance (amount plus costs). */
+  mollieInTransitCents: number;
   lastNightly: NightlyReport | null;
 };

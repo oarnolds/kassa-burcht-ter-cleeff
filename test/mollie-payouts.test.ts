@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { Entry } from "../shared/ledger-types";
 import { formatEuro } from "../shared/money";
-import { addTypedLine, autoBook, bookLine, importLines, moneyAccounts, openLines } from "../worker/db/bank";
+import { addTypedLine, autoBook, bookLine, importLines, moneyAccounts, openLines, payoutsInTransit } from "../worker/db/bank";
 import { balancesOn, getEntry } from "../worker/db/ledger";
 import { overview } from "../worker/db/ledger-reports";
 import { type MollieMonth, mollieMonth, syncMolliePayments, syncSettlements } from "../worker/db/mollie-ledger";
@@ -225,6 +225,9 @@ it("lets him book a waiting payout line by hand, and the payout that follows boo
   expect(await autoBook(env.DB, NOW)).toBe(0);
   expect(await snapshot()).toEqual(before);
   expect(await count("ledger_entries WHERE source = 'mollie_settlement'")).toBe(0);
+  // On its way to ING from Mollie's payout (8 March) until his booked line (9 March): then it has arrived.
+  expect(await payoutsInTransit(env.DB, "2027-03-08")).toBe(10000);
+  expect(await payoutsInTransit(env.DB, "2027-03-09")).toBe(0);
 });
 
 it("leaves a payout of 2026 to the penningmeester", async () => {
@@ -255,6 +258,8 @@ it("leaves a payout of 2026 to the penningmeester", async () => {
   expect(await autoBook(env.DB, NOW)).toBe(0);
   expect(await lineOf("05665564.2612.03 Mollie")).toMatchObject({ status: "booked" });
   expect(await count("ledger_entries WHERE source = 'mollie_settlement'")).toBe(0);
+  // It left Mollie before the books began, so 1030 never held it: it is never "onderweg" in the comparison.
+  expect(await payoutsInTransit(env.DB, "2027-01-03")).toBe(0);
 });
 
 it("compares the kassa's pin with Mollie's, payment by payment", async () => {
@@ -299,7 +304,7 @@ it("compares the kassa's pin with Mollie's, payment by payment", async () => {
       { accountCode: "8012", cents: 320 },
     ],
     costsCents: 238,
-    balance: { ledgerCents: 3520, mollieCents: null, differenceCents: null },
+    balance: { ledgerCents: 3520, mollieCents: null, inTransitCents: 0, differenceCents: null },
   });
 
   // Through the route, behind the login; without a month it is the current one.
@@ -336,17 +341,85 @@ it("keeps 1030 equal to Mollie's balance", async () => {
   expect((await balancesOn(env.DB, "2027-03-09")).get("1030")).toBe(3320);
   const mollieAccount = (await moneyAccounts(env.DB, new Date("2027-03-10T08:00:00.000Z"))).find((account) => account.accountCode === "1030");
   expect(mollieAccount).toMatchObject({ ledgerCents: 3320, bank: { date: "2027-03-09", balanceCents: 3320 }, differenceCents: 0 });
-  expect((await mollieMonth(env.DB, "2027-03", new Date("2027-03-10T08:00:00.000Z"))).balance).toEqual({ ledgerCents: 3320, mollieCents: 3320, differenceCents: 0 });
+  expect((await mollieMonth(env.DB, "2027-03", new Date("2027-03-10T08:00:00.000Z"))).balance).toEqual({ ledgerCents: 3320, mollieCents: 3320, inTransitCents: 0, differenceCents: 0 });
   expect((await overview(env.DB, new Date("2027-03-10T08:00:00.000Z"))).mollieDifferenceCents).toBe(0);
 
   // Mollie keeps € 25 for something the app does not know of (a terminal, say): the difference shows.
   mollie.current.balance = { available: "0.00", pending: "8.20" };
   expect((await runNightly(orgEnv(), new Date("2027-03-11T02:00:00.000Z"))).steps.mollie).toBe("ok");
   const later = new Date("2027-03-11T08:00:00.000Z");
-  expect((await mollieMonth(env.DB, "2027-03", later)).balance).toEqual({ ledgerCents: 3320, mollieCents: 820, differenceCents: 2500 });
+  expect((await mollieMonth(env.DB, "2027-03", later)).balance).toEqual({ ledgerCents: 3320, mollieCents: 820, inTransitCents: 0, differenceCents: 2500 });
   expect((await overview(env.DB, later)).mollieDifferenceCents).toBe(2500);
   // A month that is over is laid next to Mollie's balance at its end.
-  expect((await mollieMonth(env.DB, "2027-02", later)).balance).toEqual({ ledgerCents: 0, mollieCents: null, differenceCents: null });
+  expect((await mollieMonth(env.DB, "2027-02", later)).balance).toEqual({ ledgerCents: 0, mollieCents: null, inTransitCents: 0, differenceCents: null });
+});
+
+it("shows a payout on its way to ING as onderweg, not as a difference", async () => {
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM settings WHERE key = 'in_use_since'"),
+    env.DB.prepare("INSERT INTO settings (key, value) VALUES ('in_use_since', '2026-11-21T09:00:00.000Z')"),
+    ...kassaSale({ date: "2027-03-06", cents: 10000, paymentId: "tr_k" }),
+  ]);
+  paid("tr_k", "100.00", "Kassa bon", "2027-03-06T10:00:00+00:00", "pointofsale");
+  paid("tr_lid", "32.00", "Lidm. Speeltuin ter Cleefte", "2027-03-06T11:00:00+00:00");
+  paid("tr_dag", "1.20", "2x dagkaartje", "2027-03-06T12:00:00+00:00");
+  // Mollie pays out the kassa's € 100 (€ 98,12 plus € 1,88 costs) on the morning of 8 March; it reaches ING on 9 March.
+  mollie.current.addSettlement({ reference: "05665564.2703.01", amount: "98.12", settledAt: "2027-03-08T06:00:00+00:00", costs: { "2027": { "03": ["1.88"] } } });
+  mollie.current.balance = { available: "0.00", pending: "33.20" };
+  const seen = async (now: Date) => ({
+    account: (await moneyAccounts(env.DB, now)).find((account) => account.accountCode === "1030"),
+    overview: await overview(env.DB, now),
+    month: (await mollieMonth(env.DB, "2027-03", now)).balance,
+  });
+
+  // The night of 9 March records Mollie's balance of 8 March: the payout has left Mollie, but is not on ING yet.
+  expect((await runNightly(orgEnv(), new Date("2027-03-09T02:00:00.000Z"))).steps.mollie).toBe("ok");
+  const morning = new Date("2027-03-09T08:00:00.000Z");
+  let now = await seen(morning);
+  expect(now.account).toMatchObject({ ledgerCents: 13320, bank: { date: "2027-03-08", balanceCents: 3320 }, differenceCents: 0 });
+  expect(now.overview).toMatchObject({ mollieDifferenceCents: 0, mollieInTransitCents: 10000 });
+  expect(now.month).toEqual({ ledgerCents: 13320, mollieCents: 3320, inTransitCents: 10000, differenceCents: 0 });
+  expect(await payoutsInTransit(env.DB, "2027-03-07")).toBe(0);
+  expect(await payoutsInTransit(env.DB, "2027-03-08")).toBe(10000);
+
+  // The ING line of 9 March comes in and is booked; Mollie's newest balance is still that of 8 March.
+  await ingLine("2027-03-09", 9812, "05665564.2703.01 Mollie");
+  expect(await autoBook(env.DB, morning)).toBe(1);
+  now = await seen(morning);
+  expect(now.account).toMatchObject({ ledgerCents: 13320, differenceCents: 0 });
+  expect(now.overview).toMatchObject({ mollieDifferenceCents: 0, mollieInTransitCents: 10000 });
+
+  // The next night records 9 March: nothing on its way any more, and still no difference.
+  expect((await runNightly(orgEnv(), new Date("2027-03-10T02:00:00.000Z"))).steps.mollie).toBe("ok");
+  now = await seen(new Date("2027-03-10T08:00:00.000Z"));
+  expect(now.account).toMatchObject({ ledgerCents: 3320, bank: { date: "2027-03-09", balanceCents: 3320 }, differenceCents: 0 });
+  expect(now.overview).toMatchObject({ mollieDifferenceCents: 0, mollieInTransitCents: 0 });
+  expect(now.month).toEqual({ ledgerCents: 3320, mollieCents: 3320, inTransitCents: 0, differenceCents: 0 });
+});
+
+it("records Mollie's balance under yesterday at night and under today by day", async () => {
+  const balances = () => env.DB.prepare("SELECT date, balance_cents FROM bank_balances WHERE account_code = '1030' ORDER BY date").all().then((r) => r.results);
+  mollie.current.balance = { available: "10.00", pending: "0.00" };
+  expect(await syncMolliePayments(orgEnv(), new Date("2027-03-07T04:59:00.000Z"))).toBe("ok"); // 05:59 in Amsterdam: the night
+  expect(await balances()).toEqual([{ date: "2027-03-06", balance_cents: 1000 }]);
+  // "Nu bijwerken" from six in the morning: today, as it stands now.
+  mollie.current.balance = { available: "12.00", pending: "0.50" };
+  expect(await syncMolliePayments(orgEnv(), new Date("2027-03-07T05:00:00.000Z"))).toBe("ok"); // 06:00 in Amsterdam
+  expect(await balances()).toEqual([
+    { date: "2027-03-06", balance_cents: 1000 },
+    { date: "2027-03-07", balance_cents: 1250 },
+  ]);
+  // The night after puts the whole day in its place.
+  mollie.current.balance = { available: "15.00", pending: "0.00" };
+  expect(await syncMolliePayments(orgEnv(), new Date("2027-03-08T01:00:00.000Z"))).toBe("ok");
+  expect(await balances()).toEqual([
+    { date: "2027-03-06", balance_cents: 1000 },
+    { date: "2027-03-07", balance_cents: 1500 },
+  ]);
+  // By day in summer time as well (14:00 in Amsterdam), and late in the evening (23:30).
+  expect(await syncMolliePayments(orgEnv(), new Date("2027-07-07T12:00:00.000Z"))).toBe("ok");
+  expect(await syncMolliePayments(orgEnv(), new Date("2027-07-08T21:30:00.000Z"))).toBe("ok");
+  expect((await balances()).map((row) => (row as { date: string }).date)).toEqual(["2027-03-06", "2027-03-07", "2027-07-07", "2027-07-08"]);
 });
 
 it("names a failure of Mollie's payouts without saying more", async () => {

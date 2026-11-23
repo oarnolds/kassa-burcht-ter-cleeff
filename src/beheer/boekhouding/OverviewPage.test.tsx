@@ -13,6 +13,7 @@ const overview = (extra = {}) => ({
   cashDifferenceCents: 0,
   consent: null,
   mollieDifferenceCents: null,
+  mollieInTransitCents: 0,
   lastNightly: null,
   ...extra,
 });
@@ -151,4 +152,21 @@ it("points to the Mollie page when Mollie's balance differs from the books", asy
     expect(screen.queryByText(/Mollie wijkt/)).not.toBeInTheDocument();
     page.unmount();
   }
+});
+
+it("shows a payout on its way to ING with Mollie, and only the rest as a difference", async () => {
+  mockLoggedIn();
+  const mollie = moneyAccount({ accountCode: "1030", name: "Mollie", identifier: null, source: "mollie", ledgerCents: 13320, bank: { date: "2027-03-08", balanceCents: 3320 }, differenceCents: 0 });
+  mockApi({ [`${base}/overview`]: overview({ moneyAccounts: [mollie], mollieDifferenceCents: 0, mollieInTransitCents: 10000 }) });
+  const first = renderAt("/beheer/boekhouding");
+  const item = await screen.findByRole("listitem", { name: "Mollie" });
+  expect(item).toHaveTextContent("Onderweg naar ING € 100,00");
+  expect(item).not.toHaveTextContent("verschil");
+  expect(screen.queryByText(/Mollie wijkt/)).not.toBeInTheDocument();
+  first.unmount();
+
+  mockApi({ [`${base}/overview`]: overview({ moneyAccounts: [{ ...mollie, differenceCents: 250 }], mollieDifferenceCents: 250, mollieInTransitCents: 10000 }) });
+  renderAt("/beheer/boekhouding");
+  expect(await screen.findByRole("listitem", { name: "Mollie" })).toHaveTextContent("Onderweg naar ING € 100,00");
+  expect(screen.getByRole("link", { name: `Mollie wijkt ${formatEuro(250)} af van de boekhouding` })).toBeInTheDocument();
 });

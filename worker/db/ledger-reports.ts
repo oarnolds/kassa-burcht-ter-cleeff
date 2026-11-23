@@ -10,7 +10,7 @@ import {
 import { businessDate, shiftDate } from "../../shared/time";
 import { LedgerError } from "./ledger";
 import { getLedgerSetting } from "./ledger-settings";
-import { moneyAccounts } from "./bank";
+import { moneyAccountsWithTransit } from "./bank";
 import { consentState } from "./bank-consent";
 import { endOfDay, expectedCashAt } from "./opening";
 
@@ -186,7 +186,10 @@ function parseNightly(value: string | null): NightlyReport | null {
   }
 }
 
-/** What beheer's first page shows. `mollieDifferenceCents` is 1030 against Mollie's balance (null without one). */
+/**
+ * What beheer's first page shows. `mollieDifferenceCents` is 1030 against Mollie's balance (null without one), the
+ * payouts on their way to ING (`mollieInTransitCents`) left out.
+ */
 export async function overview(db: D1Database, now: Date): Promise<LedgerOverview> {
   const today = businessDate(now.toISOString());
   const yesterday = shiftDate(today, -1);
@@ -195,7 +198,7 @@ export async function overview(db: D1Database, now: Date): Promise<LedgerOvervie
     db
       .prepare(`SELECT status, COUNT(*) AS n FROM bank_lines WHERE status IN ('open','waiting') GROUP BY status`)
       .all<{ status: string; n: number }>(),
-    moneyAccounts(db, now),
+    moneyAccountsWithTransit(db, now),
     year < firstYear ? Promise.resolve(0) : resultOf(db, `${year}-01-01`, today),
     cashDifference(db, yesterday),
     getLedgerSetting(db, "ledger_nightly_last"),
@@ -205,11 +208,12 @@ export async function overview(db: D1Database, now: Date): Promise<LedgerOvervie
   return {
     openLines: count("open"),
     waitingLines: count("waiting"),
-    moneyAccounts: accounts,
+    moneyAccounts: accounts.accounts,
     resultYearCents,
     cashDifferenceCents,
     consent: consent.status === "active" || consent.status === "expired" ? { validUntil: consent.validUntil!, daysLeft: consent.daysLeft! } : null,
-    mollieDifferenceCents: accounts.find((account) => account.accountCode === "1030")?.differenceCents ?? null,
+    mollieDifferenceCents: accounts.accounts.find((account) => account.accountCode === "1030")?.differenceCents ?? null,
+    mollieInTransitCents: accounts.inTransitCents,
     lastNightly: parseNightly(lastNightly),
   };
 }
