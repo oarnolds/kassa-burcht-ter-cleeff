@@ -42,11 +42,26 @@ export async function addAccount(db: D1Database, input: { code: string; name: st
   return (await getAccount(db, input.code))!;
 }
 
-/** Renames or hides an account. A money account stays visible: the kassa, the banks and Mollie are booked on it. */
+/**
+ * Renames or hides an account. Kas and Mollie always stay visible: the kassa and Mollie book on them. A bank account
+ * may be hidden only while nothing is booked on it and no bank line is on it (a deposit that is no longer there);
+ * hidden, it leaves the money accounts too.
+ */
 export async function patchAccount(db: D1Database, code: string, input: { name?: string; hidden?: boolean }): Promise<LedgerAccount> {
   const current = await getAccount(db, code);
   if (!current) throw new LedgerError("not_found", 404);
-  if (input.hidden === true && current.money) throw new LedgerError("money_account", 409);
+  if (input.hidden === true && current.money) {
+    const use = await db
+      .prepare(
+        `SELECT (SELECT source FROM money_accounts WHERE account_code = ?1) AS source,
+                EXISTS (SELECT 1 FROM ledger_lines WHERE account_code = ?1)
+                  OR EXISTS (SELECT 1 FROM bank_lines WHERE account_code = ?1) AS used`,
+      )
+      .bind(code)
+      .first<{ source: string | null; used: number }>();
+    if (use?.source === "kassa" || use?.source === "mollie") throw new LedgerError("money_account", 409);
+    if (use?.used) throw new LedgerError("money_account_in_use", 409);
+  }
   await db
     .prepare("UPDATE ledger_accounts SET name = COALESCE(?2, name), hidden = COALESCE(?3, hidden) WHERE code = ?1")
     .bind(code, input.name ?? null, input.hidden === undefined ? null : input.hidden ? 1 : 0)

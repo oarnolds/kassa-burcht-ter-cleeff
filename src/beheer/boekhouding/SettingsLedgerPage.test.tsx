@@ -21,6 +21,8 @@ const accounts: LedgerAccount[] = [
   account("4507", "Kantoorkosten", "expense"),
   account("8011", "Verkoop kassa", "income"),
   account("8012", "Entree", "income"),
+  account("1000", "Kas (kluisje)", "asset", { money: true }),
+  account("1021", "ASN deposito", "asset", { money: true }),
 ];
 const money = (code: string, name: string, source: MoneyAccount["source"], identifier: string | null = null): MoneyAccount => ({
   accountCode: code,
@@ -79,12 +81,28 @@ it("hides and renames an account, and adds one", async () => {
   await waitFor(() => expect(calls("POST").find((c) => c.url === `${base}/accounts`)?.body).toEqual({ code: "4600", name: "Nieuw", kind: "expense" }));
 });
 
-it("says that a money account cannot be hidden", async () => {
+it("says that Kas and Mollie cannot be hidden", async () => {
   await open();
   const region = screen.getByRole("region", { name: "Rekeningen" });
-  const row = within(within(region).getByText("ING betaalrekening").closest("li")!);
-  expect(row.getByText("Een geldrekening kan niet worden verborgen.")).toBeInTheDocument();
+  const row = within(within(region).getByText("Kas (kluisje)").closest("li")!);
+  expect(row.getByText("Kas en Mollie blijven altijd zichtbaar.")).toBeInTheDocument();
   expect(row.queryByRole("button", { name: "Verbergen" })).not.toBeInTheDocument();
+});
+
+it("hides a bank account that nothing is booked on", async () => {
+  await open({ [`PATCH ${base}/accounts/1021`]: (req: { body: any }) => ({ ...accounts[5], ...req.body }) });
+  const region = screen.getByRole("region", { name: "Rekeningen" });
+  const row = within(within(region).getByText("ASN deposito").closest("li")!);
+  await user().click(row.getByRole("button", { name: "Verbergen" }));
+  await waitFor(() => expect(calls("PATCH").find((c) => c.url === `${base}/accounts/1021`)?.body).toEqual({ hidden: true }));
+});
+
+it("says why a bank account in use stays visible", async () => {
+  await open({ [`PATCH ${base}/accounts/1010`]: [409, { error: "money_account_in_use" }] });
+  const region = screen.getByRole("region", { name: "Rekeningen" });
+  const row = within(within(region).getByText("ING betaalrekening").closest("li")!);
+  await user().click(row.getByRole("button", { name: "Verbergen" }));
+  expect(await within(region).findByText("Op deze rekening staan boekingen of bankregels; hij blijft zichtbaar.")).toBeInTheDocument();
 });
 
 it("switches a money account between Enable Banking and files", async () => {

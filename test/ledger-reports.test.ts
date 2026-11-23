@@ -152,14 +152,48 @@ it("works out the overview", async () => {
   expect(before).toMatchObject({ resultYearCents: 0, cashDifferenceCents: 0 });
 });
 
-it("keeps and lists accounts, never deleting or hiding a money account", async () => {
+it("hides a bank account only while nothing is on it, and never Kas or Mollie", async () => {
+  const hide = (code: string, hidden = true) => api(`${base}/accounts/${code}`, { method: "PATCH", cookie, json: { hidden } });
+  const listed = async () => (await (await api(`${base}/money-accounts`, { cookie })).json<{ accountCode: string }[]>()).map((m) => m.accountCode);
+
+  for (const code of ["1000", "1030"]) {
+    const refused = await hide(code);
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toEqual({ error: "money_account" });
+  }
+
+  const asn = await hide("1021");
+  expect(asn.status).toBe(200);
+  expect(await asn.json()).toMatchObject({ code: "1021", hidden: true, money: true });
+  expect(await listed()).not.toContain("1021");
+  expect((await overview(env.DB, new Date("2027-03-01T10:00:00.000Z"))).moneyAccounts.map((m) => m.accountCode)).not.toContain("1021");
+  expect((await hide("1021", false)).status).toBe(200);
+  expect(await listed()).toContain("1021");
+
+  // A bank line on it: stays visible.
+  await env.DB.prepare(
+    `INSERT INTO bank_lines (id, account_code, booking_date, amount_cents, description, content_key, origin, status, imported_at)
+     VALUES ('l1', '1011', '2027-01-02', 14402, 'Rente', 'k-1011-1', 'typed', 'open', '2027-01-02T10:00:00.000Z')`,
+  ).run();
+  const withLine = await hide("1011");
+  expect(withLine.status).toBe(409);
+  expect(await withLine.json()).toEqual({ error: "money_account_in_use" });
+
+  // Booked on: stays visible too.
+  await setOpening(env.DB, 2027, { lines: [{ accountCode: "1020", amountCents: 100 }], eBoekhoudenEquityCents: null }, new Date("2026-12-31T12:00:00.000Z"));
+  const booked = await hide("1020");
+  expect(booked.status).toBe(409);
+  expect(await booked.json()).toEqual({ error: "money_account_in_use" });
+});
+
+it("keeps and lists accounts, never deleting or hiding Kas", async () => {
   const added = await api(`${base}/accounts`, { method: "POST", cookie, json: { code: "4999", name: "Nieuw", kind: "expense" } });
   expect(added.status).toBe(201);
   expect((await api(`${base}/accounts`, { method: "POST", cookie, json: { code: "4999", name: "Nog eens", kind: "expense" } })).status).toBe(409);
   expect((await api(`${base}/accounts`, { method: "POST", cookie, json: { code: "49", name: "Kort", kind: "expense" } })).status).toBe(400);
   const hidden = await api(`${base}/accounts/4999`, { method: "PATCH", cookie, json: { name: "Anders", hidden: true } });
   expect(await hidden.json()).toMatchObject({ code: "4999", name: "Anders", hidden: true, money: false });
-  const money = await api(`${base}/accounts/1010`, { method: "PATCH", cookie, json: { hidden: true } });
+  const money = await api(`${base}/accounts/1000`, { method: "PATCH", cookie, json: { hidden: true } });
   expect(money.status).toBe(409);
   expect(await money.json()).toEqual({ error: "money_account" });
   const list = await (await api(`${base}/accounts`, { cookie })).json<{ code: string }[]>();

@@ -12,11 +12,14 @@ import { explainWrite, ledgerPath, useLedgerWrites, type CategoryAccount } from 
 const label = "flex flex-col gap-1 font-semibold";
 const kindName: Record<AccountKind, string> = { asset: "bezit", liability: "schuld", equity: "vermogen", expense: "kosten", income: "opbrengst" };
 const kinds: AccountKind[] = ["asset", "liability", "equity", "expense", "income"];
+/** Kas and Mollie: the kassa and Mollie book on them, so they can never be hidden. */
+const ALWAYS_VISIBLE = ["1000", "1030"];
 
 /** A sentence for a refusal or a failure of one of these forms. */
 function explain(status: number, error: string): string {
   if (status === 0) return "Geen verbinding. Probeer het opnieuw.";
-  if (error === "money_account") return "Een geldrekening kan niet worden verborgen.";
+  if (error === "money_account") return "Kas en Mollie blijven altijd zichtbaar.";
+  if (error === "money_account_in_use") return "Op deze rekening staan boekingen of bankregels; hij blijft zichtbaar.";
   if (error === "account_exists") return "Dit rekeningnummer bestaat al.";
   if (error === "source_fixed") return "De bron van deze rekening ligt vast.";
   if (error === "not_income_account") return "Kies een opbrengstrekening.";
@@ -55,8 +58,8 @@ function AccountRow({ account, onChanged }: { account: LedgerAccount; onChanged(
         >
           Naam wijzigen
         </Button>
-        {account.money ? (
-          <span className="text-ink/70">Een geldrekening kan niet worden verborgen.</span>
+        {ALWAYS_VISIBLE.includes(account.code) ? (
+          <span className="text-ink/70">Kas en Mollie blijven altijd zichtbaar.</span>
         ) : (
           <Button onClick={() => void patch({ hidden: !account.hidden })}>{account.hidden ? "Tonen" : "Verbergen"}</Button>
         )}

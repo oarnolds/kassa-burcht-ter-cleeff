@@ -302,7 +302,7 @@ function accountsQuery(db: D1Database, today: string, code: string | null, upTo 
        JOIN ledger_accounts a ON a.code = m.account_code
        LEFT JOIN bank_balances b ON b.account_code = m.account_code
          AND b.date = (SELECT MAX(x.date) FROM bank_balances x WHERE x.account_code = m.account_code AND x.date <= ?5)
-       WHERE ?2 IS NULL OR m.account_code = ?2
+       WHERE (?2 IS NULL AND a.hidden = 0) OR m.account_code = ?2
        ORDER BY a.sort`,
     )
     .bind(today, code, LEDGER_START, FIRST_OPENING_REF, upTo);
