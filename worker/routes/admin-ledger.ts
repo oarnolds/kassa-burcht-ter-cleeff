@@ -109,6 +109,11 @@ adminLedger.put("/entries/:id", async (c) => {
   return c.json(await editEntry(c.env.DB, c.req.param("id"), toContent(body.data), new Date()));
 });
 
+adminLedger.get("/entries/:id", async (c) => {
+  const entry = await getEntry(c.env.DB, c.req.param("id"));
+  return entry ? c.json(entry) : c.json({ error: "not_found" }, 404);
+});
+
 adminLedger.post("/entries/:id/empty", async (c) => c.json(await emptyEntry(c.env.DB, c.req.param("id"), new Date())));
 
 adminLedger.get("/entries/:id/history", async (c) => {

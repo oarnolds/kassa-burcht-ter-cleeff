@@ -2,7 +2,8 @@
 // worker/routes/admin-ledger.ts and admin-ledger-bank.ts). Reads: a path for `useAdminData`. Writes: `useLedgerWrites`.
 
 import { useMemo } from "react";
-import type { AccountKind, LedgerAccount, MoneyAccount, MoneySource } from "../../../shared/ledger-types";
+import type { CamtStatement } from "../../../shared/camt";
+import type { AccountKind, Attachment, BankLine, Entry, ImportResult, LedgerAccount, MoneyAccount, MoneySource } from "../../../shared/ledger-types";
 import type { ApiResult } from "../../lib/api";
 import { useAdminWrite } from "../useAdmin";
 
@@ -22,8 +23,33 @@ export type Opening = {
 export type Figure = { accountCode: string; amountCents: number };
 export type Comparison = { year: number; figures: Figure[] };
 
+/** What the entry form sends: the lines add up to zero, debit positive. */
+export type EntryBody = { date: string; description: string; lines: { accountCode: string; amountCents: number; note: string | null }[] };
+
+/** What the filters of the entries page can ask for. */
+export type EntryFilter = { year: number; from?: string; to?: string; account?: string; amountCents?: number; text?: string };
+
+/** The page of one entry. */
+export const entryRoute = (id: string): string => `/beheer/boekhouding/boekingen/${id}`;
+
+const query = (pairs: Record<string, string | number | undefined>): string => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(pairs)) if (value !== undefined && value !== "") params.set(key, String(value));
+  return params.toString();
+};
+
 /** Where to read from. */
 export const ledgerPath = {
+  entries: (filter: EntryFilter) =>
+    `${LEDGER}/entries?${query({ year: filter.year, from: filter.from, to: filter.to, account: filter.account, amount: filter.amountCents, text: filter.text })}`,
+  entry: (id: string) => `${LEDGER}/entries/${id}`,
+  history: (id: string) => `${LEDGER}/entries/${id}/history`,
+  attachment: (id: string) => `${LEDGER}/attachments/${id}`,
+  bankLines: `${LEDGER}/bank/lines`,
+  balance: (date: string) => `${LEDGER}/reports/balance?date=${date}`,
+  result: (from: string, to: string) => `${LEDGER}/reports/result?from=${from}&to=${to}`,
+  accountLines: (code: string, from: string, to: string) => `${LEDGER}/reports/account/${code}?from=${from}&to=${to}`,
+  overview: `${LEDGER}/overview`,
   accounts: `${LEDGER}/accounts`,
   moneyAccounts: `${LEDGER}/money-accounts`,
   categoryAccounts: `${LEDGER}/category-accounts`,
@@ -31,7 +57,27 @@ export const ledgerPath = {
   comparison: (year: number) => `${LEDGER}/comparison?year=${year}`,
 };
 
-/** Every change the boekhouding's settings pages send. A 401 leads back to login, as with `useAdminWrite`. */
+/** A sentence for a refusal or a failure of a write on these pages. */
+export function explainWrite(status: number, error: string): string {
+  if (status === 0) return "Geen verbinding. Probeer het opnieuw.";
+  const known: Record<string, string> = {
+    year_closed: "Dit jaar is afgesloten. Er kan niets meer in worden veranderd.",
+    year_unknown: "Voor deze datum worden de boeken niet bijgehouden.",
+    before_start: "Voor deze datum worden de boeken niet bijgehouden.",
+    not_editable: "Deze boeking kan niet worden aangepast.",
+    unbalanced: "Debet en credit zijn niet gelijk.",
+    account_hidden: "Deze rekening is verborgen. Kies een andere.",
+    account_unknown: "Deze rekening bestaat niet.",
+    too_large: "Dit bestand is te groot.",
+    wrong_type: "Dit soort bestand kan niet worden bewaard. Kies een PDF of een foto.",
+    attachments_off: "Bijlagen zijn nog niet aangezet.",
+    not_found: "Dit bestaat niet meer. Ververs de pagina.",
+    invalid: "Controleer de invoer en probeer het opnieuw.",
+  };
+  return known[error] ?? "Dat is niet gelukt. Probeer het opnieuw.";
+}
+
+/** Every change the boekhouding's pages send. A 401 leads back to login, as with `useAdminWrite`. */
 export function useLedgerWrites() {
   const write = useAdminWrite();
   return useMemo(
@@ -48,6 +94,26 @@ export function useLedgerWrites() {
         write(ledgerPath.comparison(year), "PUT", { figures }),
       patchMoneyAccount: (code: string, body: { identifier?: string | null; source?: MoneySource }): Promise<ApiResult<MoneyAccount>> =>
         write(`${LEDGER}/money-accounts/${code}`, "PATCH", body),
+      importStatement: (accountCode: string, statement: CamtStatement): Promise<ApiResult<ImportResult>> =>
+        write(`${LEDGER}/bank/import`, "POST", { accountCode, statement }),
+      addBankLine: (body: {
+        accountCode: string;
+        date: string;
+        amountCents: number;
+        description: string;
+        counterpartyName?: string;
+      }): Promise<ApiResult<BankLine>> => write(`${LEDGER}/bank/lines`, "POST", body),
+      bookLine: (id: string, split: Figure[]): Promise<ApiResult<Entry>> => write(`${LEDGER}/bank/lines/${id}/book`, "POST", { split }),
+      createEntry: (body: EntryBody): Promise<ApiResult<Entry>> => write(`${LEDGER}/entries`, "POST", body),
+      saveEntry: (id: string, body: EntryBody): Promise<ApiResult<Entry>> => write(`${LEDGER}/entries/${id}`, "PUT", body),
+      emptyEntry: (id: string): Promise<ApiResult<Entry>> => write(`${LEDGER}/entries/${id}/empty`, "POST"),
+      hideAttachment: (id: string): Promise<ApiResult<{ ok: true }>> => write(`${LEDGER}/attachments/${id}/hide`, "POST"),
+      /** The file itself is the body; its name travels URI-encoded in a header. */
+      addAttachment: (entryId: string, file: File): Promise<ApiResult<Attachment>> =>
+        write(`${LEDGER}/entries/${entryId}/attachments`, "POST", undefined, {
+          raw: { body: file, headers: { "Content-Type": file.type, "X-Filename": encodeURIComponent(file.name) } },
+          timeoutMs: 60_000,
+        }),
     }),
     [write],
   );

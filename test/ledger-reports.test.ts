@@ -249,3 +249,11 @@ it("serves the reports and the overview", async () => {
   expect((await api(`${base}/reports/account/9999?from=2027-01-01&to=2027-12-31`, { cookie })).status).toBe(404);
   expect((await api(`${base}/overview`, { cookie })).status).toBe(200);
 });
+
+it("hands back one entry by its id, and says when there is none", async () => {
+  const entry = await book("2027-02-01", move("4501", "1010", 1250), "Inkoop");
+  const found = await api(`${base}/entries/${entry.id}`, { cookie });
+  expect(found.status).toBe(200);
+  expect(await found.json()).toMatchObject({ id: entry.id, number: entry.number, description: "Inkoop", editable: true });
+  expect((await api(`${base}/entries/onbekend`, { cookie })).status).toBe(404);
+});

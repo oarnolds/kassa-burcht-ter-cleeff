@@ -1,39 +1,17 @@
-import { type AccountKind, LEDGER_START, type MoneyAccount, type NightlyReport } from "../../shared/ledger-types";
+import {
+  type AccountKind,
+  type AccountLines,
+  type BalanceReport,
+  LEDGER_START,
+  type LedgerOverview,
+  type ResultReport,
+} from "../../shared/ledger-types";
 import { businessDate, shiftDate } from "../../shared/time";
 import { LedgerError } from "./ledger";
 import { moneyAccounts } from "./bank";
 import { endOfDay, expectedCashAt } from "./opening";
 
-export type BalanceReport = {
-  date: string;
-  rows: { code: string; name: string; kind: AccountKind; cents: number }[];
-  assetsCents: number;
-  liabilitiesAndEquityCents: number;
-  /** The result not yet booked to 1400: assets = liabilities and equity + result. */
-  resultCents: number;
-};
-export type ResultReport = {
-  from: string;
-  to: string;
-  rows: { code: string; name: string; kind: "income" | "expense"; cents: number; previousCents: number | null }[];
-  resultCents: number;
-  previousResultCents: number | null;
-};
-export type AccountLines = {
-  code: string;
-  openingCents: number;
-  lines: { entryId: string; number: number; date: string; description: string; amountCents: number; runningCents: number }[];
-};
-export type LedgerOverview = {
-  openLines: number;
-  waitingLines: number;
-  moneyAccounts: MoneyAccount[];
-  resultYearCents: number;
-  cashDifferenceCents: number;
-  consent: { validUntil: string; daysLeft: number } | null;
-  mollieDifferenceCents: number | null;
-  lastNightly: NightlyReport | null;
-};
+export type { AccountLines, BalanceReport, LedgerOverview, ResultReport };
 
 const firstYear = Number(LEDGER_START.slice(0, 4));
 const isResult = (kind: AccountKind) => kind === "income" || kind === "expense";

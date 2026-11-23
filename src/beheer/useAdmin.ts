@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { adminApi, type ApiResult } from "../lib/api";
+import { adminApi, type ApiInit, type ApiResult } from "../lib/api";
 
 export type AdminData<T> = { data: T | null; error: string | null; loading: boolean; reload(): void };
 
@@ -56,11 +56,11 @@ export function useAdminData<T>(path: string | null): AdminData<T> {
 }
 
 /** A change sent to the server. The caller explains a refusal; a 401 also leads back to login. */
-export function useAdminWrite(): <T>(path: string, method: string, json?: unknown) => Promise<ApiResult<T>> {
+export function useAdminWrite(): <T>(path: string, method: string, json?: unknown, more?: Pick<ApiInit, "raw" | "timeoutMs">) => Promise<ApiResult<T>> {
   const go = useGo();
   return useCallback(
-    async <T,>(path: string, method: string, json?: unknown) => {
-      const answer = await adminApi<T>(path, { method, json });
+    async <T,>(path: string, method: string, json?: unknown, more?: Pick<ApiInit, "raw" | "timeoutMs">) => {
+      const answer = await adminApi<T>(path, { method, json, ...more });
       if (!answer.ok && answer.status === 401) go("/beheer/login");
       return answer;
     },

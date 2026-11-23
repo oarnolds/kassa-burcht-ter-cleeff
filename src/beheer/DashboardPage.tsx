@@ -1,8 +1,10 @@
 import { Link } from "react-router";
 import { formatEuro } from "../../shared/money";
 import { formatDateNl } from "../../shared/time";
+import type { LedgerOverview } from "../../shared/ledger-types";
 import type { PinAttention, Summary } from "../../shared/types";
 import { Card, Loaded, PageTitle, TotalsBlock, count, pillLink, textLink } from "./parts";
+import { ledgerPath } from "./boekhouding/ledger-api";
 import { useAdminData } from "./useAdmin";
 
 const attentionText = ({ kind, date, totalCents }: PinAttention): string =>
@@ -10,12 +12,30 @@ const attentionText = ({ kind, date, totalCents }: PinAttention): string =>
     ? `Pinbetaling van ${formatEuro(totalCents)} wacht op bevestiging (${formatDateNl(date)})`
     : `Mogelijk dubbel betaald: ${formatEuro(totalCents)} (${formatDateNl(date)})`;
 
+/** One line when the boekhouding wants attention; nothing when all is well or when it cannot be read. */
+function LedgerLine() {
+  const { data } = useAdminData<LedgerOverview>(ledgerPath.overview);
+  if (!data) return null;
+  const toBook = data.openLines + data.waitingLines;
+  const off = data.moneyAccounts.find((account) => account.differenceCents !== null && account.differenceCents !== 0);
+  const text = toBook > 0 ? `Boekhouding: ${toBook} te boeken` : off ? `Saldo wijkt af bij ${off.name}` : null;
+  if (!text) return null;
+  return (
+    <p className="mt-3">
+      <Link className={`${textLink} inline-flex min-h-11 items-center text-lg`} to="/beheer/boekhouding">
+        {text}
+      </Link>
+    </p>
+  );
+}
+
 /** The first page of beheer: how today and this month stand, what should be in the cash box, what to order. */
 export function DashboardPage() {
   const summary = useAdminData<Summary>("/api/admin/summary");
   return (
     <>
       <PageTitle>Overzicht</PageTitle>
+      <LedgerLine />
       <Loaded from={summary}>
         {(s) => (
           <div className="mt-6 grid gap-4 sm:grid-cols-2">

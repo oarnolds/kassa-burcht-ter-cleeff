@@ -3,7 +3,13 @@
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; error: string };
 
 /** `timeoutMs`: how long the call may take before it counts as unanswered. */
-export type ApiInit = { method?: string; json?: unknown; timeoutMs?: number };
+export type ApiInit = {
+  method?: string;
+  json?: unknown;
+  timeoutMs?: number;
+  /** A body that is not JSON (a file), with its own headers. */
+  raw?: { body: BodyInit; headers: Record<string, string> };
+};
 
 // A request that hangs on bad wifi counts as offline after this long.
 const TIMEOUT_MS = 15_000;
@@ -11,12 +17,13 @@ const TIMEOUT_MS = 15_000;
 async function request<T>(path: string, init: ApiInit, headers: Record<string, string>): Promise<ApiResult<T>> {
   const method = init.method ?? "GET";
   if (init.json !== undefined) headers["Content-Type"] = "application/json";
+  if (init.raw) Object.assign(headers, init.raw.headers);
   let response: Response;
   try {
     response = await fetch(path, {
       method,
       headers,
-      body: init.json === undefined ? undefined : JSON.stringify(init.json),
+      body: init.raw ? init.raw.body : init.json === undefined ? undefined : JSON.stringify(init.json),
       credentials: "same-origin",
       signal: AbortSignal.timeout(init.timeoutMs ?? TIMEOUT_MS),
     });

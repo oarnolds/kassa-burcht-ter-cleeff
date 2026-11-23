@@ -10,10 +10,15 @@ import { SettingsPage } from "./beheer/SettingsPage";
 import { SetupPage } from "./beheer/SetupPage";
 import { StockPage } from "./beheer/StockPage";
 import { ComparisonPage } from "./beheer/boekhouding/ComparisonPage";
+import { EntriesPage } from "./beheer/boekhouding/EntriesPage";
+import { EntryPage } from "./beheer/boekhouding/EntryPage";
 import { LedgerLayout } from "./beheer/boekhouding/LedgerLayout";
 import { OpeningPage } from "./beheer/boekhouding/OpeningPage";
+import { OverviewPage } from "./beheer/boekhouding/OverviewPage";
 import { LedgerPlaceholder, YearPlaceholder } from "./beheer/boekhouding/Placeholder";
+import { ReportsLedgerPage } from "./beheer/boekhouding/ReportsLedgerPage";
 import { SettingsLedgerPage } from "./beheer/boekhouding/SettingsLedgerPage";
+import { ToBookPage } from "./beheer/boekhouding/ToBookPage";
 import { KassaPage } from "./kassa/KassaPage";
 import { PairPage } from "./kassa/PairPage";
 import { Logo } from "./ui/Logo";
@@ -43,11 +48,11 @@ export function AppRoutes() {
         <Route path="voorraad" element={<StockPage />} />
         <Route path="producten" element={<ProductsPage />} />
         <Route path="boekhouding" element={<LedgerLayout />}>
-          <Route index element={<LedgerPlaceholder title="Overzicht" />} />
-          <Route path="te-boeken" element={<LedgerPlaceholder title="Te boeken" />} />
-          <Route path="boekingen" element={<LedgerPlaceholder title="Boekingen" />} />
-          <Route path="boekingen/:id" element={<LedgerPlaceholder title="Boeking" />} />
-          <Route path="rapporten" element={<LedgerPlaceholder title="Rapporten" />} />
+          <Route index element={<OverviewPage />} />
+          <Route path="te-boeken" element={<ToBookPage />} />
+          <Route path="boekingen" element={<EntriesPage />} />
+          <Route path="boekingen/:id" element={<EntryPage />} />
+          <Route path="rapporten" element={<ReportsLedgerPage />} />
           <Route path="mollie" element={<LedgerPlaceholder title="Mollie" />} />
           <Route path="toestellen" element={<LedgerPlaceholder title="Toestellen" />} />
           <Route path="jaar" element={<YearPlaceholder />} />
