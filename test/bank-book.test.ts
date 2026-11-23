@@ -4,6 +4,7 @@ import type { CamtLine } from "../shared/camt";
 import type { BankLine, Entry, ImportResult } from "../shared/ledger-types";
 import { autoBook, bookLine, importLines, OPEN_LINES_SQL, openLines } from "../worker/db/bank";
 import { balancesOn, entryHistory, getEntry, upsertSourced } from "../worker/db/ledger";
+import { yearChecks } from "../worker/db/year";
 import { api, asAdmin, meteredDb, resetData } from "./helpers";
 
 let cookie: string;
@@ -331,6 +332,8 @@ it("puts the line of an emptied bank entry back in Te boeken, and booking it aga
   expect(await lineRow(l!.id)).toEqual({ status: "open", entry_id: null });
   expect((await openLines(env.DB, {})).map((x) => x.id)).toEqual([l!.id]);
   expect((await balancesOn(env.DB, "2027-12-31")).get("1010") ?? 0).toBe(0);
+  // The year cannot close over it: the line waits to be booked again.
+  expect((await yearChecks(env, 2027, NOW)).find((check) => check.key === "bank_lines")).toMatchObject({ ok: false, required: true });
 
   const again = await book(l!.id, { split: [{ accountCode: "8010", amountCents: -609147 }] });
   expect(again.status).toBe(200);
