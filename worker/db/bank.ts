@@ -15,6 +15,9 @@ const BANK_SOURCES: readonly MoneySource[] = ["file", "enable_banking"];
  */
 const FIRST_BALANCE_DATE = shiftDate(LEDGER_START, -1);
 
+/** The opening entry of the first year: what the ledger held at the end of 31 December 2026. */
+const FIRST_OPENING_REF = LEDGER_START.slice(0, 4);
+
 /** An IBAN or a savings number, with spaces and case left out. */
 const normal = (value: string) => value.replace(/\s+/g, "").toUpperCase();
 const ibanOf = (line: CamtLine) => (line.counterpartyIban === null ? null : normal(line.counterpartyIban) || null);
@@ -169,8 +172,17 @@ export async function importLines(db: D1Database, accountCode: string, lines: Ca
   return (await storeLines(db, accountCode, lines, origin, now)).result;
 }
 
-/** What the bank said the account held at the end of `date`. A second balance for the same day replaces the first. */
-function balanceStatement(db: D1Database, accountCode: string, balance: { date: string; cents: number }, origin: string): D1PreparedStatement {
+/**
+ * What the bank said the account held at the end of `date`. A second balance for the same day replaces the first.
+ * None (null) for a day before 31 December 2026: the ledger has nothing to lay next to it.
+ */
+function balanceStatement(
+  db: D1Database,
+  accountCode: string,
+  balance: { date: string; cents: number },
+  origin: string,
+): D1PreparedStatement | null {
+  if (balance.date < FIRST_BALANCE_DATE) return null;
   return db
     .prepare(
       `INSERT INTO bank_balances (account_code, date, balance_cents, origin) VALUES (?1, ?2, ?3, ?4)
@@ -180,7 +192,7 @@ function balanceStatement(db: D1Database, accountCode: string, balance: { date: 
 }
 
 export async function recordBalance(db: D1Database, accountCode: string, balance: { date: string; cents: number }, origin: string): Promise<void> {
-  await balanceStatement(db, accountCode, balance, origin).run();
+  await balanceStatement(db, accountCode, balance, origin)?.run();
 }
 
 /** A bank account (source file or Enable Banking) and what the app knows it by; anything else is refused. */
@@ -196,19 +208,18 @@ async function bankAccount(db: D1Database, accountCode: string): Promise<{ ident
 /**
  * A bank file's statement into its account: refused when the account has no identifier yet or the file is of
  * another account (spaces and case do not count). Records the closing balance under its date and the opening
- * balance as that of the day before, when that day is 31 December 2026 or later.
+ * balance as that of the day before, each when that day is 31 December 2026 or later.
  */
 export async function importStatement(db: D1Database, accountCode: string, statement: CamtStatement, now: Date): Promise<ImportResult> {
   const { identifier } = await bankAccount(db, accountCode);
   if (identifier === null) throw new LedgerError("identifier_missing", 409);
   if (normal(statement.account) !== normal(identifier)) throw new LedgerError("wrong_account", 409);
   const result = await importLines(db, accountCode, statement.lines, "file", now);
-  const balances: D1PreparedStatement[] = [];
-  if (statement.opening) {
-    const dayBefore = shiftDate(statement.opening.date, -1);
-    if (dayBefore >= FIRST_BALANCE_DATE) balances.push(balanceStatement(db, accountCode, { date: dayBefore, cents: statement.opening.cents }, "file"));
-  }
-  if (statement.closing) balances.push(balanceStatement(db, accountCode, statement.closing, "file"));
+  const { opening, closing } = statement;
+  const balances = [
+    opening && balanceStatement(db, accountCode, { date: shiftDate(opening.date, -1), cents: opening.cents }, "file"),
+    closing && balanceStatement(db, accountCode, closing, "file"),
+  ].filter((write): write is D1PreparedStatement => !!write);
   if (balances.length > 0) await db.batch(balances);
   return result;
 }
@@ -247,14 +258,19 @@ type AccountRow = {
 
 /**
  * The money accounts (or one), each with the ledger on the date of the bank's newest balance, or on `today`
- * without one. One query for all of them.
+ * without one. One query for all of them. A balance of 31 December 2026 is laid next to what the opening entry
+ * books on the account: the ledger keeps the end of that day as its opening, dated 1 January 2027.
  */
 function accountsQuery(db: D1Database, today: string, code: string | null): D1PreparedStatement {
   return db
     .prepare(
       `SELECT m.account_code, a.name, m.identifier, m.source, b.date AS bank_date, b.balance_cents AS bank_cents,
-         COALESCE((SELECT SUM(l.amount_cents) FROM ledger_lines l JOIN ledger_entries e ON e.id = l.entry_id
-                   WHERE l.account_code = m.account_code AND e.date <= COALESCE(b.date, ?1)), 0) AS ledger_cents
+         CASE WHEN b.date < ?3
+           THEN COALESCE((SELECT SUM(l.amount_cents) FROM ledger_lines l JOIN ledger_entries e ON e.id = l.entry_id
+                          WHERE l.account_code = m.account_code AND e.source = 'opening' AND e.source_ref = ?4), 0)
+           ELSE COALESCE((SELECT SUM(l.amount_cents) FROM ledger_lines l JOIN ledger_entries e ON e.id = l.entry_id
+                          WHERE l.account_code = m.account_code AND e.date <= COALESCE(b.date, ?1)), 0)
+         END AS ledger_cents
        FROM money_accounts m
        JOIN ledger_accounts a ON a.code = m.account_code
        LEFT JOIN bank_balances b ON b.account_code = m.account_code
@@ -262,7 +278,7 @@ function accountsQuery(db: D1Database, today: string, code: string | null): D1Pr
        WHERE ?2 IS NULL OR m.account_code = ?2
        ORDER BY a.sort`,
     )
-    .bind(today, code);
+    .bind(today, code, LEDGER_START, FIRST_OPENING_REF);
 }
 
 const toMoneyAccount = (row: AccountRow): MoneyAccount => ({

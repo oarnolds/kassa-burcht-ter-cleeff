@@ -101,11 +101,10 @@ function entryLine(ntry: El): CamtLine {
   const party = path(tx, "RltdPties", credit ? "Dbtr" : "Cdtr");
   const partyAcct = path(tx, "RltdPties", credit ? "DbtrAcct" : "CdtrAcct", "Id", "IBAN");
 
+  // Only the bank's own reference. NtryRef is left out: a bank may number it per file, so two different lines
+  // in two files could share it. A line without a reference is recognised by its content instead.
   const bankRef =
-    text(path(ntry, "AcctSvcrRef")) ??
-    details.map((d) => text(path(d, "Refs", "AcctSvcrRef"))).find((r) => r !== null) ??
-    text(path(ntry, "NtryRef")) ??
-    null;
+    text(path(ntry, "AcctSvcrRef")) ?? details.map((d) => text(path(d, "Refs", "AcctSvcrRef"))).find((r) => r !== null) ?? null;
 
   return {
     bookingDate,

@@ -54,7 +54,7 @@ describe("parseCamt053", () => {
       description: "Factuur 2026-014",
       counterpartyName: "Goodoo BV",
       counterpartyIban: "NL00BANK0987654321",
-      bankRef: "000002", // no AcctSvcrRef: falls back to NtryRef
+      bankRef: null, // only NtryRef: a bank may number that per file, so it is no reference
     });
   });
 
@@ -120,11 +120,12 @@ describe("parseCamt053", () => {
     expect(s.closing).toEqual({ date: "2027-01-31", cents: -500 });
   });
 
-  it("takes the reference from the entry, else its details, else NtryRef", () => {
+  it("takes the reference from the entry, else its details, never from NtryRef", () => {
     const ref = (extra: string) => parseCamt053(wrap(stmt(entry("1.00", extra))))[0].lines[0].bankRef;
     expect(ref("<AcctSvcrRef>E1</AcctSvcrRef><NtryDtls><TxDtls><Refs><AcctSvcrRef>T1</AcctSvcrRef></Refs></TxDtls></NtryDtls>")).toBe("E1");
     expect(ref("<NtryDtls><TxDtls><Refs><AcctSvcrRef>T1</AcctSvcrRef></Refs></TxDtls></NtryDtls><NtryRef>N1</NtryRef>")).toBe("T1");
-    expect(ref("<NtryRef>N1</NtryRef>")).toBe("N1");
+    // A bank may number NtryRef per file: two different lines in two files would share it.
+    expect(ref("<NtryRef>N1</NtryRef>")).toBeNull();
     expect(ref("")).toBeNull();
   });
 

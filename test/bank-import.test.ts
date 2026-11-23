@@ -3,7 +3,7 @@ import { beforeEach, expect, it } from "vitest";
 import type { CamtLine, CamtStatement } from "../shared/camt";
 import type { BankLine, EntryLine, ImportResult, MoneyAccount } from "../shared/ledger-types";
 import { shiftDate } from "../shared/time";
-import { getBankLine, importLines, importStatement, moneyAccounts } from "../worker/db/bank";
+import { getBankLine, importLines, importStatement, moneyAccounts, recordBalance } from "../worker/db/bank";
 import { createEntry } from "../worker/db/ledger";
 import { setOpening } from "../worker/db/opening";
 import { api, asAdmin, meteredDb, resetData } from "./helpers";
@@ -219,8 +219,17 @@ it("compares the ledger with the bank's balance on the same date", async () => {
   expect((await accountsByCode()).get("1011")).toMatchObject({ ledgerCents: 1_103_247, bank: { date: "2027-11-23", balanceCents: 1_103_247 }, differenceCents: 0 });
 });
 
-it("keeps no opening balance from before 31 December 2026", async () => {
+it("keeps no bank balance from before 31 December 2026", async () => {
   await setIdentifier("1011", SPAAR);
+  // The savings file of 2026: its lines and both its balances lie before the ledger.
+  const rente2026 = line({ bookingDate: "2026-01-01", amountCents: 14_402, description: "Rente", counterpartyName: null, counterpartyIban: null });
+  const file2026 = statement([rente2026], { account: SPAAR, opening: { date: "2026-01-01", cents: 1_088_345 }, closing: { date: "2026-11-22", cents: 1_102_747 } });
+  expect(await imported("1011", file2026)).toEqual(result(0, 0, 1));
+  await recordBalance(env.DB, "1030", { date: "2026-11-22", cents: 5 }, "mollie");
+  expect(await count()).toBe(0);
+  expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM bank_balances").first()).toEqual({ n: 0 });
+  expect((await accountsByCode()).get("1011")).toMatchObject({ bank: null, differenceCents: null });
+
   await imported("1011", statement([], { account: SPAAR, opening: { date: "2026-12-31", cents: 1 }, closing: { date: "2027-01-31", cents: 2 } }));
   await imported("1011", statement([], { account: SPAAR, opening: { date: "2027-01-01", cents: 3 }, closing: null }));
   const { results } = await env.DB.prepare("SELECT date, balance_cents FROM bank_balances ORDER BY date").all();
@@ -228,6 +237,25 @@ it("keeps no opening balance from before 31 December 2026", async () => {
     { date: "2026-12-31", balance_cents: 3 },
     { date: "2027-01-31", balance_cents: 2 },
   ]);
+});
+
+it("compares a balance of 31 December 2026 with the opening balance", async () => {
+  await setOpening(env.DB, 2027, { lines: [{ accountCode: "1011", amountCents: 1_088_345 }], eBoekhoudenEquityCents: null }, NOW);
+  // Booked on 1 January, after the bank's year-end balance: it does not count.
+  await createEntry(env.DB, { date: "2027-01-01", description: "Rente", source: "manual", lines: move("1011", "8030", 14_402) }, NOW);
+  await setIdentifier("1011", SPAAR);
+  await imported("1011", statement([], { account: SPAAR, closing: { date: "2026-12-31", cents: 1_088_345 } }));
+  expect((await accountsByCode()).get("1011")).toMatchObject({
+    ledgerCents: 1_088_345,
+    bank: { date: "2026-12-31", balanceCents: 1_088_345 },
+    differenceCents: 0,
+  });
+  await imported("1011", statement([], { account: SPAAR, closing: { date: "2026-12-31", cents: 1_088_000 } }));
+  expect((await accountsByCode()).get("1011")).toMatchObject({ ledgerCents: 1_088_345, differenceCents: 345 });
+  // 1010 has no opening line: its year-end balance is compared with nothing booked.
+  await setIdentifier("1010", BETAAL);
+  await imported("1010", statement([], { closing: { date: "2026-12-31", cents: 500 } }));
+  expect((await accountsByCode()).get("1010")).toMatchObject({ ledgerCents: 0, differenceCents: -500 });
 });
 
 it("counts the ledger up to today when the bank has given no balance", async () => {
