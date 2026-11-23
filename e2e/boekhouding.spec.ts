@@ -25,7 +25,9 @@ test("books a bank file and shows it in the result", async ({ page, request }) =
 
   // Instellingen: the kwartaalrekening is known by its number in the file.
   await tab(page, "Instellingen").click();
-  const kwartaal = page.getByRole("listitem").filter({ has: page.getByRole("radiogroup", { name: "Bron van ING kwartaalrekening" }) });
+  // Only ING betaal chooses its source; the kwartaalrekening works from files (no choice to make there).
+  const kwartaal = page.getByRole("region", { name: "Geldrekeningen" }).getByRole("listitem").filter({ hasText: "ING kwartaalrekening" });
+  await expect(kwartaal.getByText("Bankbestand uploaden of met de hand")).toBeVisible();
   await kwartaal.getByLabel("Kenmerk (IBAN of spaarnummer)").fill("V00000000");
   await save(page, kwartaal.getByRole("button", { name: "Opslaan", exact: true }));
 
