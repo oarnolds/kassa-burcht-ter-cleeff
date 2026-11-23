@@ -442,14 +442,19 @@ const SUGGESTION = `CASE WHEN b.counterparty_iban IS NOT NULL AND b.counterparty
       AND EXISTS (SELECT 1 FROM bank_lines p WHERE p.status = 'booked' AND p.entry_id IS NOT NULL AND p.id <> b.id AND ${BY_IBAN})
     THEN ${otherSide(BY_IBAN)} ELSE ${otherSide(BY_NAME)} END`;
 
+/**
+ * Te boeken as one query: the open and waiting lines through `bank_lines_to_book`, each suggestion found through
+ * `bank_lines_booked_by_iban` or `bank_lines_booked_by_name` (migrations/0005_ledger.sql), so that what a page reads
+ * grows with the lines to book and not with every bank line there is. `?1`: one account, or null for all.
+ */
+export const OPEN_LINES_SQL = `${LINE_SELECT.replace("b.entry_id,", `b.entry_id, ${SUGGESTION} AS suggestion,`)}
+       WHERE b.status IN ('open', 'waiting') AND (?1 IS NULL OR b.account_code = ?1)
+       ORDER BY b.booking_date, b.imported_at, b.rowid`;
+
 /** The lines that still need booking (open or waiting), oldest first, each with the account chosen last time for the same party. One query. */
 export async function openLines(db: D1Database, filter: { accountCode?: string }): Promise<BankLine[]> {
   const { results } = await db
-    .prepare(
-      `${LINE_SELECT.replace("b.entry_id,", `b.entry_id, ${SUGGESTION} AS suggestion,`)}
-       WHERE b.status IN ('open', 'waiting') AND (?1 IS NULL OR b.account_code = ?1)
-       ORDER BY b.booking_date, b.imported_at, b.rowid`,
-    )
+    .prepare(OPEN_LINES_SQL)
     .bind(filter.accountCode ?? null)
     .all<LineRow & { suggestion: string | null }>();
   return results.map((row) => ({ ...toBankLine(row), suggestion: row.suggestion }));

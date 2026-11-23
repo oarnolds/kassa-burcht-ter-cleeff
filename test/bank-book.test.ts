@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { beforeEach, expect, it } from "vitest";
 import type { CamtLine } from "../shared/camt";
 import type { BankLine, Entry, ImportResult } from "../shared/ledger-types";
-import { autoBook, bookLine, importLines, openLines } from "../worker/db/bank";
+import { autoBook, bookLine, importLines, OPEN_LINES_SQL, openLines } from "../worker/db/bank";
 import { balancesOn } from "../worker/db/ledger";
 import { api, asAdmin, meteredDb, resetData } from "./helpers";
 
@@ -220,4 +220,57 @@ it("fills autoBooked on the import route", async () => {
     json: { accountCode: "1010", statement: { account: "NL00INGB0000000000", opening: null, closing: null, lines: [line({ description: "Kasstorting", counterpartyIban: null }), line({ amountCents: 5 })] } },
   });
   expect((await res.json<ImportResult>()).autoBooked).toBe(1);
+});
+
+/**
+ * A busy year: 3.000 booked lines of 60 parties (40 known by IBAN, 20 by name only), each booked on 4501 or 4514,
+ * and 150 lines to book from the same parties. Written straight into the tables, as a sync would have left them.
+ */
+async function busyYear(): Promise<void> {
+  const n = (count: number) => `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ${count})`;
+  const party = "(i % 60)";
+  const iban = `CASE WHEN ${party} < 40 THEN 'NL00BANK00000' || printf('%05d', ${party}) END`;
+  const other = `CASE WHEN ${party} < 30 THEN '4501' ELSE '4514' END`;
+  await env.DB.batch([
+    env.DB.prepare(
+      `${n(3000)} INSERT INTO ledger_entries (id, year, number, date, description, source, source_ref, created_at, updated_at)
+       SELECT 'e' || i, 2027, i, date('2027-01-01', '+' || (i % 300) || ' days'), 'Oud', 'bank', 'b' || i, '2027-01-01T00:00:00Z', '2027-01-01T00:00:00Z' FROM n`,
+    ),
+    env.DB.prepare(`${n(3000)} INSERT INTO ledger_lines (entry_id, account_code, amount_cents) SELECT 'e' || i, '1010', -100 - i FROM n`),
+    env.DB.prepare(`${n(3000)} INSERT INTO ledger_lines (entry_id, account_code, amount_cents) SELECT 'e' || i, ${other}, 100 + i FROM n`),
+    env.DB.prepare(
+      `${n(3000)} INSERT INTO bank_lines (id, account_code, booking_date, amount_cents, counterparty_name, counterparty_iban, description, content_key, origin, status, entry_id, imported_at)
+       SELECT 'b' || i, '1010', date('2027-01-01', '+' || (i % 300) || ' days'), -100 - i, 'Partij ' || ${party}, ${iban}, 'Oud', 'kb' || i, 'file', 'booked', 'e' || i, '2027-01-01T00:00:00Z' FROM n`,
+    ),
+    env.DB.prepare(
+      `${n(150)} INSERT INTO bank_lines (id, account_code, booking_date, amount_cents, counterparty_name, counterparty_iban, description, content_key, origin, status, imported_at)
+       SELECT 'o' || i, '1010', '2027-11-01', -500 - i, ' partij ' || ${party} || ' ', ${iban}, 'Nieuw', 'ko' || i, 'file', CASE WHEN i % 10 = 0 THEN 'waiting' ELSE 'open' END, '2027-11-01T00:00:00Z' FROM n`,
+    ),
+  ]);
+}
+
+it("reads Te boeken through its indexes: a few rows per line, not every bank line for each", async () => {
+  await busyYear();
+  const metered = meteredDb(env.DB);
+  const res = await api("/api/admin/boekhouding/bank/lines", { cookie, env: { DB: metered.db } });
+  expect(res.status).toBe(200);
+  const list = await res.json<BankLine[]>();
+  expect(list).toHaveLength(150);
+  // Each line still gets what its party was booked on last time, by IBAN or else by name.
+  for (const l of list) {
+    const party = Number(l.id.slice(1)) % 60;
+    expect([l.id, l.suggestion]).toEqual([l.id, party < 30 ? "4501" : "4514"]);
+  }
+  // 150 lines × 3.000 bank lines would be some 450.000 rows; through the indexes it stays small.
+  expect(metered.rowsRead()).toBeLessThan(10_000);
+});
+
+it("plans Te boeken on its indexes: no booked line is read in full for an open one", async () => {
+  const { results } = await env.DB.prepare(`EXPLAIN QUERY PLAN ${OPEN_LINES_SQL}`).bind(null).all<{ detail: string }>();
+  const plan = results.map((row) => row.detail);
+  expect(plan).toContain("SCAN b USING INDEX bank_lines_to_book");
+  expect(plan.filter((step) => step.startsWith("SEARCH p USING INDEX bank_lines_booked_by_iban"))).toHaveLength(2);
+  expect(plan.some((step) => step.startsWith("SEARCH p USING INDEX bank_lines_booked_by_name"))).toBe(true);
+  // Nothing scanned from end to end, and no sorting beside the indexes.
+  expect(plan.filter((step) => /^SCAN (p|b)$|TEMP B-TREE/.test(step))).toEqual([]);
 });

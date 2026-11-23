@@ -127,6 +127,12 @@ CREATE TABLE bank_lines (
 
 CREATE UNIQUE INDEX bank_lines_by_ref ON bank_lines(account_code, bank_ref) WHERE bank_ref IS NOT NULL;
 CREATE INDEX bank_lines_by_date ON bank_lines(account_code, booking_date);
+-- Te boeken: the lines still to book, oldest first, without reading the booked ones.
+CREATE INDEX bank_lines_to_book ON bank_lines(booking_date, imported_at) WHERE status IN ('open','waiting');
+-- The suggestion: the newest booked line of the same party, by IBAN or else by name (written exactly as the query
+-- in worker/db/bank.ts compares it), found in one step instead of reading every booked line for each open one.
+CREATE INDEX bank_lines_booked_by_iban ON bank_lines(counterparty_iban, booking_date, imported_at) WHERE status = 'booked';
+CREATE INDEX bank_lines_booked_by_name ON bank_lines(lower(trim(counterparty_name)), booking_date, imported_at) WHERE status = 'booked';
 
 -- What the bank said a money account held at the end of a day, to lay next to the ledger on that day.
 CREATE TABLE bank_balances (
