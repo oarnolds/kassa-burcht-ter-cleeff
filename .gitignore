@@ -7,3 +7,6 @@ dist
 .superpowers/
 test-results
 playwright-report
+
+# Private keys (e.g. the Enable Banking .pem) never go into git.
+*.pem
