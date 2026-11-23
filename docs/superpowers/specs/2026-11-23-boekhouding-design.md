@@ -197,7 +197,7 @@ Wisselen kan altijd. Ook bij "automatisch" kan een bestand worden geüpload, bij
 - begin- en eindsaldo (`Bal` met `OPBD`/`PRCD` en `CLBD`) kloppen met e-Boekhouden (€ 10.883,45 en € 11.027,47);
 - een regel (`Ntry`) heeft datum, bedrag, bij/af, een omschrijving (`RmtInf/Ustrd`) en soms een tegenpartij; er is **geen unieke referentie van de bank**.
 
-De app leest elke regel één keer in. Omdat een unieke referentie kan ontbreken, herkent de app een regel aan rekening, boekdatum, bedrag, omschrijving en tegenpartij, en telt hij gelijke regels op dezelfde dag (twee keer € 5,00 "Rente" op één dag zijn twee regels). Overlappende bestanden of twee keer hetzelfde bestand geven dus geen dubbele regels. Heeft de bron wel een referentie (Enable Banking geeft er meestal een), dan gebruikt de app die. Een regel die automatisch is binnengekomen en daarna ook in een bestand staat, telt één keer.
+De app leest elke regel één keer in. Omdat een unieke referentie kan ontbreken, herkent de app een regel aan rekening, boekdatum, bedrag en het rekeningnummer van de tegenpartij, en telt hij gelijke regels op dezelfde dag (twee keer € 5,00 "Rente" op één dag zijn twee regels). De omschrijving telt daarbij niet mee, omdat Enable Banking en een bankbestand die verschillend kunnen schrijven (aangevuld bij het bouwplan, 23 november 2026). Overlappende bestanden of twee keer hetzelfde bestand geven dus geen dubbele regels. Heeft de bron wel een referentie (Enable Banking geeft er meestal een), dan gebruikt de app die. Een regel die automatisch is binnengekomen en daarna ook in een bestand staat, telt één keer.
 
 **Enable Banking (ING betaal).** De app vraagt zelf toestemming via de API; het koppelen in het Control Panel heeft alleen de applicatie geactiveerd.
 - In beheer: knop "ING koppelen". De app vraagt Enable Banking om een toestemming voor ING (Nederland, zakelijk) met de langste geldigheid die ING toestaat (meestal 180 dagen), stuurt de penningmeester naar ING, en krijgt hem terug op `/beheer/bank` (het adres dat in Enable Banking is ingesteld).
@@ -368,7 +368,7 @@ Niet met de penningmeester besproken; kunnen worden teruggedraaid:
 - Afschrijving per jaar zoals e-Boekhouden, in het aankoopjaar naar rato van de maanden vanaf de aankoopmaand.
 - Kasverschillen op een eigen rekening 4515.
 - De uitbetaling van Mollie wordt geboekt op het moment dat hij op ING binnenkomt, niet wanneer Mollie hem aanmaakt.
-- Dubbele bankregels worden herkend aan datum, bedrag, omschrijving en tegenpartij als er geen bankreferentie is.
+- Dubbele bankregels worden herkend aan datum, bedrag en rekeningnummer van de tegenpartij als er geen bankreferentie is; de omschrijving telt niet mee.
 - Een nieuwe R2-bucket voor bijlagen.
 - Excel, PDF en het lezen van bankbestanden in de browser.
 - De nachtelijke taak om 02:00 UTC.
