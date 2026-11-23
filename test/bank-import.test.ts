@@ -19,12 +19,12 @@ const NOW = new Date("2027-11-23T12:00:00.000Z");
 const BETAAL = "NL00INGB0000000000";
 const SPAAR = "V00000000";
 
-/** A kasstorting of € 40 from the penningmeester's own account, unless overridden. */
+/** A payment of € 40 from the penningmeester's own account, unless overridden (not a kasstorting: those book themselves). */
 function line(overrides: Partial<CamtLine> = {}): CamtLine {
   return {
     bookingDate: "2027-03-20",
     amountCents: 4000,
-    description: "kasstorting",
+    description: "storting van de penningmeester",
     counterpartyName: "O. Penningmeester",
     counterpartyIban: "NL00BANK0000000001",
     bankRef: null,
@@ -95,9 +95,9 @@ it("keeps two equal lines on one day as two, and still once each", async () => {
 
 it("recognises a line from Enable Banking in a file without a reference", async () => {
   await setIdentifier("1010", BETAAL);
-  const fromBank = line({ bankRef: "EB-0001", description: "KASSTORTING JULI / O. Penningmeester", counterpartyIban: "nl00 bank 0000 0000 01" });
+  const fromBank = line({ bankRef: "EB-0001", description: "STORTING JULI / O. Penningmeester", counterpartyIban: "nl00 bank 0000 0000 01" });
   expect(await importLines(env.DB, "1010", [fromBank], "enable_banking", NOW)).toEqual(result(1, 0));
-  expect(await imported("1010", statement([line({ description: "kasstorting" })]))).toEqual(result(0, 1));
+  expect(await imported("1010", statement([line({ description: "storting van de penningmeester" })]))).toEqual(result(0, 1));
   // And the other way round: the same reference again, worded differently and on another day, is known as well.
   expect(await importLines(env.DB, "1010", [line({ bankRef: "EB-0001", bookingDate: "2027-03-21" })], "enable_banking", NOW)).toEqual(result(0, 1));
   expect(await count()).toBe(1);
@@ -106,7 +106,7 @@ it("recognises a line from Enable Banking in a file without a reference", async 
     origin: "enable_banking",
     bank_ref: "EB-0001",
     counterparty_iban: "NL00BANK0000000001",
-    description: "KASSTORTING JULI / O. Penningmeester",
+    description: "STORTING JULI / O. Penningmeester",
   });
 });
 

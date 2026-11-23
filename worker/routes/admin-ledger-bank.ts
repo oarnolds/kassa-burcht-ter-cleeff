@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { addTypedLine, importStatement, moneyAccounts, setMoneyAccount } from "../db/bank";
+import { addTypedLine, autoBook, bookLine, getBankLine, importStatement, moneyAccounts, openLines, setMoneyAccount } from "../db/bank";
 import { LedgerError } from "../db/ledger";
 import type { AppEnv } from "../env";
 
@@ -47,6 +47,14 @@ const typedBody = z.object({
   counterpartyName: z.string().trim().max(200).nullish(),
 });
 
+const bookBody = z.object({
+  split: z
+    .array(z.object({ accountCode: z.string().max(10), amountCents: cents.refine((value) => value !== 0), assetId: z.string().max(64).nullish() }))
+    .min(1)
+    .max(20),
+  description: z.string().trim().min(1).max(200).optional(),
+});
+
 const accountBody = z.object({
   identifier: z.string().max(64).nullish(),
   source: z.enum(["file", "enable_banking", "kassa", "mollie"]).optional(),
@@ -78,12 +86,24 @@ adminLedgerBank.post("/bank/import", async (c) => {
   if (tooManyLines(raw)) return c.json({ error: "too_many_lines" }, 400);
   const body = importBody.safeParse(raw);
   if (!body.success) return c.json({ error: "invalid" }, 400);
-  return c.json(await importStatement(c.env.DB, body.data.accountCode, body.data.statement, new Date()));
+  const now = new Date();
+  const result = await importStatement(c.env.DB, body.data.accountCode, body.data.statement, now);
+  return c.json({ ...result, autoBooked: await autoBook(c.env.DB, now) });
 });
 
 adminLedgerBank.post("/bank/lines", async (c) => {
   const body = typedBody.safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: "invalid" }, 400);
-  const line = await addTypedLine(c.env.DB, { ...body.data, counterpartyName: body.data.counterpartyName || null }, new Date());
-  return c.json(line, 201);
+  const now = new Date();
+  const line = await addTypedLine(c.env.DB, { ...body.data, counterpartyName: body.data.counterpartyName || null }, now);
+  await autoBook(c.env.DB, now);
+  return c.json((await getBankLine(c.env.DB, line.id)) ?? line, 201);
+});
+
+adminLedgerBank.get("/bank/lines", async (c) => c.json(await openLines(c.env.DB, { accountCode: c.req.query("account") || undefined })));
+
+adminLedgerBank.post("/bank/lines/:id/book", async (c) => {
+  const body = bookBody.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: "invalid" }, 400);
+  return c.json(await bookLine(c.env.DB, c.req.param("id"), body.data, new Date()));
 });
