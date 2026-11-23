@@ -50,3 +50,42 @@ export type EntryChange = {
 
 /** The first day the app keeps the books. Everything before it stays in e-Boekhouden. */
 export const LEDGER_START = "2027-01-01";
+
+/** Where a money account's lines come from. 1000 follows the kassa and 1030 Mollie; a bank is a file or Enable Banking. */
+export type MoneySource = "file" | "enable_banking" | "kassa" | "mollie";
+
+/**
+ * A money account next to what the bank said. `bank` is the newest balance the bank gave (from a file or Enable
+ * Banking); `ledgerCents` is the ledger on that same date (today without one); `differenceCents` = ledger − bank.
+ */
+export type MoneyAccount = {
+  accountCode: string;
+  name: string;
+  /** What the app knows the account by in a file or at Enable Banking: an IBAN, or a savings account's number. */
+  identifier: string | null;
+  source: MoneySource;
+  ledgerCents: number;
+  bank: { date: string; balanceCents: number } | null;
+  differenceCents: number | null;
+};
+
+export type BankLine = {
+  id: string;
+  accountCode: string;
+  date: string;
+  amountCents: number;
+  counterpartyName: string | null;
+  counterpartyIban: string | null;
+  description: string;
+  status: "open" | "booked" | "waiting";
+  waitingFor: "mollie" | null;
+  note: string | null;
+  entryId: string | null;
+  /** The account proposed for the other side; filled by `openLines`. */
+  suggestion: string | null;
+  /** Dated in a closed year: it waits, and cannot be booked there. */
+  inClosedYear: boolean;
+};
+
+/** `known`: lines that were already there. `beforeStart`: lines before LEDGER_START, not kept. */
+export type ImportResult = { added: number; known: number; beforeStart: number; autoBooked: number };

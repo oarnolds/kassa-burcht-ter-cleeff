@@ -48,3 +48,12 @@ INSERT INTO ledger_accounts (code, name, kind, money, hidden, sort, formerly) VA
   ('8040', 'Overige opbrengsten', 'income', 0, 0, 44, '["8040"]');
 
 INSERT INTO ledger_years (year, status) VALUES (2027, 'open');
+
+-- The money accounts and where their lines come from. Each bank's identifier is filled in under Instellingen.
+INSERT INTO money_accounts (account_code, identifier, source) VALUES
+  ('1000', NULL, 'kassa'),
+  ('1010', NULL, 'file'),
+  ('1011', NULL, 'file'),
+  ('1020', NULL, 'file'),
+  ('1021', NULL, 'file'),
+  ('1030', NULL, 'mollie');

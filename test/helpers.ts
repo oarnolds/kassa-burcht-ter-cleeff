@@ -53,6 +53,9 @@ export function useFakeMollie(): { current: FakeMollie } {
 
 // Children before parents, so no foreign key is left dangling.
 const TABLES = [
+  "bank_lines",
+  "bank_balances",
+  "money_accounts",
   "ledger_settings",
   "ledger_attachments",
   "ledger_lines",

@@ -89,3 +89,46 @@ CREATE TABLE ledger_attachments (
 );
 
 CREATE INDEX ledger_attachments_by_entry ON ledger_attachments(entry_id);
+
+-- Where each money account's lines come from, and what the app knows the account by in a bank file or at
+-- Enable Banking: an IBAN, or for a savings account its number (the ING kwartaalrekening's starts with V).
+-- 1000 follows the kassa and 1030 Mollie; the banks are read from a file (or typed) or fetched by Enable Banking.
+CREATE TABLE money_accounts (
+  account_code TEXT PRIMARY KEY REFERENCES ledger_accounts(code),
+  identifier TEXT,
+  source TEXT NOT NULL CHECK (source IN ('file','enable_banking','kassa','mollie'))
+);
+
+-- A line on a bank account, read once: from a file, from Enable Banking, typed by hand, or a Mollie payment.
+-- `content_key` is the hash of account, booking date, amount, the other party's IBAN and how many equal lines
+-- came before it, so that the same line from another road is known even without the bank's reference.
+-- A line stays: booked, it points to its entry.
+CREATE TABLE bank_lines (
+  id TEXT PRIMARY KEY,
+  account_code TEXT NOT NULL REFERENCES money_accounts(account_code),
+  booking_date TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  counterparty_name TEXT,
+  counterparty_iban TEXT,
+  description TEXT NOT NULL,
+  bank_ref TEXT,
+  content_key TEXT NOT NULL UNIQUE,
+  origin TEXT NOT NULL CHECK (origin IN ('file','enable_banking','typed','mollie')),
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','booked','waiting')),
+  waiting_for TEXT CHECK (waiting_for IN ('mollie')),
+  note TEXT,
+  entry_id TEXT REFERENCES ledger_entries(id),
+  imported_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX bank_lines_by_ref ON bank_lines(account_code, bank_ref) WHERE bank_ref IS NOT NULL;
+CREATE INDEX bank_lines_by_date ON bank_lines(account_code, booking_date);
+
+-- What the bank said a money account held at the end of a day, to lay next to the ledger on that day.
+CREATE TABLE bank_balances (
+  account_code TEXT NOT NULL REFERENCES money_accounts(account_code),
+  date TEXT NOT NULL,
+  balance_cents INTEGER NOT NULL,
+  origin TEXT NOT NULL,
+  PRIMARY KEY (account_code, date)
+);
