@@ -18,15 +18,51 @@ export type FakePayment = {
 
 type Failure = number | "timeout" | "lost";
 
+/** The organisation token the fake accepts for the read-only routes (never the kassa's key, and vice versa). */
+export const FAKE_ORG_TOKEN = "org_fake";
+
+type Amount = { currency: string; value: string };
+const eur = (value: string): Amount => ({ currency: "EUR", value });
+
+export type FakeOrgPayment = { id: string; method: string; amount: string; description: string; status: string; createdAt: string; paidAt: string | null; settlementId: string | null };
+export type FakeRefund = { id: string; paymentId: string; amount: string; description: string | null; createdAt: string };
+export type FakeChargeback = { id: string; paymentId: string; amount: string; createdAt: string };
+export type FakeSettlement = {
+  id: string;
+  reference: string | null;
+  status: string;
+  settledAt: string | null;
+  amount: string;
+  /** Gross cost values per year and month, e.g. { "2027": { "01": ["1.88"] } }. */
+  costs: Record<string, Record<string, string[]>>;
+};
+
 export type FakeMollie = {
   /** Answers a request the way Mollie's API does, plus the test page and the control routes below. */
   handle(request: Request): Promise<Response>;
   payments: FakePayment[];
   /** Every API request so far (not the control routes). */
-  requests: { method: string; path: string; idempotencyKey: string | null; authorization: string | null; body: any }[];
+  requests: { method: string; path: string; query: Record<string, string>; idempotencyKey: string | null; authorization: string | null; body: any }[];
   terminals: PinTerminal[];
   /** Whether DELETE cancels an open payment (true) or answers 422 (false). Starts true. */
   cancelable: boolean;
+
+  // ---- the organisation's read-only routes (Bearer org_fake) ----
+  /** The one profile `GET /v2/profiles` lists; null for an organisation without one. */
+  profileId: string | null;
+  /** Items per page, whatever `limit` asks; null follows `limit`. Pages link on with `_links.next`. */
+  pageSize: number | null;
+  /** Payments of any method, as `GET /v2/payments` lists them (newest first by `createdAt`). */
+  orgPayments: FakeOrgPayment[];
+  refunds: FakeRefund[];
+  chargebacks: FakeChargeback[];
+  /** Served in the order they were added: Mollie documents no order for settlements. */
+  settlements: FakeSettlement[];
+  balance: { available: string; pending: string };
+  addPayment(input: Partial<FakeOrgPayment> & { method: string; amount: string; createdAt: string }): FakeOrgPayment;
+  addRefund(input: Partial<FakeRefund> & { paymentId: string; amount: string; createdAt: string }): FakeRefund;
+  addChargeback(input: Partial<FakeChargeback> & { paymentId: string; amount: string; createdAt: string }): FakeChargeback;
+  addSettlement(input: Partial<FakeSettlement> & { amount: string }): FakeSettlement;
   /** Ends a payment the way the terminal does. */
   finish(id: string, status: "paid" | "failed" | "canceled" | "expired", reason?: string): void;
   /**
@@ -37,6 +73,7 @@ export type FakeMollie = {
   reset(): void;
 };
 
+const ORG_PATHS = ["/v2/profiles", "/v2/payments", "/v2/refunds", "/v2/chargebacks", "/v2/settlements", "/v2/balances/primary"];
 const TEST_TERMINAL: PinTerminal = { id: "term_test", description: "Testterminal", status: "active", brand: "Tap", model: "Tap", serialNumber: null };
 const ENDINGS = { paid: "Betaald", failed: "Geweigerd", canceled: "Geannuleerd", expired: "Verlopen" } as const;
 type Ending = keyof typeof ENDINGS;
@@ -59,8 +96,43 @@ const problem = (status: number, title: string, detail: string, field?: string) 
 export function createFakeMollie(opts: { key: string; origin: string }): FakeMollie {
   let failures: Failure[] = [];
   let made = 0;
+  let orgMade = 0;
 
   const fake: FakeMollie = {
+    profileId: "pfl_fake",
+    pageSize: null,
+    orgPayments: [],
+    refunds: [],
+    chargebacks: [],
+    settlements: [],
+    balance: { available: "0.00", pending: "0.00" },
+    addPayment(input) {
+      const payment: FakeOrgPayment = {
+        id: `tr_org${++orgMade}`,
+        description: "Test",
+        status: "paid",
+        paidAt: null,
+        settlementId: null,
+        ...input,
+      };
+      fake.orgPayments.push(payment);
+      return payment;
+    },
+    addRefund(input) {
+      const refund: FakeRefund = { id: `re_org${++orgMade}`, description: null, ...input };
+      fake.refunds.push(refund);
+      return refund;
+    },
+    addChargeback(input) {
+      const chargeback: FakeChargeback = { id: `chb_org${++orgMade}`, ...input };
+      fake.chargebacks.push(chargeback);
+      return chargeback;
+    },
+    addSettlement(input) {
+      const settlement: FakeSettlement = { id: `stl_org${++orgMade}`, reference: null, status: "paidout", settledAt: null, costs: {}, ...input };
+      fake.settlements.push(settlement);
+      return settlement;
+    },
     payments: [],
     requests: [],
     terminals: [{ ...TEST_TERMINAL }],
@@ -81,6 +153,14 @@ export function createFakeMollie(opts: { key: string; origin: string }): FakeMol
       fake.cancelable = true;
       failures = [];
       made = 0;
+      orgMade = 0;
+      fake.profileId = "pfl_fake";
+      fake.pageSize = null;
+      fake.orgPayments = [];
+      fake.refunds = [];
+      fake.chargebacks = [];
+      fake.settlements = [];
+      fake.balance = { available: "0.00", pending: "0.00" };
     },
     async handle(request) {
       const url = new URL(request.url);
@@ -117,18 +197,23 @@ export function createFakeMollie(opts: { key: string; origin: string }): FakeMol
     const authorization = request.headers.get("Authorization");
     const idempotencyKey = request.headers.get("Idempotency-Key");
     const body = method === "POST" ? await request.json().catch(() => null) : null;
-    fake.requests.push({ method, path, idempotencyKey, authorization, body });
+    fake.requests.push({ method, path, query: Object.fromEntries(new URL(request.url).searchParams), idempotencyKey, authorization, body });
 
     const failure = failures.shift();
     if (failure === "timeout") throw new Error("fake mollie: no answer");
     if (typeof failure === "number") return problem(failure, "Error", `fake mollie: answered ${failure}`);
-    const answer = route(method, path, authorization, idempotencyKey, body);
+    const answer = route(method, path, authorization, idempotencyKey, body, new URL(request.url));
     if (failure === "lost") throw new Error("fake mollie: the answer was lost");
     return answer;
   }
 
-  function route(method: string, path: string, authorization: string | null, idempotencyKey: string | null, body: any): Response {
+  function route(method: string, path: string, authorization: string | null, idempotencyKey: string | null, body: any, url: URL): Response {
     const key = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
+    if (method === "GET" && ORG_PATHS.includes(path)) {
+      // These routes belong to the organisation token; the kassa's key gets 401, as it would at Mollie.
+      if (key !== FAKE_ORG_TOKEN) return problem(401, "Unauthorized Request", "Missing authentication, or failed to authenticate");
+      return orgRoute(path, url);
+    }
     const known = opts.key === "*" ? /^(test|live)_\w+$/.test(key) : key === opts.key;
     if (!known) return problem(401, "Unauthorized Request", "Missing authentication, or failed to authenticate");
     const mode = key.startsWith("live_") ? "live" : "test";
@@ -175,6 +260,78 @@ export function createFakeMollie(opts: { key: string; origin: string }): FakeMol
       return json(view(payment));
     }
     return problem(404, "Not Found", "The fake Mollie does not know this route");
+  }
+
+  // A page of `items`: `from` is the id to start at, `limit` or `pageSize` the size, `_links.next` the rest.
+  function page(url: URL, items: { id: string }[], key: string, view: (item: any) => unknown): Response {
+    const limit = Math.min(Number(url.searchParams.get("limit")) || 50, 250);
+    const size = fake.pageSize ?? limit;
+    const from = url.searchParams.get("from");
+    const start = from ? items.findIndex((item) => item.id === from) : 0;
+    if (start < 0) return problem(404, "Not Found", "No such item to start from", "from");
+    const slice = items.slice(start, start + size);
+    const rest = items[start + size];
+    let next: { href: string; type: string } | null = null;
+    if (rest) {
+      const href = new URL(url);
+      href.searchParams.set("from", rest.id);
+      href.searchParams.set("limit", String(size));
+      next = { href: `${opts.origin}${href.pathname}${href.search}`, type: "application/hal+json" };
+    }
+    return json({ count: slice.length, _embedded: { [key]: slice.map(view) }, _links: { self: { href: url.toString(), type: "application/hal+json" }, next } });
+  }
+
+  function orgRoute(path: string, url: URL): Response {
+    if (path === "/v2/profiles") {
+      const profiles = fake.profileId ? [{ resource: "profile", id: fake.profileId, name: "Speeltuin" }] : [];
+      return page(url, profiles, "profiles", (profile) => profile);
+    }
+    if (path === "/v2/balances/primary") {
+      return json({ resource: "balance", id: "bal_fake", currency: "EUR", availableAmount: eur(fake.balance.available), pendingAmount: eur(fake.balance.pending) });
+    }
+    if (path === "/v2/settlements") {
+      return page(url, fake.settlements, "settlements", (settlement: FakeSettlement) => ({
+        resource: "settlement",
+        id: settlement.id,
+        reference: settlement.reference,
+        status: settlement.status,
+        settledAt: settlement.settledAt,
+        amount: eur(settlement.amount),
+        periods: Object.fromEntries(
+          Object.entries(settlement.costs).map(([year, months]) => [
+            year,
+            Object.fromEntries(
+              Object.entries(months).map(([month, values]) => [
+                month,
+                { revenue: [], costs: values.map((value) => ({ description: "Kosten", method: "ideal", count: 1, rate: { fixed: null, percentage: null }, amountNet: eur(value), amountVat: eur("0.00"), amountGross: eur(value) })) },
+              ]),
+            ),
+          ]),
+        ),
+      }));
+    }
+    // Payments, refunds and chargebacks: an organisation token must name the profile.
+    if (url.searchParams.get("profileId") !== fake.profileId || !fake.profileId) {
+      return problem(422, "Unprocessable Entity", "The profileId parameter is required for organization-level credentials", "profileId");
+    }
+    const newestFirst = <T extends { createdAt: string }>(items: T[]) => [...items].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+    if (path === "/v2/payments") {
+      return page(url, newestFirst(fake.orgPayments), "payments", (payment: FakeOrgPayment) => ({
+        resource: "payment",
+        id: payment.id,
+        method: payment.method,
+        amount: eur(payment.amount),
+        description: payment.description,
+        status: payment.status,
+        createdAt: payment.createdAt,
+        paidAt: payment.paidAt,
+        settlementId: payment.settlementId,
+      }));
+    }
+    if (path === "/v2/refunds") {
+      return page(url, newestFirst(fake.refunds), "refunds", (refund: FakeRefund) => ({ resource: "refund", id: refund.id, paymentId: refund.paymentId, amount: eur(refund.amount), description: refund.description, createdAt: refund.createdAt, status: "refunded" }));
+    }
+    return page(url, newestFirst(fake.chargebacks), "chargebacks", (chargeback: FakeChargeback) => ({ resource: "chargeback", id: chargeback.id, paymentId: chargeback.paymentId, amount: eur(chargeback.amount), createdAt: chargeback.createdAt }));
   }
 
   // The page behind `changePaymentState`: one button per ending, as Mollie's own test page offers.
