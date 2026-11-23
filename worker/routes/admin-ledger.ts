@@ -3,7 +3,7 @@ import { z } from "zod";
 import { addAttachment, hideAttachment, MAX_ATTACHMENT_BYTES, readAttachment } from "../db/attachments";
 import { createEntry, editEntry, emptyEntry, entryHistory, getEntry, LedgerError, listEntries } from "../db/ledger";
 import { addAccount, categoryAccounts, listAccounts, patchAccount, setCategoryAccounts } from "../db/ledger-accounts";
-import { accountLines, balanceReport, getComparison, overview, resultReport, setComparison } from "../db/ledger-reports";
+import { accountLines, balanceReport, comparisonYears, getComparison, multiYearReport, overview, resultReport, setComparison } from "../db/ledger-reports";
 import { getOpening, setOpening } from "../db/opening";
 import type { AppEnv } from "../env";
 import { runNightly } from "../nightly";
@@ -178,6 +178,8 @@ adminLedger.put("/opening", async (c) => {
   return c.json(await setOpening(c.env.DB, year, body.data, new Date()));
 });
 
+adminLedger.get("/comparison/years", async (c) => c.json(await comparisonYears(c.env.DB)));
+
 adminLedger.get("/comparison", async (c) => {
   const year = yearOf(c.req.query("year"));
   if (year === null) return c.json({ error: "invalid" }, 400);
@@ -206,6 +208,8 @@ adminLedger.get("/reports/result", async (c) => {
   if (!from || !to || from > to) return c.json({ error: "invalid" }, 400);
   return c.json(await resultReport(c.env.DB, from, to));
 });
+
+adminLedger.get("/reports/years", async (c) => c.json(await multiYearReport(c.env.DB)));
 
 adminLedger.get("/reports/account/:code", async (c) => {
   const from = parseDate(c.req.query("from"));

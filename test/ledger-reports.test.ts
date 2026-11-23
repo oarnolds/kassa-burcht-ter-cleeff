@@ -102,7 +102,7 @@ it("answers every boekhouding route only after logging in", async () => {
     ["GET", "/accounts"], ["POST", "/accounts"], ["PATCH", "/accounts/4514"], ["GET", "/category-accounts"], ["PUT", "/category-accounts"],
     ["GET", "/entries?year=2027"], ["POST", "/entries"], ["PUT", "/entries/x"], ["POST", "/entries/x/empty"], ["GET", "/entries/x/history"],
     ["POST", "/entries/x/attachments"], ["GET", "/attachments/x"], ["POST", "/attachments/x/hide"], ["GET", "/opening?year=2027"], ["PUT", "/opening?year=2027"],
-    ["GET", "/comparison?year=2026"], ["PUT", "/comparison?year=2026"], ["GET", "/reports/balance?date=2027-01-01"],
+    ["GET", "/comparison?year=2026"], ["PUT", "/comparison?year=2026"], ["GET", "/comparison/years"], ["GET", "/reports/years"], ["GET", "/reports/balance?date=2027-01-01"],
     ["GET", "/reports/result?from=2027-01-01&to=2027-01-31"], ["GET", "/reports/account/1010?from=2027-01-01&to=2027-01-31"], ["GET", "/overview"],
   ];
   for (const [method, path] of routes) {

@@ -2,8 +2,10 @@ import {
   type AccountKind,
   type AccountLines,
   type BalanceReport,
+  type ComparisonYear,
   LEDGER_START,
   type LedgerOverview,
+  type MultiYearReport,
   type NightlyReport,
   type ResultReport,
 } from "../../shared/ledger-types";
@@ -15,7 +17,7 @@ import { consentState } from "./bank-consent";
 import { inUseSince } from "./maintenance";
 import { endOfDay, expectedCashAt } from "./opening";
 
-export type { AccountLines, BalanceReport, LedgerOverview, ResultReport };
+export type { AccountLines, BalanceReport, ComparisonYear, LedgerOverview, MultiYearReport, ResultReport };
 
 const firstYear = Number(LEDGER_START.slice(0, 4));
 const isResult = (kind: AccountKind) => kind === "income" || kind === "expense";
@@ -149,6 +151,64 @@ export async function resultReport(db: D1Database, from: string, to: string): Pr
     rows.push({ code: account.code, name: account.name, kind: account.kind, cents, previousCents: hasPrevious ? previous : null });
   }
   return { from, to, rows, resultCents, previousResultCents: hasPrevious ? previousResultCents : null };
+}
+
+/** Every year with comparison figures, oldest first, with its income, costs and result. One call to the database. */
+export async function comparisonYears(db: D1Database): Promise<ComparisonYear[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT c.year,
+         COALESCE(SUM(CASE WHEN a.kind = 'income' THEN c.amount_cents END), 0) AS income,
+         COALESCE(SUM(CASE WHEN a.kind = 'expense' THEN c.amount_cents END), 0) AS costs
+       FROM comparison_figures c JOIN ledger_accounts a ON a.code = c.account_code
+       GROUP BY c.year ORDER BY c.year`,
+    )
+    .all<{ year: number; income: number; costs: number }>();
+  return results.map((row) => ({ year: row.year, incomeCents: row.income, costsCents: row.costs, resultCents: row.income - row.costs }));
+}
+
+/**
+ * The result per account, a column per year: the years before the books with comparison figures, then every year
+ * of the books from its income and expense lines, the closing entries left out (as resultReport). Null where a
+ * year has nothing on an account, and as a year's result when it has nothing at all. One call to the database.
+ */
+export async function multiYearReport(db: D1Database): Promise<MultiYearReport> {
+  const [accounts, typed, booked, ledgerYears] = await db.batch([
+    db.prepare("SELECT code, name, kind FROM ledger_accounts WHERE kind IN ('income', 'expense') ORDER BY sort"),
+    db.prepare("SELECT year, account_code, amount_cents AS cents FROM comparison_figures WHERE year < ?").bind(firstYear),
+    db
+      .prepare(
+        `SELECT e.year, l.account_code, SUM(l.amount_cents) AS cents FROM ledger_lines l JOIN ledger_entries e ON e.id = l.entry_id
+         WHERE e.source <> 'closing' AND e.year >= ?1
+           AND l.account_code IN (SELECT code FROM ledger_accounts WHERE kind IN ('income', 'expense'))
+         GROUP BY e.year, l.account_code`,
+      )
+      .bind(firstYear),
+    db.prepare("SELECT year FROM ledger_years WHERE year >= ? ORDER BY year").bind(firstYear),
+  ]);
+  const kinds = new Map((accounts!.results as AccountRow[]).map((account) => [account.code, account.kind]));
+  // Per year and account the figure as the report shows it: typed that way, or turned from the ledger's sum.
+  const figures = new Map<number, Map<string, number>>();
+  const put = (year: number, code: string, cents: number) => figures.set(year, (figures.get(year) ?? new Map()).set(code, cents));
+  for (const row of typed!.results as { year: number; account_code: string; cents: number }[]) put(row.year, row.account_code, row.cents);
+  for (const row of booked!.results as { year: number; account_code: string; cents: number }[]) {
+    put(row.year, row.account_code, shown(kinds.get(row.account_code)!, row.cents));
+  }
+  for (const row of ledgerYears!.results as { year: number }[]) if (!figures.has(row.year)) figures.set(row.year, new Map());
+
+  const years = [...figures.keys()].sort((a, b) => a - b);
+  const rows: MultiYearReport["rows"] = [];
+  const results: (number | null)[] = years.map(() => null);
+  for (const account of accounts!.results as AccountRow[]) {
+    const cents = years.map((year) => figures.get(year)!.get(account.code) ?? null);
+    if (cents.every((value) => value === null)) continue;
+    const sign = account.kind === "income" ? 1 : -1;
+    cents.forEach((value, i) => {
+      if (value !== null) results[i] = (results[i] ?? 0) + sign * value;
+    });
+    rows.push({ code: account.code, name: account.name, kind: account.kind as "income" | "expense", cents });
+  }
+  return { years, rows, results };
 }
 
 /** The result from `from` to `to` as one figure, closing entries left out. */

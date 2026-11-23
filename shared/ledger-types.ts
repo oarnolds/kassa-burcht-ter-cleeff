@@ -136,6 +136,17 @@ export type ResultReport = {
   resultCents: number;
   previousResultCents: number | null;
 };
+/** A year before LEDGER_START with comparison figures (read from e-Boekhouden or typed), as its result shows it. */
+export type ComparisonYear = { year: number; incomeCents: number; costsCents: number; resultCents: number };
+/**
+ * The result per account with a column per year: the years with comparison figures, then every year of the books
+ * (closing entries left out). `cents[i]` and `results[i]` belong to `years[i]`; null where that year has nothing.
+ */
+export type MultiYearReport = {
+  years: number[];
+  rows: { code: string; name: string; kind: "income" | "expense"; cents: (number | null)[] }[];
+  results: (number | null)[];
+};
 export type AccountLines = {
   code: string;
   openingCents: number;
