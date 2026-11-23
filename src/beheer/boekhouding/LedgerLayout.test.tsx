@@ -28,5 +28,5 @@ it("has its own tab bar with the eight tabs", async () => {
     "Jaar",
     "Instellingen",
   ]);
-  expect(screen.getByText("Komt in een volgende stap.")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Jaar" })).toBeInTheDocument();
 });

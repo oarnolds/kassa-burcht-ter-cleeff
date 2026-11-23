@@ -78,8 +78,8 @@ function toAsset(row: AssetRow, upTo: string): Asset {
   };
 }
 
-/** By purchase date (a toestel without one last), then by name. */
-function toAssets(result: D1Result, upTo: string): Asset[] {
+/** The toestellen an `assetsStatement` read (a plan's first statement is one), by purchase date (none last), then by name. */
+export function toAssets(result: D1Result, upTo: string): Asset[] {
   return (result.results as AssetRow[])
     .map((row) => toAsset(row, upTo))
     .sort(
@@ -228,8 +228,11 @@ const heldBooking = (rows: LineRow[]) => booking(rows.map((row) => ({ accountCod
 const LATER_BOOKED = `SELECT MIN(CAST(e.source_ref AS INTEGER)) AS year FROM ledger_entries e
   WHERE e.source = 'depreciation' AND CAST(e.source_ref AS INTEGER) > ?1 AND EXISTS (SELECT 1 FROM ledger_lines l WHERE l.entry_id = e.id)`;
 
-/** What a year's plan reads: the list at the end of the year and of the year before, its entry's lines, later years. Four statements. */
-function planStatements(db: D1Database, year: number): D1PreparedStatement[] {
+/**
+ * What a year's plan reads: the list at the end of the year and of the year before, its entry's lines, later years.
+ * Four statements, for a caller's batch; the first is the list at the end of the year (`toAssets` reads it).
+ */
+export function planStatements(db: D1Database, year: number): D1PreparedStatement[] {
   return [assetsStatement(db, lastDay(year)), assetsStatement(db, lastDay(year - 1)), db.prepare(DEPRECIATION_LINES(year)), db.prepare(LATER_BOOKED).bind(year)];
 }
 
@@ -237,7 +240,7 @@ function planStatements(db: D1Database, year: number): D1PreparedStatement[] {
  * The year's depreciation per toestel; one disposed of in or before the year has none (its disposal covers it).
  * `upToDate`: the entry books exactly this (nothing to book and no lines counts too).
  */
-function planOf(year: number, [atEnd, atStart, held, later]: D1Result[]): DepreciationPlan {
+export function planOf(year: number, [atEnd, atStart, held, later]: D1Result[]): DepreciationPlan {
   const before = new Map(toAssets(atStart!, lastDay(year - 1)).map((asset) => [asset.id, asset.writtenOffCents]));
   const rows: DepreciationPlan["rows"] = [];
   for (const asset of toAssets(atEnd!, lastDay(year))) {

@@ -1,5 +1,5 @@
 // The one place that knows the boekhouding's paths and body shapes (they follow the zod schemas in
-// worker/routes/admin-ledger.ts, admin-ledger-bank.ts, admin-ledger-mollie.ts and admin-ledger-assets.ts). Reads: a path for `useAdminData`. Writes: `useLedgerWrites`.
+// worker/routes/admin-ledger.ts, admin-ledger-bank.ts, admin-ledger-mollie.ts, admin-ledger-assets.ts and admin-ledger-year.ts). Reads: a path for `useAdminData`. Writes: `useLedgerWrites`.
 
 import { useMemo } from "react";
 import type { PastedAsset } from "../../../shared/asset-paste";
@@ -79,6 +79,9 @@ export const ledgerPath = {
   assets: `${LEDGER}/assets`,
   /** Without a year: the plan of the earliest open year still to book. */
   depreciation: (year?: number | null) => (year == null ? `${LEDGER}/depreciation` : `${LEDGER}/depreciation?year=${year}`),
+  /** Every year, oldest first, with its closing and reopening. */
+  years: `${LEDGER}/years`,
+  yearChecks: (year: number) => `${LEDGER}/year/${year}/checks`,
 };
 
 /** A sentence for a refusal or a failure of a write on these pages. */
@@ -108,6 +111,13 @@ export function explainWrite(status: number, error: string): string {
     asset_booked_later: "Op dit toestel is na die datum nog geboekt. Kies een latere datum.",
     depreciation_first: "Boek eerst de afschrijving van het jaar ervoor; daarna kan dit toestel worden afgevoerd.",
     depreciation_later: "Er is al afgeschreven over een later jaar; pas dat eerst aan.",
+    checks_failed: "Er zijn nog bankregels van dit jaar te boeken. Boek die eerst.",
+    note_required: "Niet alle controles kloppen. Schrijf in de toelichting waarom het jaar toch dicht kan.",
+    year_not_ended: "Dit jaar is nog niet voorbij. Afsluiten kan vanaf 1 januari.",
+    year_changed: "Er is net nog iets in dit jaar geboekt. Bekijk de controles en probeer het opnieuw.",
+    reason_required: "Schrijf waarom het jaar weer open moet (minstens 3 tekens).",
+    not_newest: "Alleen het laatst afgesloten jaar kan weer open.",
+    not_closed: "Dit jaar is niet afgesloten. Ververs de pagina.",
   };
   return known[error] ?? "Dat is niet gelukt. Probeer het opnieuw.";
 }
@@ -156,6 +166,10 @@ export function useLedgerWrites() {
       patchAsset: (id: string, body: { name?: string; lifeYears?: number; residualCents?: number }): Promise<ApiResult<Asset>> =>
         write(`${LEDGER}/assets/${encodeURIComponent(id)}`, "PATCH", body),
       disposeAsset: (id: string, date: string): Promise<ApiResult<Entry>> => write(`${LEDGER}/assets/${encodeURIComponent(id)}/dispose`, "POST", { date }),
+      /** "Jaar afsluiten"; `note` is the toelichting, needed when a check that is not required fails. */
+      closeYear: (year: number, note: string | null): Promise<ApiResult<{ ok: true }>> => write(`${LEDGER}/year/${year}/close`, "POST", { note }),
+      /** Only the newest closed year, with a reason of at least 3 characters. */
+      reopenYear: (year: number, reason: string): Promise<ApiResult<{ ok: true }>> => write(`${LEDGER}/year/${year}/reopen`, "POST", { reason }),
       /** `empty`: books nothing, to undo a year before one ahead of it is booked again. */
       bookDepreciation: (year: number, empty = false): Promise<ApiResult<Entry>> => write(`${LEDGER}/depreciation`, "POST", empty ? { year, empty } : { year }),
       createEntry: (body: EntryBody): Promise<ApiResult<Entry>> => write(`${LEDGER}/entries`, "POST", body),

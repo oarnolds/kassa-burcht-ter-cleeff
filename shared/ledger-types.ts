@@ -156,6 +156,26 @@ export type LedgerOverview = {
 };
 
 /**
+ * One of the checks before a year is closed (spec §13), with a Dutch sentence of what was found. Only a `required`
+ * check stops the closing; when another one fails, the penningmeester closes with a toelichting.
+ */
+export type YearCheck = {
+  key: "bank_lines" | "bank_balances" | "cash" | "mollie" | "depreciation" | "in_transit" | "assets";
+  ok: boolean;
+  detail: string;
+  required: boolean;
+};
+
+/** A year of the books, with its closing and reopening, oldest first. `note`: the toelichting or the reason. */
+export type LedgerYear = {
+  year: number;
+  status: "open" | "closed";
+  closedAt: string | null;
+  closeNote: string | null;
+  events: { at: string; kind: "closed" | "reopened"; note: string | null }[];
+};
+
+/**
  * A toestel of the list behind 0130 and 0135 (spec §12). `costCents`: pasted from e-Boekhouden, or for one bought
  * later what is booked on 0130 for it; `purchaseDate` is then the date of its first 0130 line (null while there is
  * none). `writtenOffCents`: up to 31 December 2026 from e-Boekhouden plus what is on 0135 for it since. A toestel

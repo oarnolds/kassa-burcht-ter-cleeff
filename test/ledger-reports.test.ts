@@ -76,9 +76,13 @@ it("leaves the closing entry out of the result", async () => {
   const report = await resultReport(env.DB, "2027-01-01", "2027-12-31");
   expect(report.resultCents).toBe(10000);
   expect(report.rows).toEqual([{ code: "8010", name: "Verhuur", kind: "income", cents: 10000, previousCents: null }]);
-  const balance = await balanceReport(env.DB, "2027-12-31");
-  expect(balance.resultCents).toBe(0);
-  expect(balance.assetsCents).toBe(balance.liabilitiesAndEquityCents);
+  // R8: on 31 December the year's result stands apart; from 1 January on it is in 1400.
+  const yearEnd = await balanceReport(env.DB, "2027-12-31");
+  expect(yearEnd.resultCents).toBe(10000);
+  expect(yearEnd.assetsCents).toBe(yearEnd.liabilitiesAndEquityCents + yearEnd.resultCents);
+  const next = await balanceReport(env.DB, "2028-01-01");
+  expect(next.resultCents).toBe(0);
+  expect(next.assetsCents).toBe(next.liabilitiesAndEquityCents);
 });
 
 it("lists an account's lines with a running balance", async () => {

@@ -47,16 +47,19 @@ export function endOfDay(date: string): string {
  * Reversals are sales with a negative amount and count the same way.
  */
 export async function expectedCashAt(db: D1Database, atIso: string): Promise<number> {
-  const row = await db
+  return (await expectedCashStatement(db, atIso).first<{ cents: number }>())!.cents;
+}
+
+/** `expectedCashAt` as a statement, for a caller's batch; its one row has `cents`. */
+export function expectedCashStatement(db: D1Database, atIso: string): D1PreparedStatement {
+  return db
     .prepare(
       `SELECT COALESCE((SELECT left_cents FROM handovers WHERE counted_at <= ?1 ORDER BY counted_at DESC LIMIT 1), 0)
         + COALESCE((SELECT SUM(total_cents) FROM sales
             WHERE method = 'cash' AND status = 'paid' AND sold_at <= ?1
               AND (handover_id IS NULL OR handover_id NOT IN (SELECT id FROM handovers WHERE counted_at <= ?1))), 0) AS cents`,
     )
-    .bind(atIso)
-    .first<{ cents: number }>();
-  return row!.cents;
+    .bind(atIso);
 }
 
 /**

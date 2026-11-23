@@ -380,6 +380,16 @@ export function moneyAccountOnStatement(db: D1Database, code: string, date: stri
   return accountsQuery(db, date, code, date);
 }
 
+/** Every money account as it stood on `date`, as `moneyAccountOnStatement` lays one; `moneyAccountsFrom` reads them. */
+export function moneyAccountsOnStatement(db: D1Database, date: string): D1PreparedStatement {
+  return accountsQuery(db, date, null, date);
+}
+
+/** The accounts `moneyAccountsOnStatement` read, as they are: 1030's difference without the payouts on their way. */
+export function moneyAccountsFrom(result: D1Result): MoneyAccount[] {
+  return (result.results as AccountRow[]).map(toMoneyAccount);
+}
+
 /** The account `moneyAccountOnStatement` read, with 1030's payouts on their way to ING left out of its difference. */
 export async function moneyAccountOf(db: D1Database, result: D1Result): Promise<{ account: MoneyAccount | null; inTransitCents: number }> {
   const row = result.results[0] as AccountRow | undefined;

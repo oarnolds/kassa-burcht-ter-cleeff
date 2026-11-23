@@ -18,10 +18,11 @@ import { LedgerLayout } from "./beheer/boekhouding/LedgerLayout";
 import { MolliePage } from "./beheer/boekhouding/MolliePage";
 import { OpeningPage } from "./beheer/boekhouding/OpeningPage";
 import { OverviewPage } from "./beheer/boekhouding/OverviewPage";
-import { LedgerPlaceholder, YearPlaceholder } from "./beheer/boekhouding/Placeholder";
+import { LedgerPlaceholder } from "./beheer/boekhouding/Placeholder";
 import { ReportsLedgerPage } from "./beheer/boekhouding/ReportsLedgerPage";
 import { SettingsLedgerPage } from "./beheer/boekhouding/SettingsLedgerPage";
 import { ToBookPage } from "./beheer/boekhouding/ToBookPage";
+import { YearPage } from "./beheer/boekhouding/YearPage";
 import { KassaPage } from "./kassa/KassaPage";
 import { PairPage } from "./kassa/PairPage";
 import { Logo } from "./ui/Logo";
@@ -58,7 +59,7 @@ export function AppRoutes() {
           <Route path="rapporten" element={<ReportsLedgerPage />} />
           <Route path="mollie" element={<MolliePage />} />
           <Route path="toestellen" element={<AssetsPage />} />
-          <Route path="jaar" element={<YearPlaceholder />} />
+          <Route path="jaar" element={<YearPage />} />
           <Route path="jaar/:year/afdruk" element={<LedgerPlaceholder title="Afdruk" />} />
           <Route path="instellingen" element={<SettingsLedgerPage />} />
           <Route path="beginbalans" element={<OpeningPage />} />

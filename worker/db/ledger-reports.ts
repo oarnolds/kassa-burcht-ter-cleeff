@@ -19,15 +19,22 @@ export type { AccountLines, BalanceReport, LedgerOverview, ResultReport };
 const firstYear = Number(LEDGER_START.slice(0, 4));
 const isResult = (kind: AccountKind) => kind === "income" || kind === "expense";
 
-/** Per account the sum of the lines dated from `from` to `to`; the closing entries are left out when `withoutClosing`. */
-async function sums(db: D1Database, from: string, to: string, withoutClosing: boolean): Promise<Map<string, number>> {
+/**
+ * Which closing entries a sum counts: none (a result stays as it was before its year was closed), or those dated
+ * before `to` (a balance on 31 December shows that year's result apart, R8).
+ */
+type Closing = "none" | "before_to";
+
+/** Per account the sum of the lines dated from `from` to `to`, with the closing entries `closing` names. */
+async function sums(db: D1Database, from: string, to: string, closing: Closing): Promise<Map<string, number>> {
   const { results } = await db
     .prepare(
       `SELECT l.account_code, SUM(l.amount_cents) AS cents FROM ledger_lines l
-       WHERE l.entry_id IN (SELECT e.id FROM ledger_entries e WHERE e.date >= ?1 AND e.date <= ?2 AND (?3 = 0 OR e.source <> 'closing'))
+       WHERE l.entry_id IN (SELECT e.id FROM ledger_entries e WHERE e.date >= ?1 AND e.date <= ?2
+         AND (e.source <> 'closing' OR (?3 = 1 AND e.date < ?2)))
        GROUP BY l.account_code`,
     )
-    .bind(from, to, withoutClosing ? 1 : 0)
+    .bind(from, to, closing === "before_to" ? 1 : 0)
     .all<{ account_code: string; cents: number }>();
   return new Map(results.map((row) => [row.account_code, row.cents]));
 }
@@ -39,9 +46,13 @@ const allAccounts = async (db: D1Database): Promise<AccountRow[]> =>
 /** Income and costs are shown positive: a credit on income and a debit on costs. */
 const shown = (kind: AccountKind, cents: number) => (kind === "income" ? 0 - cents : cents);
 
-/** The balance on `date`: what every balance account holds, and the result of the lines up to then, still unbooked. */
+/**
+ * The balance on `date`: what every balance account holds, and the result of the lines up to then, still unbooked.
+ * A closing entry dated on `date` itself is left out (R8): on 31 December the year's result stands apart, on
+ * 1 January it is in 1400.
+ */
 export async function balanceReport(db: D1Database, date: string): Promise<BalanceReport> {
-  const [accounts, sum] = await Promise.all([allAccounts(db), sums(db, "0000-01-01", date, false)]);
+  const [accounts, sum] = await Promise.all([allAccounts(db), sums(db, "0000-01-01", date, "before_to")]);
   const rows: BalanceReport["rows"] = [];
   let assetsCents = 0;
   let liabilitiesAndEquityCents = 0;
@@ -92,8 +103,8 @@ export async function resultReport(db: D1Database, from: string, to: string): Pr
   const wholeYear = previousFrom === `${previousYear}-01-01` && previousTo === `${previousYear}-12-31`;
   const [accounts, current, earlier, figures] = await Promise.all([
     allAccounts(db),
-    sums(db, from, to, true),
-    fromLedger ? sums(db, previousFrom, previousTo, true) : Promise.resolve(null),
+    sums(db, from, to, "none"),
+    fromLedger ? sums(db, previousFrom, previousTo, "none") : Promise.resolve(null),
     !fromLedger && wholeYear ? getComparison(db, previousYear) : Promise.resolve([]),
   ]);
   const hasPrevious = fromLedger || figures.length > 0;
@@ -118,7 +129,7 @@ export async function resultReport(db: D1Database, from: string, to: string): Pr
 async function resultOf(db: D1Database, from: string, to: string): Promise<number> {
   const kinds = new Map((await allAccounts(db)).map((account) => [account.code, account.kind]));
   let result = 0;
-  for (const [code, cents] of await sums(db, from, to, true)) {
+  for (const [code, cents] of await sums(db, from, to, "none")) {
     const kind = kinds.get(code);
     if (kind && isResult(kind)) result -= cents;
   }
