@@ -18,8 +18,9 @@ const pages: [path: string, name: string][] = [
   ["/beheer/instellingen", "Instellingen"],
 ];
 
+// Snug pills without gaps: the logo, all eight pages and Uitloggen fit on one line in a window of 1280 wide.
 const navLink = ({ isActive }: { isActive: boolean }) =>
-  `inline-flex min-h-11 items-center rounded-full px-4 font-semibold ${isActive ? "bg-green-dark text-white" : "text-ink hover:bg-sand"}`;
+  `inline-flex min-h-11 items-center whitespace-nowrap rounded-full px-3 font-semibold ${isActive ? "bg-green-dark text-white" : "text-ink hover:bg-sand"}`;
 
 /** The frame around every beheer page: who may come in, the navigation, logging out. */
 export function BeheerLayout() {
@@ -77,24 +78,25 @@ export function BeheerLayout() {
 
   return (
     <div className="min-h-full">
+      {/* One bar when the window is wide enough; otherwise the whole menu goes under the logo, still on one line. */}
       <header className="border-b-2 border-sand bg-white">
-        <div className="mx-auto max-w-5xl px-4 pt-3">
-          <Link to="/beheer">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2">
+          <Link to="/beheer" className="shrink-0">
             <Logo />
           </Link>
+          <nav aria-label="Beheer" className="flex grow flex-wrap items-center print:hidden">
+            {pages.map(([path, name]) => (
+              <NavLink key={path} to={path} end={path === "/beheer"} className={navLink}>
+                {name}
+              </NavLink>
+            ))}
+            <Button variant="ghost" className="ml-auto" onClick={() => void logout()}>
+              Uitloggen
+            </Button>
+          </nav>
         </div>
-        <nav aria-label="Beheer" className="mx-auto flex max-w-5xl flex-wrap items-center gap-1 px-2 py-2 print:hidden">
-          {pages.map(([path, name]) => (
-            <NavLink key={path} to={path} end={path === "/beheer"} className={navLink}>
-              {name}
-            </NavLink>
-          ))}
-          <Button variant="ghost" className="ml-auto px-4" onClick={() => void logout()}>
-            Uitloggen
-          </Button>
-        </nav>
       </header>
-      <main className="mx-auto max-w-5xl px-4 py-6">
+      <main className="mx-auto max-w-7xl px-4 py-6">
         <Outlet />
       </main>
     </div>

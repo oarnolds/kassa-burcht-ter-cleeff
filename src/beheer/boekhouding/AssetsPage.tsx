@@ -56,7 +56,8 @@ function AssetTable({ assets, onEdit, onDispose }: { assets: Asset[]; onEdit(ass
                 {asset.disposedOn ? (
                   <span className="whitespace-nowrap">{`afgevoerd ${formatDateNl(asset.disposedOn)}`}</span>
                 ) : (
-                  <span className="flex flex-wrap gap-2">
+                  // Side by side from a window of 1280 wide; in a narrower one they may go under each other, so nothing scrolls.
+                  <span className="flex flex-wrap gap-2 xl:flex-nowrap">
                     <Button aria-label={`${asset.name} wijzigen`} onClick={() => onEdit(asset)}>
                       Wijzigen
                     </Button>
