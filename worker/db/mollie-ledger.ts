@@ -10,7 +10,7 @@ import type { CamtLine } from "../../shared/camt";
 import { type AccountKind, LEDGER_START, type MollieMonth, type MollieRule } from "../../shared/ledger-types";
 import { businessDate, localTime, monthRange, shiftDate } from "../../shared/time";
 import type { Env } from "../env";
-import { type MollieChargebackRow, type MolliePaymentRow, mollieReadFor, type MollieRefundRow, type PaymentGap } from "../lib/mollie-read";
+import { describeFailure, type MollieChargebackRow, type MolliePaymentRow, mollieReadFor, type MollieRefundRow, type PaymentGap } from "../lib/mollie-read";
 import { autoBook, importLines, moneyAccountOf, moneyAccountOnStatement, recordBalance } from "./bank";
 import { add, type Amounts, dayMonthYear, minus, sameAmounts, toLines } from "./kassa-ledger";
 import { firstOpenYear, LedgerError, type NewEntry, upsertSourcedStatements } from "./ledger";
@@ -103,13 +103,13 @@ export async function syncMolliePayments(env: Env, now: Date): Promise<"ok" | "s
     const open = (openRows!.results as { date: string }[]).map((row) => row.date);
 
     const payments = await client.paymentsSince(from, kept);
-    if (!payments.ok) return failed(payments.failure);
+    if (!payments.ok) return failed(describeFailure(payments));
     // A paid payment without a moment that can be read is not guessed at: the run fails as the reader does.
     if (payments.data.rows.some((row) => row.status === "paid" && row.paidAt !== null && Number.isNaN(Date.parse(row.paidAt)))) return failed("unreachable");
     const refunds = await client.refundsSince(from);
-    if (!refunds.ok) return failed(refunds.failure);
+    if (!refunds.ok) return failed(describeFailure(refunds));
     const chargebacks = await client.chargebacksSince(from);
-    if (!chargebacks.ok) return failed(chargebacks.failure);
+    if (!chargebacks.ok) return failed(describeFailure(chargebacks));
     // Reversals that do not reach back to `from` must not look complete: then nothing is kept.
     if (refunds.data.cutShort || chargebacks.data.cutShort) return failed("mollie_list_cut_short");
 
@@ -121,7 +121,7 @@ export async function syncMolliePayments(env: Env, now: Date): Promise<"ok" | "s
     await storePayments(db, payments.data.rows, open, now, note);
 
     const balance = await client.primaryBalance();
-    if (!balance.ok) return failed(balance.failure);
+    if (!balance.ok) return failed(describeFailure(balance));
     await recordBalance(db, MOLLIE, { date: balanceDate(now), cents: balance.data.availableCents + balance.data.pendingCents }, "mollie");
     await autoBook(db, now);
     return "ok";
@@ -382,7 +382,7 @@ export async function syncSettlements(env: Env, now: Date): Promise<"ok" | "skip
     const newest = await db.prepare("SELECT MAX(settled_at) AS at FROM mollie_settlements").first<{ at: string | null }>();
     const from = newest?.at ? new Date(Date.parse(newest.at) - PAYOUT_LOOK_BACK_MS).toISOString() : startOfDay(FIRST_PAYOUT_DATE);
     const read = await client.settlementsSince(from);
-    if (!read.ok) return failed(read.failure);
+    if (!read.ok) return failed(describeFailure(read));
     // A payout still being made up has no reference yet: none, never an empty one (the reference is unique).
     const rows = read.data.map((row) => ({
       id: row.id,

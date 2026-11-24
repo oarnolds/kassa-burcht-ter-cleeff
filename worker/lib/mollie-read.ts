@@ -63,6 +63,19 @@ const need = <T>(value: T | null | undefined): T => {
   return value;
 };
 
+/** The resource of a call's path: "/settlements/stl_1?x" → "settlements". */
+const partOf = (path: string): string => path.replace(/^\/+/, "").split(/[/?]/)[0] ?? "";
+
+/**
+ * How a failed read is named in the step's report: a refusal with the list and Mollie's status, e.g.
+ * "refused (profiles, 403)"; other failures by their name only. Never the token or Mollie's answer.
+ */
+export function describeFailure(result: { failure: MollieFailure; status: number }): string {
+  const part = (result as { part?: unknown }).part;
+  if (result.failure !== "refused" || typeof part !== "string" || part === "") return result.failure;
+  return `refused (${part}, ${result.status})`;
+}
+
 function baseOf(env: Env): string {
   if (!env.MOLLIE_API_BASE) return MOLLIE_API;
   try {
@@ -116,7 +129,9 @@ export function mollieReadFor(env: Env): MollieRead | null {
       });
       if (!response.ok) {
         await response.body?.cancel();
-        return { ok: false, failure: failureOf(response.status), status: response.status };
+        // Which list Mollie refused ("profiles", "payments", …), so the penningmeester can tell which right is missing.
+        const refused = { ok: false as const, failure: failureOf(response.status), status: response.status, part: partOf(path) };
+        return refused;
       }
       return { ok: true, data: await response.json() };
     } catch {

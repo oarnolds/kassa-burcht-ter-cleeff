@@ -468,6 +468,25 @@ it("brings in 250 payments within 20 database calls", async () => {
   expect(await count("mollie_payments WHERE kind = 'line' AND bank_line_id IS NULL")).toBe(0);
 });
 
+it("says which part Mollie refused, with its status, and nothing more", async () => {
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    // The first call of a run without a known profile asks for the profile.
+    mollie.current.failNext(403);
+    expect(await sync("2027-03-07T02:00:00.000Z")).toBe("refused (profiles, 403)");
+    // With the profile known, a refused list of payments names that list.
+    expect(await sync("2027-03-07T02:00:00.000Z")).toBe("ok");
+    mollie.current.failNext(422);
+    expect(await sync("2027-03-08T02:00:00.000Z")).toBe("refused (payments, 422)");
+    expect(logged.mock.calls).toEqual([
+      ["mollie step failed", "refused (profiles, 403)"],
+      ["mollie step failed", "refused (payments, 422)"],
+    ]);
+  } finally {
+    logged.mockRestore();
+  }
+});
+
 it("skips without the token and names a failure of Mollie without saying more", async () => {
   expect(await sync("2027-03-07T02:00:00.000Z", { MOLLIE_ORG_TOKEN: undefined })).toBe("skipped");
   const logged = vi.spyOn(console, "error").mockImplementation(() => {});
