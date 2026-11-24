@@ -34,6 +34,8 @@ const LEDGER_TABLES: [table: string, order: string, columns?: string][] = [
   ["mollie_settlements", "id"],
   ["mollie_rules", "sort, id"],
   ["assets", "created_at, id"],
+  ["budget_sources", "year"],
+  ["budget_lines", "year, account_code"],
 ];
 
 const IN_USE_KEY = "in_use_since";

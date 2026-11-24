@@ -104,6 +104,8 @@ it("answers every boekhouding route only after logging in", async () => {
     ["POST", "/entries/x/attachments"], ["GET", "/attachments/x"], ["POST", "/attachments/x/hide"], ["GET", "/opening?year=2027"], ["PUT", "/opening?year=2027"],
     ["GET", "/comparison?year=2026"], ["PUT", "/comparison?year=2026"], ["GET", "/comparison/years"], ["GET", "/reports/years"], ["GET", "/reports/balance?date=2027-01-01"],
     ["GET", "/reports/result?from=2027-01-01&to=2027-01-31"], ["GET", "/reports/account/1010?from=2027-01-01&to=2027-01-31"], ["GET", "/overview"],
+    ["GET", "/budget?year=2027"], ["PUT", "/budget?year=2027"], ["DELETE", "/budget?year=2027"], ["PUT", "/budget/line?year=2027&account=4308"],
+    ["DELETE", "/budget/line?year=2027&account=4308"], ["GET", "/budget/actuals?year=2027"],
   ];
   for (const [method, path] of routes) {
     const bare = await app.request(`${base}${path}`, { method }, env);

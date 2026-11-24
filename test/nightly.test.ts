@@ -83,7 +83,7 @@ it("takes the boekhouding along in the weekly copy", async () => {
   expect(file.ledger.ledger_entries).toHaveLength(1);
   expect(file.ledger.ledger_lines).toHaveLength(2);
   expect(file.ledger.ledger_accounts.length).toBeGreaterThan(10);
-  for (const table of ["ledger_years", "ledger_history", "ledger_year_events", "ledger_attachments", "ledger_settings", "money_accounts", "bank_lines", "bank_balances", "category_accounts", "comparison_figures"]) {
+  for (const table of ["ledger_years", "ledger_history", "ledger_year_events", "ledger_attachments", "ledger_settings", "money_accounts", "bank_lines", "bank_balances", "category_accounts", "comparison_figures", "budget_lines", "budget_sources"]) {
     expect(Array.isArray(file.ledger[table]), table).toBe(true);
   }
 });

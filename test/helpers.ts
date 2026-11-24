@@ -116,6 +116,8 @@ export function useFakeBoth(): { eb: { current: FakeEnableBanking }; mollie: { c
 
 // Children before parents, so no foreign key is left dangling.
 const TABLES = [
+  "budget_lines",
+  "budget_sources",
   "assets",
   "mollie_payments",
   "mollie_settlements",
