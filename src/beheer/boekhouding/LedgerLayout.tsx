@@ -6,6 +6,7 @@ const tabs: [path: string, name: string][] = [
   ["/beheer/boekhouding/te-boeken", "Te boeken"],
   ["/beheer/boekhouding/boekingen", "Boekingen"],
   ["/beheer/boekhouding/rapporten", "Rapporten"],
+  ["/beheer/boekhouding/begroting", "Begroting"],
   ["/beheer/boekhouding/mollie", "Mollie"],
   ["/beheer/boekhouding/toestellen", "Toestellen"],
   ["/beheer/boekhouding/jaar", "Jaar"],

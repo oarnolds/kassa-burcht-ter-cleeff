@@ -179,6 +179,7 @@ Het meeste boekt de app zelf, elke nacht: de omzet van de kassa, de afdrachten v
 - **Te boeken.** De bankregels die op jou wachten. Per bankrekening staat er de knop **Bankbestand inlezen**, en met **Regel intypen** zet je er zelf een regel bij (met een datum tot en met vandaag).
 - **Boekingen.** Alle boekingen van een jaar. Zoeken kan op datum, rekening, bedrag of tekst. Hier maak je een **Nieuwe boeking**, bijvoorbeeld voor kosten die aan het eind van het jaar nog betaald moeten worden.
 - **Rapporten.** De **Balans** op een datum en **Winst en verlies** over een periode, naast hetzelfde jaar ervoor. Tik op een rekening om de regels ervan te zien. Het **Meerjarenoverzicht** zet de winst-en-verliesrekening van alle jaren naast elkaar, ook de jaren uit e-Boekhouden.
+- **Begroting.** Per jaar een begroting per maand, met een voorstel uit de mutaties van e-Boekhouden of uit de boekingen van het jaar ervoor, en de begroting naast wat er geboekt is. Zie "Begroting" hieronder.
 - **Mollie.** Per maand de pin van de kassa naast die van Mollie, de betalingen via de website en de QR-code, de kosten en het saldo.
 - **Toestellen.** De speeltoestellen en de inventaris, de afschrijving per jaar, en afvoeren.
 - **Jaar.** Per jaar de controles, **Jaar afsluiten**, heropenen, en het jaaroverzicht. Bovenaan ook **Eerdere jaren**: de jaren uit e-Boekhouden.
@@ -300,6 +301,26 @@ Zolang het jaar open is, staat er "Voorlopig" op. Maak het jaaroverzicht als het
 
 **Bewaren.** De app wist niets: geen boekingen, geen bankregels, geen bijlagen. Toch is het jaaroverzicht het archief. Bewaar de drie bestanden buiten de app, bijvoorbeeld op de schijf van de vereniging, en houd ze 7 jaar. Ze zijn te lezen zonder de app. De wekelijkse reservekopie neemt de boekhouding mee, maar niet de bijlagen: die staan apart bij Cloudflare en worden nooit opgeruimd.
 
+### Begroting
+
+Onder **Begroting** maak je per jaar een begroting per maand: per rekening van opbrengsten of kosten wat je in elke maand verwacht. Bedragen zijn hele euro's. De begroting is een plan naast de boekhouding: hij verandert nooit een boeking. Kies bovenaan het **Jaar** (vanaf 2027 tot en met volgend jaar).
+
+**Een voorstel uit e-Boekhouden (voor 2027).**
+
+1. Maak in e-Boekhouden het overzicht **Mutaties** van één jaar (bijvoorbeeld 1 januari tot en met vandaag) en exporteer het naar Excel.
+2. Tik bij **Begroting 2027 maken** op **Mutatieoverzicht inlezen** en kies het bestand. Een bestand van 2027 of later, of met mutaties van meer dan één jaar, leest de app niet.
+3. De app zegt hoeveel mutaties hij heeft gelezen en van wanneer tot wanneer. Overboekingen tussen eigen rekeningen (en andere boekingen zonder opbrengst of kosten) tellen niet mee. Loopt het bestand niet tot en met december, dan zegt de app dat ook: een regel per maand of per kwartaal vult de laatste maanden aan, een regel "zoals 2026" laat ze leeg.
+4. **Mutaties met meer rekeningen.** Een mutatie die in e-Boekhouden over meer rekeningen is verdeeld (bijvoorbeeld verhuur en entree in één ontvangst), staat er alleen met het totaal in. Kies bij **Bij rekening** waar zo'n groep in het voorstel komt.
+5. **Niet geplaatst.** Een nummer dat bij geen rekening van de app hoort. Kies een rekening, of laat het op **Niet meenemen**.
+6. **Niet meegenomen.** Memorialen (en mutaties van een soort die de app niet kent) tellen niet mee; ze staan er ter controle.
+7. Het **Voorstel** geeft per rekening een ritme: **elke maand** hetzelfde bedrag, **per kwartaal**, **één keer** in een maand, of **zoals 2026** (het jaarbedrag verdeeld zoals het in 2026 viel). Staan er toestellen in de lijst **Toestellen**, dan komt de afschrijving van het jaar erbij op 4601, één keer in december. Tik op **Begroting maken**.
+
+**Vanaf 2028** kan het voorstel ook uit de boekingen van het jaar ervoor in de app komen: tik op **Voorstel uit de boekingen van 2027**.
+
+**Aanpassen.** Onder **Begroting {jaar}** staat de begroting met een kolom per maand, de totalen van opbrengsten en kosten, en het resultaat. Tik op een rekening om de regel te wijzigen: kies het **Ritme** en vul het bedrag in hele euro's in ("1.153" of "1153", met een min voor een bedrag de andere kant op). Onder **Dat wordt** zie je de twaalf maanden, en het jaar waar het voorstel vandaan kwam ernaast. Tik op **Opslaan**, of op **Uit de begroting halen**. Een rekening erbij: kies hem bij **Rekening toevoegen** en tik op **Toevoegen**. **Downloaden als Excel** geeft de begroting als bestand. **Begroting {jaar} leegmaken** vraagt het nog een keer en haalt dan alle regels van dat jaar weg; daarna kun je opnieuw een voorstel maken.
+
+**Begroting en werkelijk.** Zodra er in het jaar geboekt is, staat per rekening de begroting van het jaar, de begroting tot en met een maand, wat er tot en met die maand is geboekt, en het verschil (geboekt min begroot). Kies de maand bij **Tot en met**; de app begint bij de maand van de laatste boeking. Een rekening met boekingen maar zonder begroting staat er met 0.
+
 ## Voor de bouwer
 
 Eén Cloudflare Worker (Hono, onder `/api`) met een React-app als statische bestanden, en een D1-database. Ontwerp en plan staan in `docs/superpowers/`.
@@ -398,7 +419,7 @@ Afspraken in de code: bedragen zijn hele centen; een dag is een dag in Amsterdam
 
 ### De boekhouding
 
-Een dubbele boekhouding naast de kassa: routes onder `/api/admin/boekhouding/*` achter de inlog, schermen in `src/beheer/boekhouding/`, de code van de Worker in `worker/db/` (`ledger.ts` voor de boekingen, verder `bank.ts`, `kassa-ledger.ts`, `mollie-ledger.ts`, `assets.ts`, `year.ts`) en `worker/nightly.ts`. Ontwerp en plan: `docs/superpowers/specs/2026-11-23-boekhouding-design.md` en `docs/superpowers/plans/2026-11-23-boekhouding.md`. De boekhouding leest de tabellen van de kassa en schrijft er nooit in; de kassa-routes en de iPad zijn er niet door veranderd.
+Een dubbele boekhouding naast de kassa: routes onder `/api/admin/boekhouding/*` achter de inlog, schermen in `src/beheer/boekhouding/`, de code van de Worker in `worker/db/` (`ledger.ts` voor de boekingen, verder `bank.ts`, `kassa-ledger.ts`, `mollie-ledger.ts`, `assets.ts`, `year.ts`) en `worker/nightly.ts`. De begroting staat in `worker/db/budget.ts` en `shared/budget.ts` (de regels), het lezen van de Mutaties van e-Boekhouden in `shared/eboekhouden-mutations.ts` en `shared/mutation-base.ts`. Ontwerp en plan: `docs/superpowers/specs/2026-11-23-boekhouding-design.md` en `docs/superpowers/plans/2026-11-23-boekhouding.md`. De boekhouding leest de tabellen van de kassa en schrijft er nooit in; de kassa-routes en de iPad zijn er niet door veranderd.
 
 **Online zetten**, in deze volgorde, en elke stap alleen met een ja van de penningmeester:
 
@@ -408,7 +429,7 @@ Een dubbele boekhouding naast de kassa: routes onder `/api/admin/boekhouding/*` 
 npx wrangler r2 bucket create boekhouding-bijlagen
 ```
 
-2. Noteer de tijd in UTC (dan kan Time Travel terug naar vlak ervoor) en zet migraties 0005 tot en met 0010 op de echte database. Ze maken alleen nieuwe tabellen en vullen er een paar: `0005_ledger`, `0006_ledger_seed` (het rekeningschema, de geldrekeningen, de rekening per kassacategorie en het jaar 2027), `0007_bank_consent`, `0008_mollie_ledger`, `0009_mollie_rules_seed` (de eerste regels voor Mollie) en `0010_assets`. De tabellen van de kassa blijven zoals ze zijn.
+2. Noteer de tijd in UTC (dan kan Time Travel terug naar vlak ervoor) en zet migraties 0005 tot en met 0011 op de echte database. Ze maken alleen nieuwe tabellen en vullen er een paar: `0005_ledger`, `0006_ledger_seed` (het rekeningschema, de geldrekeningen, de rekening per kassacategorie en het jaar 2027), `0007_bank_consent`, `0008_mollie_ledger`, `0009_mollie_rules_seed` (de eerste regels voor Mollie), `0010_assets` en `0011_budget` (de begroting). De tabellen van de kassa blijven zoals ze zijn.
 
 ```bash
 npx wrangler d1 migrations apply kassa --remote

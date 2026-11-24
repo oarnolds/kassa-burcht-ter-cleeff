@@ -4,6 +4,7 @@ import { adminApi } from "../../lib/api";
 import { Button } from "../../ui/Button";
 import { Problem } from "../parts";
 import { useGo } from "../useAdmin";
+import { saveFile } from "./download";
 import { attachmentBytes, ledgerPath } from "./ledger-api";
 import { useBusy } from "./useBusy";
 
@@ -33,19 +34,6 @@ async function allPages<T>(path: (after: number) => string, last: (item: T) => n
     if (page.length < YEAR_PAGE) return all;
     after = last(page.at(-1)!);
   }
-}
-
-/** Offers a file to save, as a download of a blob. */
-function save(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  // Long enough for the browser to have read it.
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 const progressOf = (done: number, total: number) => `Bezig met ${done} van ${total} boekingen …`;
@@ -103,7 +91,7 @@ export function YearExportButtons({ year }: { year: number }) {
         (change) => change.id,
       );
       const { buildWorkbook } = await import("./year-export");
-      save(await buildWorkbook(data, entries, changes), `jaaroverzicht-${year}.xlsx`);
+      saveFile(await buildWorkbook(data, entries, changes), `jaaroverzicht-${year}.xlsx`);
     });
 
   const zip = () =>
@@ -123,7 +111,7 @@ export function YearExportButtons({ year }: { year: number }) {
         if (!(error instanceof AttachmentFetchError)) throw error;
         throw new Explained(`Bijlage ${error.filename} van boeking ${error.number} kon niet worden opgehaald. Probeer het opnieuw.`);
       });
-      save(blob, `bijlagen-${year}.zip`);
+      saveFile(blob, `bijlagen-${year}.zip`);
     });
 
   return (

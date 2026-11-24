@@ -99,6 +99,11 @@ describe("proposeRule", () => {
     expect(spread(rule, base)).toEqual(at({ 1: 30, 3: 1154, 9: 208 }));
   });
 
+  it("gives the months themselves when they add up to nothing, as nothing can be spread like them", () => {
+    expect(propose(at({ 3: 100, 4: -100 }))).toEqual({ kind: "custom", months: at({ 3: 100, 4: -100 }) });
+    expect(propose([4951, -5049, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])).toEqual({ kind: "custom", months: at({ 1: 50, 2: -50 }) });
+  });
+
   it("proposes nothing when no month has a whole euro", () => {
     expect(propose(Array(12).fill(0))).toBeNull();
     expect(propose([49, -49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])).toBeNull();

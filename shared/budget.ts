@@ -85,7 +85,8 @@ const near = (value: number, to: number, share: number) => Math.sign(value) === 
  * A rule that gives about what a source year had in each month. `covered`: how many months the source covers, from
  * its first to its last (11 for January to November). The months are rounded to whole euros first. One month: once
  * a year. Three or four close amounts a quarter apart: per quarter. Nearly every month about the same: every month.
- * Anything else: the year's total spread like the source. Nothing in any month: null.
+ * Anything else: the year's total spread like the source (or, when that total is nothing, the months themselves).
+ * Nothing in any month: null.
  */
 export function proposeRule(cents: number[], covered: number): BudgetRule | null {
   const euros = cents.map((value) => roundEuros(value / 100));
@@ -106,6 +107,8 @@ export function proposeRule(cents: number[], covered: number): BudgetRule | null
   if (covered >= 6 && active.length >= covered - 2 && values.filter((value) => near(value, middle, 0.35)).length >= 0.6 * active.length) {
     return { kind: "monthly", amountCents: roundEuros(total(values) / values.length) * 100 };
   }
+  // Months that add up to nothing cannot be spread like themselves: they are given as they are.
+  if (total(euros) === 0) return { kind: "custom", months: euros.map((value) => value * 100) };
   return { kind: "pattern", amountCents: total(euros) * 100 };
 }
 

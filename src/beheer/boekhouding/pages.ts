@@ -3,6 +3,7 @@
 
 export { AssetsPage } from "./AssetsPage";
 export { BankReturnPage } from "./BankReturnPage";
+export { BudgetPage } from "./BudgetPage";
 export { ComparisonPage } from "./ComparisonPage";
 export { EarlierYearsPage } from "./EarlierYearsPage";
 export { EntriesPage } from "./EntriesPage";

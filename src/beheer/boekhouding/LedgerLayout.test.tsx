@@ -13,7 +13,7 @@ it("adds Boekhouding to the beheer menu, before Instellingen", async () => {
   expect(within(menu).getByRole("link", { name: "Boekhouding" })).toHaveAttribute("href", "/beheer/boekhouding");
 });
 
-it("has its own tab bar with the eight tabs", async () => {
+it("has its own tab bar with the nine tabs, Begroting after Rapporten", async () => {
   mockLoggedIn();
   mockApi({});
   renderAt("/beheer/boekhouding/jaar");
@@ -23,11 +23,13 @@ it("has its own tab bar with the eight tabs", async () => {
     "Te boeken",
     "Boekingen",
     "Rapporten",
+    "Begroting",
     "Mollie",
     "Toestellen",
     "Jaar",
     "Instellingen",
   ]);
+  expect(within(tabs).getByRole("link", { name: "Begroting" })).toHaveAttribute("href", "/beheer/boekhouding/begroting");
   // The page itself comes in the boekhouding's own chunk, a moment after the tab bar (R38).
   expect(await screen.findByRole("heading", { name: "Jaar" })).toBeInTheDocument();
 });

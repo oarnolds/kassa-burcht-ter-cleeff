@@ -1,8 +1,10 @@
 // The one place that knows the boekhouding's paths and body shapes (they follow the zod schemas in
-// worker/routes/admin-ledger.ts, admin-ledger-bank.ts, admin-ledger-mollie.ts, admin-ledger-assets.ts and admin-ledger-year.ts). Reads: a path for `useAdminData`. Writes: `useLedgerWrites`.
+// worker/routes/admin-ledger.ts, admin-ledger-bank.ts, admin-ledger-mollie.ts, admin-ledger-assets.ts, admin-ledger-year.ts
+// and admin-ledger-budget.ts). Reads: a path for `useAdminData`. Writes: `useLedgerWrites`.
 
 import { useMemo } from "react";
 import type { PastedAsset } from "../../../shared/asset-paste";
+import type { Budget, BudgetLine, BudgetRule, BudgetSource } from "../../../shared/budget";
 import type { CamtStatement } from "../../../shared/camt";
 import type {
   AccountKind,
@@ -53,6 +55,9 @@ export type EntryFilter = { year: number; from?: string; to?: string; account?: 
 /** The page of one entry. */
 export const entryRoute = (id: string): string => `/beheer/boekhouding/boekingen/${id}`;
 
+/** What "Begroting maken" sends: the source and a rule per account; the Worker works out the months. */
+export type BudgetBody = { source: BudgetSource; lines: Pick<BudgetLine, "accountCode" | "rule" | "base">[] };
+
 /** The page "Eerdere jaren": the years read from e-Boekhouden, and reading another. */
 export const EARLIER_YEARS_ROUTE = "/beheer/boekhouding/eerdere-jaren";
 /** The page with the comparison figures of one year before the books, to see or change them. */
@@ -96,6 +101,10 @@ export const ledgerPath = {
   assets: `${LEDGER}/assets`,
   /** Without a year: the plan of the earliest open year still to book. */
   depreciation: (year?: number | null) => (year == null ? `${LEDGER}/depreciation` : `${LEDGER}/depreciation?year=${year}`),
+  /** A year's budget: its source and a line per account. */
+  budget: (year: number) => `${LEDGER}/budget?year=${year}`,
+  /** A year of the books per income and expense account and month, with its last booking. */
+  budgetActuals: (year: number) => `${LEDGER}/budget/actuals?year=${year}`,
   /** Every year, oldest first, with its closing and reopening. */
   years: `${LEDGER}/years`,
   yearChecks: (year: number) => `${LEDGER}/year/${year}/checks`,
@@ -156,6 +165,14 @@ export function explainWrite(status: number, error: string): string {
     reason_required: "Schrijf waarom het jaar weer open moet (minstens 3 tekens).",
     not_newest: "Alleen het laatst afgesloten jaar kan weer open.",
     not_closed: "Dit jaar is niet afgesloten. Ververs de pagina.",
+    not_budget_year: "Voor dit jaar kan geen begroting worden gemaakt.",
+    not_ledger_year: "Van dit jaar zijn er geen boekingen in de app.",
+    unknown_account: "Deze rekening bestaat niet.",
+    not_result_account: "Alleen een rekening van opbrengsten of kosten kan in de begroting.",
+    duplicate_account: "Een rekening staat twee keer in de begroting.",
+    invalid_rule: "Controleer de bedragen en probeer het opnieuw.",
+    not_whole_euros: "Vul hele euro's in, zonder centen.",
+    no_pattern: "Deze rekening heeft geen bedragen uit een eerder jaar om zo te verdelen. Kies een ander ritme.",
   };
   return known[error] ?? "Dat is niet gelukt. Probeer het opnieuw.";
 }
@@ -210,6 +227,15 @@ export function useLedgerWrites() {
       reopenYear: (year: number, reason: string): Promise<ApiResult<{ ok: true }>> => write(`${LEDGER}/year/${year}/reopen`, "POST", { reason }),
       /** `empty`: books nothing, to undo a year before one ahead of it is booked again. */
       bookDepreciation: (year: number, empty = false): Promise<ApiResult<Entry>> => write(`${LEDGER}/depreciation`, "POST", empty ? { year, empty } : { year }),
+      /** "Begroting maken": replaces the whole year. */
+      putBudget: (year: number, body: BudgetBody): Promise<ApiResult<Budget>> => write(ledgerPath.budget(year), "PUT", body),
+      /** Adds a line or changes its rule; a line keeps its base. */
+      putBudgetLine: (year: number, accountCode: string, rule: BudgetRule): Promise<ApiResult<BudgetLine>> =>
+        write(`${LEDGER}/budget/line?year=${year}&account=${encodeURIComponent(accountCode)}`, "PUT", { rule }),
+      deleteBudgetLine: (year: number, accountCode: string): Promise<ApiResult<{ ok: true }>> =>
+        write(`${LEDGER}/budget/line?year=${year}&account=${encodeURIComponent(accountCode)}`, "DELETE"),
+      /** "Begroting {jaar} leegmaken": every line and the source. */
+      deleteBudget: (year: number): Promise<ApiResult<{ ok: true }>> => write(ledgerPath.budget(year), "DELETE"),
       createEntry: (body: EntryBody): Promise<ApiResult<Entry>> => write(`${LEDGER}/entries`, "POST", body),
       saveEntry: (id: string, body: EntryBody): Promise<ApiResult<Entry>> => write(`${LEDGER}/entries/${id}`, "PUT", body),
       emptyEntry: (id: string): Promise<ApiResult<Entry>> => write(`${LEDGER}/entries/${id}/empty`, "POST"),
