@@ -138,9 +138,18 @@ it("refuses a year outside the budget years, and a malformed one", async () => {
   expect((await getBudget(env.DB, 2029, new Date("2028-01-01T12:00:00.000Z"))).year).toBe(2029);
 });
 
-it("refuses an account that is not there, not a result account, or twice; and a rule it cannot take", async () => {
+it("refuses an account that is not there, not a result account, or twice; and a rule it cannot take; and writes nothing then", async () => {
   const line = (accountCode: string, rule: unknown, more: object = {}) => ({ accountCode, rule, base: null, ...more });
   const monthly = { kind: "monthly", amountCents: 100 };
+  // A budget that is there already: a refusal leaves it as it is, its source included.
+  await send("PUT", "/budget?year=2027", {
+    source: SOURCE,
+    lines: [line("4308", { kind: "monthly", amountCents: 3100 }), line("8010", { kind: "pattern", amountCents: 600000 }, { base: RENT })],
+  });
+  const before = await read(2027);
+  expect(before.lines).toHaveLength(2);
+  const unchanged = async (what: string) => expect(await read(2027), what).toEqual(before);
+  const other = { kind: "ledger", baseYear: 2026, from: "2026-01-01", to: "2026-06-30" };
   const cases: [unknown[], string][] = [
     [[line("4308", monthly), line("9999", monthly)], "unknown_account"],
     [[line("1010", monthly)], "not_result_account"],
@@ -154,24 +163,84 @@ it("refuses an account that is not there, not a result account, or twice; and a 
     [[line("4308", { kind: "pattern", amountCents: 100 }, { base: at({ 1: 5, 2: -5 }) })], "no_pattern"],
   ];
   for (const [lines, error] of cases) {
-    expect(await refusal(await send("PUT", "/budget?year=2027", { source: SOURCE, lines })), error).toEqual({ status: 400, error });
+    // Another source and a first line that would do: nothing of it may stay when a later line is refused.
+    expect(await refusal(await send("PUT", "/budget?year=2027", { source: other, lines })), error).toEqual({ status: 400, error });
+    await unchanged(`whole year, ${error}`);
   }
-  expect(await refusal(await send("PUT", "/budget?year=2027", { source: SOURCE }))).toEqual({ status: 400, error: "invalid" });
-  expect(await refusal(await send("PUT", "/budget?year=2027", { source: SOURCE, lines: [line("4308", monthly, { base: [1, 2] })] }))).toEqual({ status: 400, error: "invalid" });
-  expect(await refusal(await send("PUT", "/budget?year=2027", { source: { kind: "elders" }, lines: [] }))).toEqual({ status: 400, error: "invalid" });
-  expect((await read(2027)).lines).toEqual([]);
-  expect((await read(2027)).source).toBeNull();
+  for (const body of [
+    { source: SOURCE },
+    { source: other, lines: [line("4308", monthly, { base: [1, 2] })] },
+    { source: { kind: "elders" }, lines: [] },
+  ]) {
+    expect(await refusal(await send("PUT", "/budget?year=2027", body))).toEqual({ status: 400, error: "invalid" });
+    await unchanged(`whole year, ${JSON.stringify(body)}`);
+  }
 
-  expect(await refusal(await send("PUT", "/budget/line?year=2027&account=9999", { rule: monthly }))).toEqual({ status: 400, error: "unknown_account" });
-  expect(await refusal(await send("PUT", "/budget/line?year=2027&account=1010", { rule: monthly }))).toEqual({ status: 400, error: "not_result_account" });
-  expect(await refusal(await send("PUT", "/budget/line?year=2027&account=4308", { rule: { kind: "monthly", amountCents: 1 } }))).toEqual({
+  const lineCases: [string, unknown, string][] = [
+    ["account=9999", { rule: monthly }, "unknown_account"],
+    ["account=1010", { rule: monthly }, "not_result_account"],
+    ["account=4308", { rule: { kind: "monthly", amountCents: 1 } }, "not_whole_euros"],
+    ["account=4308", { rule: { kind: "weekly" } }, "invalid_rule"],
+    ["account=4308", {}, "invalid_rule"],
+    ["account=4308", { rule: { kind: "pattern", amountCents: 100 } }, "no_pattern"],
+    ["", { rule: monthly }, "unknown_account"],
+  ];
+  for (const [query, body, error] of lineCases) {
+    expect(await refusal(await send("PUT", `/budget/line?year=2027&${query}`, body)), `${query} ${error}`).toEqual({ status: 400, error });
+    await unchanged(`line, ${query} ${error}`);
+  }
+});
+
+it("refuses a source that does not fit the year, and keeps the budget that was there", async () => {
+  await send("PUT", "/budget?year=2027", { source: SOURCE, lines: [{ accountCode: "4308", rule: { kind: "monthly", amountCents: 3100 }, base: null }] });
+  const before = await read(2027);
+  const lines = [{ accountCode: "8010", rule: { kind: "monthly", amountCents: 100 }, base: null }];
+  const sources = [
+    // A proposal without its year or its dates.
+    { kind: "mutations", baseYear: null, from: "2026-01-02", to: "2026-11-20" },
+    { kind: "mutations", baseYear: 2026, from: null, to: "2026-11-20" },
+    { kind: "mutations", baseYear: 2026, from: "2026-01-02", to: null },
+    { kind: "ledger", baseYear: null, from: null, to: null },
+    // Dates the wrong way round, or outside its year.
+    { kind: "mutations", baseYear: 2026, from: "2026-11-20", to: "2026-01-02" },
+    { kind: "mutations", baseYear: 2026, from: "2025-12-31", to: "2026-11-20" },
+    { kind: "ledger", baseYear: 2026, from: "2026-01-01", to: "2027-01-01" },
+    // The year of the budget itself, or later.
+    { kind: "mutations", baseYear: 2027, from: "2027-01-02", to: "2027-11-20" },
+    { kind: "ledger", baseYear: 2028, from: "2028-01-01", to: "2028-03-01" },
+    // An empty start has none of them.
+    { kind: "empty", baseYear: 2026, from: null, to: null },
+    { kind: "empty", baseYear: null, from: "2026-01-01", to: null },
+    { kind: "empty", baseYear: null, from: null, to: "2026-12-31" },
+  ];
+  for (const source of sources) {
+    expect(await refusal(await send("PUT", "/budget?year=2027", { source, lines })), JSON.stringify(source)).toEqual({ status: 400, error: "invalid_source" });
+    expect(await read(2027), JSON.stringify(source)).toEqual(before);
+  }
+  // A source of an earlier year than the one before is fine; an empty start too.
+  const earlier = { kind: "mutations", baseYear: 2026, from: "2026-01-01", to: "2026-12-31" };
+  expect((await send("PUT", "/budget?year=2028", { source: earlier, lines })).status).toBe(200);
+  expect((await send("PUT", "/budget?year=2027", { source: { kind: "empty", baseYear: null, from: null, to: null }, lines: [] })).status).toBe(200);
+});
+
+it("refuses a rule that gives a month beyond the limit, as one like a base that nearly adds up to nothing can", async () => {
+  const thin = at({ 1: 1000, 2: -999 });
+  await send("PUT", "/budget?year=2027", { source: SOURCE, lines: [{ accountCode: "4308", rule: { kind: "pattern", amountCents: 100 }, base: thin }] });
+  const before = await read(2027);
+  expect(before.lines[0]!.months).toEqual(thin);
+  // € 20.000 spread like it: a January of € 20.000.000.
+  const large = { kind: "pattern", amountCents: 2_000_000 };
+  expect(await refusal(await send("PUT", "/budget?year=2027", { source: SOURCE, lines: [{ accountCode: "4308", rule: large, base: thin }] }))).toEqual({
     status: 400,
-    error: "not_whole_euros",
+    error: "invalid_rule",
   });
-  expect(await refusal(await send("PUT", "/budget/line?year=2027&account=4308", { rule: { kind: "weekly" } }))).toEqual({ status: 400, error: "invalid_rule" });
-  expect(await refusal(await send("PUT", "/budget/line?year=2027&account=4308", {}))).toEqual({ status: 400, error: "invalid_rule" });
-  expect(await refusal(await send("PUT", "/budget/line?year=2027", { rule: monthly }))).toEqual({ status: 400, error: "unknown_account" });
-  expect((await read(2027)).lines).toEqual([]);
+  expect(await read(2027)).toEqual(before);
+  expect(await refusal(await send("PUT", "/budget/line?year=2027&account=4308", { rule: large }))).toEqual({ status: 400, error: "invalid_rule" });
+  expect(await read(2027)).toEqual(before);
+  // € 10.000 gives a January of exactly the limit: that is still allowed.
+  const edge = await send("PUT", "/budget/line?year=2027&account=4308", { rule: { kind: "pattern", amountCents: 1_000_000 } });
+  expect(edge.status).toBe(200);
+  expect(((await edge.json()) as BudgetLine).months).toEqual(at({ 1: 10_000_000, 2: -9_990_000 }));
 });
 
 const move = (debit: string, credit: string, cents: number): EntryLine[] => [

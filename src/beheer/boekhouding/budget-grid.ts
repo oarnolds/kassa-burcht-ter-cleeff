@@ -43,16 +43,27 @@ export function sourceText(source: BudgetSource | null): string | null {
   return null;
 }
 
+/** "A", "A en B", "A, B en C". */
+export const joined = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} en ${names.at(-1)}`);
+
+/** Months `from` to `to` (1 to 12) as said: one or two by name, more as "april tot en met juni"; none for an empty run. */
+function monthRun(from: number, to: number): string[] {
+  if (to < from) return [];
+  if (to - from < 2) return MONTH_NAMES.slice(from - 1, to);
+  return [`${MONTH_NAMES[from - 1]} tot en met ${MONTH_NAMES[to - 1]}`];
+}
+
 /**
- * Says which months a source left out, when it stops before December: what a rule per month or per quarter fills
- * in, and what one "like the base year" leaves empty.
+ * Says which months a source left out, when it starts after January or stops before December: what a rule per
+ * month or per quarter fills in, and what one "like the base year" leaves empty.
  */
-export function missingMonthsText(lastMonth: number, baseYear: number): string | null {
-  if (lastMonth >= 12) return null;
-  const like = `bij 'zoals ${baseYear}'`;
-  if (lastMonth === 11) return `December zit er nog niet in. Regels per maand of per kwartaal vullen dat aan; ${like} blijft december leeg.`;
-  const first = MONTH_NAMES[lastMonth]!;
-  return `${first[0]!.toUpperCase()}${first.slice(1)} tot en met december zitten er nog niet in. Regels per maand of per kwartaal vullen dat aan; ${like} blijven die maanden leeg.`;
+export function missingMonthsText(firstMonth: number, lastMonth: number, baseYear: number): string | null {
+  const missing = 12 - (lastMonth - firstMonth + 1);
+  if (missing <= 0) return null;
+  const said = joined([...monthRun(1, firstMonth - 1), ...monthRun(lastMonth + 1, 12)]);
+  const one = missing === 1;
+  const empty = one ? `blijft ${firstMonth > 1 ? MONTH_NAMES[0] : MONTH_NAMES[11]} leeg` : "blijven die maanden leeg";
+  return `${said[0]!.toUpperCase()}${said.slice(1)} ${one ? "zit" : "zitten"} er nog niet in. Regels per maand of per kwartaal vullen dat aan; bij 'zoals ${baseYear}' ${empty}.`;
 }
 
 export type GridRow = { account: LedgerAccount; months: number[] };

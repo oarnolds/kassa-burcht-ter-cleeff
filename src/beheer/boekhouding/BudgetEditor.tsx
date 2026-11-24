@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { type BudgetLine, type BudgetRule, formatWholeEuros, readWholeEuros, spread } from "../../../shared/budget";
+import { type BudgetLine, type BudgetRule, formatWholeEuros, readWholeEuros, spread, withinLimit } from "../../../shared/budget";
 import type { LedgerAccount } from "../../../shared/ledger-types";
 import { Button } from "../../ui/Button";
 import { useToast } from "../../ui/Toast";
@@ -14,8 +14,15 @@ type Fields = { amount: string; quarter: 1 | 2 | 3; month: number; months: strin
 
 const label = "flex flex-col gap-1 font-semibold";
 const small = "px-1 py-1 text-right text-sm whitespace-nowrap tabular-nums";
-const CENTS = "Vul hele euro's in, zonder centen.";
-const UNREADABLE = "Dit bedrag kan ik niet lezen.";
+/** What is wrong with what is typed in a field. */
+const PROBLEM = {
+  empty: "Vul een bedrag in.",
+  cents: "Vul hele euro's in, zonder centen.",
+  too_large: "Dit bedrag is te groot.",
+  unreadable: "Dit bedrag is niet te lezen.",
+} as const;
+/** A rule "like the base" on a base that nearly adds up to nothing can give months far beyond what a month may hold. */
+const MONTH_TOO_LARGE = "Zo wordt een maand te groot. Kies een kleiner bedrag of een ander ritme.";
 
 /** A month in the preview: whole euros, empty when nothing. */
 const shown = (cents: number) => (cents === 0 ? "" : formatWholeEuros(cents));
@@ -38,22 +45,25 @@ function fieldsFor(kind: Kind, months: number[]): Fields {
   return { amount: formatWholeEuros(amount), quarter: 1, month: largest + 1, months: months.map(formatWholeEuros) };
 }
 
-type Read = { rule: BudgetRule | null; problem: string | null };
+/** A field of the editor: the one amount, or a month of "Eigen bedrag per maand" (0 to 11). */
+type FieldKey = "amount" | `month-${number}`;
+type Read = { rule: BudgetRule | null; problems: { field: FieldKey; problem: string }[] };
 
-/** The rule the fields make; or nothing yet, with what is wrong. */
+/** The rule the fields make; or nothing yet, with what is wrong in which field. An empty month is 0. */
 function readFields(kind: Kind, fields: Fields): Read {
-  const explain = (answer: "cents" | "unreadable" | "empty") => (answer === "cents" ? CENTS : answer === "unreadable" ? UNREADABLE : null);
   if (kind === "custom") {
     const answers = fields.months.map(readWholeEuros);
-    const wrong = answers.find((answer) => answer === "cents") ?? answers.find((answer) => answer === "unreadable");
-    if (wrong) return { rule: null, problem: explain(wrong) };
-    return { rule: { kind, months: answers.map((answer) => (typeof answer === "number" ? answer : 0)) }, problem: null };
+    const problems = answers.flatMap((answer, i) =>
+      typeof answer === "number" || answer === "empty" ? [] : [{ field: `month-${i}` as FieldKey, problem: PROBLEM[answer] }],
+    );
+    if (problems.length > 0) return { rule: null, problems };
+    return { rule: { kind, months: answers.map((answer) => (typeof answer === "number" ? answer : 0)) }, problems };
   }
   const amountCents = readWholeEuros(fields.amount);
-  if (typeof amountCents !== "number") return { rule: null, problem: explain(amountCents) };
-  if (kind === "quarterly") return { rule: { kind, amountCents, month: fields.quarter }, problem: null };
-  if (kind === "yearly") return { rule: { kind, amountCents, month: fields.month }, problem: null };
-  return { rule: { kind, amountCents }, problem: null };
+  if (typeof amountCents !== "number") return { rule: null, problems: [{ field: "amount", problem: PROBLEM[amountCents] }] };
+  if (kind === "quarterly") return { rule: { kind, amountCents, month: fields.quarter }, problems: [] };
+  if (kind === "yearly") return { rule: { kind, amountCents, month: fields.month }, problems: [] };
+  return { rule: { kind, amountCents }, problems: [] };
 }
 
 function PreviewRow({ name, months }: { name: string; months: number[] | null }) {
@@ -95,13 +105,22 @@ export function BudgetEditor({ year, account, line, baseYear, onClose, onSaved }
   const [kind, setKind] = useState<Kind>(line?.rule.kind ?? "monthly");
   const [fields, setFields] = useState<Fields>(() => (line ? fieldsOfLine(line) : { amount: "", quarter: 1, month: 1, months: Array(12).fill("") }));
   const [problem, setProblem] = useState<string | null>(null);
+  // What is wrong in a field shows once it has been left, or once Opslaan is pressed; not while it is typed.
+  const [left, setLeft] = useState<ReadonlySet<FieldKey>>(new Set());
+  const [tried, setTried] = useState(false);
   const top = useRef<HTMLDivElement>(null);
 
   // The editor opens under the grid: bring it into view.
-  useEffect(() => top.current?.scrollIntoView?.({ behavior: "smooth", block: "start" }), []);
+  // A block, not an expression: Chrome's scrollIntoView returns a promise, and an effect may only return a clean-up.
+  useEffect(() => {
+    top.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+  }, []);
 
   const read = readFields(kind, fields);
   const months = read.rule ? spread(read.rule, base) : null;
+  const tooLarge = months !== null && !withinLimit(months);
+  const typedProblem = read.problems.find((one) => tried || left.has(one.field))?.problem ?? (tried && tooLarge ? MONTH_TOO_LARGE : null);
+  const leave = (key: FieldKey) => () => setLeft((before) => (before.has(key) ? before : new Set(before).add(key)));
   const like = baseYear === null ? "het basisjaar" : String(baseYear);
   const kinds: [Kind, string][] = [
     ["monthly", "Elke maand hetzelfde"],
@@ -117,15 +136,18 @@ export function BudgetEditor({ year, account, line, baseYear, onClose, onSaved }
   };
   const set = (more: Partial<Fields>) => setFields((before) => ({ ...before, ...more }));
 
-  const save = () =>
-    run(async () => {
-      if (!read.rule) return;
+  const save = () => {
+    setTried(true);
+    const rule = read.rule;
+    if (!rule || tooLarge) return;
+    return run(async () => {
       setProblem(null);
-      const answer = await api.putBudgetLine(year, account.code, read.rule);
+      const answer = await api.putBudgetLine(year, account.code, rule);
       if (!answer.ok) return setProblem(explainWrite(answer.status, answer.error));
       toast.show("Opgeslagen.");
       onSaved();
     });
+  };
   const remove = () =>
     run(async () => {
       setProblem(null);
@@ -138,7 +160,14 @@ export function BudgetEditor({ year, account, line, baseYear, onClose, onSaved }
   const amountField = (name: string) => (
     <label className={label}>
       {name}
-      <input type="text" autoComplete="off" className={`${field} w-40 text-right tabular-nums`} value={fields.amount} onChange={(event) => set({ amount: event.target.value })} />
+      <input
+        type="text"
+        autoComplete="off"
+        className={`${field} w-40 text-right tabular-nums`}
+        value={fields.amount}
+        onChange={(event) => set({ amount: event.target.value })}
+        onBlur={leave("amount")}
+      />
     </label>
   );
 
@@ -206,12 +235,13 @@ export function BudgetEditor({ year, account, line, baseYear, onClose, onSaved }
                     className={`${field} w-full min-w-0 px-2 text-right tabular-nums`}
                     value={fields.months[i]}
                     onChange={(event) => set({ months: fields.months.map((text, j) => (j === i ? event.target.value : text)) })}
+                    onBlur={leave(`month-${i}`)}
                   />
                 </label>
               ))}
             </div>
           )}
-          {read.problem && <span className="text-sm font-semibold text-redbrown">{read.problem}</span>}
+          {typedProblem && <span className="text-sm font-semibold text-redbrown">{typedProblem}</span>}
           <div className={tableScroll}>
             <table className={table}>
               <thead>
@@ -234,7 +264,7 @@ export function BudgetEditor({ year, account, line, baseYear, onClose, onSaved }
             </table>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" disabled={!read.rule || busy} onClick={() => void save()}>
+            <Button variant="primary" disabled={busy} onClick={() => void save()}>
               Opslaan
             </Button>
             <Button onClick={onClose}>Annuleren</Button>

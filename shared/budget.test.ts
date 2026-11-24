@@ -52,13 +52,15 @@ describe("spread", () => {
 describe("proposeRule", () => {
   const propose = (months: number[], covered = 11) => proposeRule(months, covered);
 
-  it("proposes the same amount every month when nearly every month has about the same", () => {
-    // Energy: one month double, the rest close: the average of the active months.
+  it("proposes the same amount every month when nearly every month has about the same: the pace of the months covered", () => {
+    // Energy: one month double, the rest close: 344 over eleven months.
     expect(propose(euros(34, 34, 68, 26, 26, 26, 26, 26, 26, 26, 26))).toEqual({ kind: "monthly", amountCents: 3100 });
-    // A phone bill that went up a little.
+    // A phone bill that went up a little: 560 over eleven months.
     expect(propose(euros(50, 50, 50, 50, 50, 50, 52, 52, 52, 52, 52))).toEqual({ kind: "monthly", amountCents: 5100 });
-    // A fee in ten of eleven months.
-    expect(propose(euros(22, 22, 22, 22, 22, 22, 22, 0, 22, 22, 22))).toEqual({ kind: "monthly", amountCents: 2200 });
+    // A fee in ten of eleven months: 220 over eleven months, not 22 a month.
+    expect(propose(euros(22, 22, 22, 22, 22, 22, 22, 0, 22, 22, 22))).toEqual({ kind: "monthly", amountCents: 2000 });
+    // Interest in nine of eleven months, one of them larger: 1180 over eleven, not 131 a month (1572 a year).
+    expect(propose(euros(120, 0, 130, 125, 130, 0, 135, 130, 140, 125, 145))).toEqual({ kind: "monthly", amountCents: 10700 });
     // A whole year, and amounts in cents that round to whole euros first.
     expect(propose(Array(12).fill(3949), 12)).toEqual({ kind: "monthly", amountCents: 3900 });
     expect(propose(euros(-20, -20, -20, -20, -20, -20, -20, -20, -20, -20, -20))).toEqual({ kind: "monthly", amountCents: -2000 });
@@ -179,7 +181,20 @@ describe("whole euros", () => {
     expect(readWholeEuros("0")).toBe(0);
   });
 
-  it("says when a text is empty, has cents, or cannot be read", () => {
+  it("reads spaces as thousands separators too, the non-breaking ones included", () => {
+    expect(readWholeEuros("1 153")).toBe(115300);
+    expect(readWholeEuros("1\u00a0153")).toBe(115300);
+    expect(readWholeEuros("1\u202f153")).toBe(115300);
+    expect(readWholeEuros("€ 1 234 567")).toBe(123456700);
+    expect(readWholeEuros("-1 153,-")).toBe(-115300);
+    expect(readWholeEuros("10 000 000")).toBe(1_000_000_000);
+    expect(readWholeEuros("1 153,50")).toBe("cents");
+    expect(readWholeEuros("1 15 3")).toBe("unreadable");
+    expect(readWholeEuros("1 1530")).toBe("unreadable");
+    expect(readWholeEuros("1.234 567")).toBe("unreadable");
+  });
+
+  it("says when a text is empty, has cents, is too large, or cannot be read", () => {
     expect(readWholeEuros("  ")).toBe("empty");
     expect(readWholeEuros("1153,50")).toBe("cents");
     expect(readWholeEuros("1.153,5")).toBe("cents");
@@ -187,7 +202,8 @@ describe("whole euros", () => {
     expect(readWholeEuros("12,05")).toBe("cents");
     expect(readWholeEuros("twaalf")).toBe("unreadable");
     expect(readWholeEuros("1.15.3")).toBe("unreadable");
-    expect(readWholeEuros("10.000.001")).toBe("unreadable");
+    expect(readWholeEuros("10.000.001")).toBe("too_large");
+    expect(readWholeEuros("-20.000.000")).toBe("too_large");
     expect(readWholeEuros("--3")).toBe("unreadable");
   });
 

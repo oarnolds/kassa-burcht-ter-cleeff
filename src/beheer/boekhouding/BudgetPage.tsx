@@ -21,7 +21,7 @@ import { useToast } from "../../ui/Toast";
 import { Loaded, PageTitle, Problem, Section, amount, amountHead, cell, count, field, head, pillLink, table, tableScroll, today } from "../parts";
 import { useAdminData } from "../useAdmin";
 import { BudgetEditor } from "./BudgetEditor";
-import { MONTH_NAMES, MONTH_SHORT, budgetGrid, missingMonthsText, monthHead, ruleText, sourceText, sumOf, type GridRow } from "./budget-grid";
+import { MONTH_NAMES, MONTH_SHORT, budgetGrid, joined, missingMonthsText, monthHead, ruleText, sourceText, sumOf, type GridRow } from "./budget-grid";
 import { saveFile } from "./download";
 import { FIRST_LEDGER_YEAR, explainWrite, ledgerPath, useLedgerWrites } from "./ledger-api";
 import { useBusy } from "./useBusy";
@@ -61,9 +61,6 @@ function proposalOf(months: { accountCode: string; cents: number[] }[], covered:
     return line && isResult(account) ? [line] : [];
   });
 }
-
-/** "A", "A en B", "A, B en C". */
-const joined = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} en ${names.at(-1)}`);
 
 /** An account select of the visible income and expense accounts, costs first. */
 function AccountOptions({ chart }: { chart: LedgerAccount[] }) {
@@ -252,7 +249,7 @@ function Proposal({ year, chart, origin, plan, onMade }: { year: number; chart: 
   return (
     <>
       {base && <MutationDetails base={base} chart={chart} choices={choices} onChoose={setChoices} />}
-      <Section title={`Voorstel voor ${year}`} note={`Per rekening een ritme en het bedrag voor ${year}, naast wat er in ${baseYear} was. Na het maken kun je elke regel wijzigen.`}>
+      <Section title={`Voorstel voor ${year}`} note={`Per rekening een ritme en het bedrag voor ${year}, naast wat er in ${baseYear} was. Na het maken is elke regel nog te wijzigen.`}>
         {lines.length === 0 ? (
           <p className="px-2 text-lg text-ink/70 sm:px-3">Er is niets om voor te stellen.</p>
         ) : (
@@ -287,8 +284,16 @@ function Proposal({ year, chart, origin, plan, onMade }: { year: number; chart: 
   );
 }
 
-/** "Begroting {jaar} maken": a proposal from e-Boekhouden's mutations, or from the bookings of the year before. */
+/** A year started without a proposal: every account is added by hand. */
+const EMPTY_SOURCE: BudgetSource = { kind: "empty", baseYear: null, from: null, to: null };
+
+/**
+ * "Begroting {jaar} maken": a proposal from e-Boekhouden's mutations, or from the bookings of the year before; or an
+ * empty budget to add accounts to.
+ */
 function MakeBudget({ year, chart, onMade }: { year: number; chart: LedgerAccount[]; onMade(): void }) {
+  const api = useLedgerWrites();
+  const toast = useToast();
   const previousYear = year - 1;
   const previous = useAdminData<BudgetActuals>(previousYear >= FIRST_LEDGER_YEAR ? ledgerPath.budgetActuals(previousYear) : null);
   const plan = useAdminData<DepreciationPlan>(ledgerPath.depreciation(year));
@@ -317,16 +322,24 @@ function MakeBudget({ year, chart, onMade }: { year: number; chart: LedgerAccoun
         setProblem("Het bestand kon niet worden gelezen. Probeer het opnieuw.");
       }
     });
+  const startEmpty = () =>
+    run(async () => {
+      setProblem(null);
+      const answer = await api.putBudget(year, { source: EMPTY_SOURCE, lines: [] });
+      if (!answer.ok) return setProblem(explainWrite(answer.status, answer.error));
+      toast.show("Lege begroting gemaakt.");
+      onMade();
+    });
 
   const summary: string[] = [];
   if (origin?.kind === "mutations") {
     const { mutations } = origin;
     summary.push(`${count(mutations.rows.length, "mutatie", "mutaties")} gelezen, van ${formatDateNl(mutations.from)} t/m ${formatDateNl(mutations.to)}.`);
     summary.push("Overboekingen tussen eigen rekeningen tellen niet mee.");
-    summary.push(missingMonthsText(monthOf(mutations.to), mutations.year) ?? "");
+    summary.push(missingMonthsText(monthOf(mutations.from), monthOf(mutations.to), mutations.year) ?? "");
   } else if (origin?.kind === "ledger") {
     summary.push(`Voorstel uit de boekingen van ${origin.actuals.year}, t/m ${formatDateNl(origin.actuals.lastDate)}.`);
-    summary.push(missingMonthsText(monthOf(origin.actuals.lastDate), origin.actuals.year) ?? "");
+    summary.push(missingMonthsText(1, monthOf(origin.actuals.lastDate), origin.actuals.year) ?? "");
   }
 
   return (
@@ -364,6 +377,11 @@ function MakeBudget({ year, chart, onMade }: { year: number; chart: LedgerAccoun
               </Button>
             </>
           )}
+          <h3 className="mt-3 font-bold">Zonder voorstel</h3>
+          <p className="text-ink/70">Een lege begroting, waarin elke rekening met de hand wordt toegevoegd.</p>
+          <Button disabled={busy} onClick={() => void startEmpty()}>
+            Leeg beginnen
+          </Button>
           {problem && <Problem>{problem}</Problem>}
           {summary
             .filter((sentence) => sentence !== "")
@@ -445,8 +463,14 @@ function AddAccount({ chart, budget, onAdd }: { chart: LedgerAccount[]; budget: 
   );
 }
 
-/** "Begroting {jaar}": the grid of the year, adding an account, the Excel file, and emptying the year (asked once more). */
-function BudgetTable({ year, chart, budget, onEdit, onAdd, onChanged }: { year: number; chart: LedgerAccount[]; budget: Budget; onEdit(code: string): void; onAdd(account: LedgerAccount): void; onChanged(): void }) {
+/** A year is started once it has a source (a proposal made, or an empty start) or a line. */
+const started = (budget: Budget) => budget.source !== null || budget.lines.length > 0;
+
+/**
+ * "Begroting {jaar}": the grid of the year, adding an account, the Excel file, and emptying the year (asked once
+ * more). Before the year is started it only says that nothing is in it, so that "Begroting {jaar} maken" goes first.
+ */
+function BudgetTable({ year, chart, budget, onEdit, onAdd, onEmptied }: { year: number; chart: LedgerAccount[]; budget: Budget; onEdit(code: string): void; onAdd(account: LedgerAccount): void; onEmptied(): void }) {
   const api = useLedgerWrites();
   const toast = useToast();
   const [busy, run] = useBusy();
@@ -472,9 +496,16 @@ function BudgetTable({ year, chart, budget, onEdit, onAdd, onChanged }: { year: 
       if (!answer.ok) return setProblem(explainWrite(answer.status, answer.error));
       setAsking(false);
       toast.show("Leeggemaakt.");
-      onChanged();
+      onEmptied();
     });
 
+  if (!started(budget)) {
+    return (
+      <Section title={`Begroting ${year}`}>
+        <p className="px-2 text-lg text-ink/70 sm:px-3">{`Er staat nog niets in de begroting van ${year}.`}</p>
+      </Section>
+    );
+  }
   return (
     <Section title={`Begroting ${year}`}>
       <div className="px-2 text-ink/70 sm:px-3">
@@ -515,18 +546,16 @@ function BudgetTable({ year, chart, budget, onEdit, onAdd, onChanged }: { year: 
       )}
       <div className="mt-4 flex flex-col items-start gap-4 px-2 sm:px-3">
         <AddAccount chart={chart} budget={budget} onAdd={onAdd} />
-        {(budget.lines.length > 0 || budget.source) && (
-          <div className="flex flex-wrap gap-2">
-            {budget.lines.length > 0 && (
-              <Button disabled={busy} onClick={() => void download()}>
-                Downloaden als Excel
-              </Button>
-            )}
-            <Button disabled={busy || asking} onClick={() => setAsking(true)}>
-              {`Begroting ${year} leegmaken`}
+        <div className="flex flex-wrap gap-2">
+          {budget.lines.length > 0 && (
+            <Button disabled={busy} onClick={() => void download()}>
+              Downloaden als Excel
             </Button>
-          </div>
-        )}
+          )}
+          <Button disabled={busy || asking} onClick={() => setAsking(true)}>
+            {`Begroting ${year} leegmaken`}
+          </Button>
+        </div>
         {asking && (
           <div className="flex flex-col items-start gap-2 rounded-xl border-2 border-redbrown/40 p-3">
             <p className="text-lg font-semibold">{`Alle regels van ${year} gaan weg.`}</p>
@@ -660,8 +689,19 @@ function YearBudget({ year, chart, budget, onChanged }: { year: number; chart: L
   };
   return (
     <>
-      {budget.lines.length === 0 && <MakeBudget year={year} chart={chart} onMade={onChanged} />}
-      <BudgetTable year={year} chart={chart} budget={budget} onEdit={edit} onAdd={(account) => setEditing({ account, line: null })} onChanged={onChanged} />
+      {!started(budget) && <MakeBudget year={year} chart={chart} onMade={onChanged} />}
+      <BudgetTable
+        year={year}
+        chart={chart}
+        budget={budget}
+        onEdit={edit}
+        onAdd={(account) => setEditing({ account, line: null })}
+        onEmptied={() => {
+          // The lines are gone: an open editor would show one of them.
+          setEditing(null);
+          onChanged();
+        }}
+      />
       {editing && (
         <BudgetEditor
           key={editing.account.code}
@@ -703,6 +743,7 @@ export function BudgetPage() {
           ))}
         </select>
       </label>
+      {/* A year of its own each (key): another year starts with its editor closed and its proposal unread. */}
       <Loaded from={accounts}>
         {(chart) => <Loaded from={budget}>{(data) => <YearBudget key={year} year={year} chart={chart} budget={data} onChanged={budget.reload} />}</Loaded>}
       </Loaded>

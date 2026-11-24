@@ -173,6 +173,7 @@ export function explainWrite(status: number, error: string): string {
     invalid_rule: "Controleer de bedragen en probeer het opnieuw.",
     not_whole_euros: "Vul hele euro's in, zonder centen.",
     no_pattern: "Deze rekening heeft geen bedragen uit een eerder jaar om zo te verdelen. Kies een ander ritme.",
+    invalid_source: "Het voorstel past niet bij dit jaar. Maak het voorstel opnieuw.",
   };
   return known[error] ?? "Dat is niet gelukt. Probeer het opnieuw.";
 }

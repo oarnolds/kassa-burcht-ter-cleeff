@@ -84,8 +84,9 @@ const near = (value: number, to: number, share: number) => Math.sign(value) === 
 /**
  * A rule that gives about what a source year had in each month. `covered`: how many months the source covers, from
  * its first to its last (11 for January to November). The months are rounded to whole euros first. One month: once
- * a year. Three or four close amounts a quarter apart: per quarter. Nearly every month about the same: every month.
- * Anything else: the year's total spread like the source (or, when that total is nothing, the months themselves).
+ * a year. Three or four close amounts a quarter apart: per quarter. Nearly every month about the same: every month,
+ * at the pace of the months covered (their total over `covered`, so a month without anything lowers it). Anything
+ * else: the year's total spread like the source (or, when that total is nothing, the months themselves).
  * Nothing in any month: null.
  */
 export function proposeRule(cents: number[], covered: number): BudgetRule | null {
@@ -105,12 +106,15 @@ export function proposeRule(cents: number[], covered: number): BudgetRule | null
     return { kind: "quarterly", amountCents: roundEuros(middle) * 100, month: position(active[0]!.month) as 1 | 2 | 3 };
   }
   if (covered >= 6 && active.length >= covered - 2 && values.filter((value) => near(value, middle, 0.35)).length >= 0.6 * active.length) {
-    return { kind: "monthly", amountCents: roundEuros(total(values) / values.length) * 100 };
+    return { kind: "monthly", amountCents: roundEuros(total(euros) / covered) * 100 };
   }
   // Months that add up to nothing cannot be spread like themselves: they are given as they are.
   if (total(euros) === 0) return { kind: "custom", months: euros.map((value) => value * 100) };
   return { kind: "pattern", amountCents: total(euros) * 100 };
 }
+
+/** Every month within the limit: a rule "like the base" on a base that nearly adds up to nothing can go far beyond it. */
+export const withinLimit = (months: number[]): boolean => months.every((cents) => Math.abs(cents) <= MAX_BUDGET_CENTS);
 
 const isAmount = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && Math.abs(value) <= MAX_BUDGET_CENTS;
 const isMonth = (value: unknown, last: number): value is number => typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= last;
@@ -151,20 +155,21 @@ export function readRule(raw: unknown, base: number[] | null): { ok: true; rule:
   return { ok: true, rule };
 }
 
-const WHOLE = /^([-−])?\s*(?:€\s*)?(\d{1,3}(?:\.\d{3})+|\d+)(?:,-|[.,](\d{1,2}))?$/;
+// The thousands apart with dots, or with spaces (the non-breaking ones too), the same all through; or no separator.
+const WHOLE = /^([-−])?\s*(?:€\s*)?(\d{1,3}(?:\.\d{3})+|\d{1,3}(?:[ \u00a0\u202f]\d{3})+|\d+)(?:,-|[.,](\d{1,2}))?$/;
 
 /**
- * What is typed as an amount in whole euros ("1.153", "1153", "-293", "1153,-"), in cents; "empty" for nothing,
- * "cents" when it has cents, "unreadable" for anything else (more than ten million euros too).
+ * What is typed as an amount in whole euros ("1.153", "1 153", "1153", "-293", "1153,-"), in cents; "empty" for
+ * nothing, "cents" when it has cents, "too_large" beyond ten million euros, "unreadable" for anything else.
  */
-export function readWholeEuros(text: string): number | "empty" | "cents" | "unreadable" {
+export function readWholeEuros(text: string): number | "empty" | "cents" | "too_large" | "unreadable" {
   const trimmed = text.trim();
   if (trimmed === "") return "empty";
   const match = WHOLE.exec(trimmed);
   if (!match) return "unreadable";
   if (match[3] !== undefined && Number(match[3]) !== 0) return "cents";
-  const cents = Number(match[2]!.replaceAll(".", "")) * 100;
-  if (cents > MAX_BUDGET_CENTS) return "unreadable";
+  const cents = Number(match[2]!.replace(/\D/g, "")) * 100;
+  if (cents > MAX_BUDGET_CENTS) return "too_large";
   return match[1] ? 0 - cents || 0 : cents;
 }
 

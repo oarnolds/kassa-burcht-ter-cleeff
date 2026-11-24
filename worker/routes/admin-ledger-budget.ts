@@ -9,7 +9,8 @@ import { parseDate } from "../lib/params";
 const date = z.string().refine((value) => parseDate(value) !== null);
 const months = z.array(z.number().int().min(-MAX_BUDGET_CENTS).max(MAX_BUDGET_CENTS)).length(12);
 
-// The rule itself is read by shared/budget.ts (readRule), so that its refusals have their own codes.
+// The rule itself is read by shared/budget.ts (readRule), and the source as a whole by db/budget.ts, so that their
+// refusals have their own codes.
 const budgetBody = z.object({
   source: z.object({
     kind: z.enum(["mutations", "ledger", "empty"]),

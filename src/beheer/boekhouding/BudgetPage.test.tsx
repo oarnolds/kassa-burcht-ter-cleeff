@@ -111,7 +111,12 @@ it("opens on the first year of the books, offers the years a budget can be made 
   expect(within(make).getByLabelText("Mutatieoverzicht inlezen")).toHaveAttribute("accept", ".xlsx");
   // 2026 is not a year of the books: no proposal from its bookings.
   expect(within(make).queryByRole("button", { name: /Voorstel uit de boekingen/ })).not.toBeInTheDocument();
-  expect(within(region("Begroting 2027")).getByText("Er staat nog niets in de begroting van 2027.")).toBeInTheDocument();
+  expect(within(make).getByRole("button", { name: "Leeg beginnen" })).toBeEnabled();
+  // Before the year has a start, its section only says it is empty: no account to add, nothing to empty.
+  const grid = region("Begroting 2027");
+  expect(within(grid).getByText("Er staat nog niets in de begroting van 2027.")).toBeInTheDocument();
+  expect(within(grid).queryByLabelText("Rekening toevoegen")).not.toBeInTheDocument();
+  expect(within(grid).queryByRole("button")).not.toBeInTheDocument();
   expect(await within(region("Begroting en werkelijk 2027")).findByText("Er zijn nog geen boekingen in 2027.")).toBeInTheDocument();
   expect(calls("GET").map((call) => call.url)).toContain(`${base}/budget/actuals?year=2027`);
 });
@@ -151,6 +156,7 @@ it("reads the mutations: what was read, the groups, what is not placed or not co
   expect(cellsOf(skipped)).toEqual([String(memoriaal.nr), "31-03-2026", "Memoriaal", "€ 400,00", "0135", "4601"]);
 
   const proposal = "Voorstel voor 2027";
+  expect(within(read).getByText("Per rekening een ritme en het bedrag voor 2027, naast wat er in 2026 was. Na het maken is elke regel nog te wijzigen.")).toBeInTheDocument();
   expect(within(read).getAllByRole("columnheader").map((head) => head.textContent)).toEqual(["Rekening", "Ritme", "Begroting 2027", "2026"]);
   expect(cellsOf(rowIn(proposal, "8004 Contributie zakelijk"))).toEqual(["8004 Contributie zakelijk", "één keer, in juli", "€ 250", "€ 250"]);
   expect(cellsOf(rowIn(proposal, "8010 Verhuur"))).toEqual(["8010 Verhuur", "zoals 2026", "€ 3.693", "€ 3.693"]);
@@ -203,6 +209,64 @@ it("reads the mutations: what was read, the groups, what is not placed or not co
   expect(screen.queryByRole("region", { name: "Voorstel voor 2027" })).not.toBeInTheDocument();
   expect(cellsOf(rowIn("Begroting 2027", "4308 Energie"))).toEqual(["4308 Energie", ...Array(12).fill("31"), "372"]);
   expect(within(region("Begroting 2027")).getByText("Voorstel uit de mutaties van e-Boekhouden, 02-01-2026 t/m 20-11-2026.")).toBeInTheDocument();
+});
+
+it("keeps the proposal while it is not made: no account can be added before the year has a start", async () => {
+  open();
+  await choose(xlsx());
+  expect(await screen.findByRole("region", { name: "Voorstel voor 2027" })).toBeInTheDocument();
+  expect(within(region("Begroting 2027")).queryByLabelText("Rekening toevoegen")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Toevoegen" })).not.toBeInTheDocument();
+  expect(region("Begroting 2027 maken")).toBeInTheDocument();
+});
+
+it("starts an empty budget, and then adds an account; emptying it offers the start again", async () => {
+  open();
+  const make = await screen.findByRole("region", { name: "Begroting 2027 maken" });
+  await user().click(within(make).getByRole("button", { name: "Leeg beginnen" }));
+  await waitFor(() => expect(calls("PUT")).toHaveLength(1));
+  expect(calls("PUT")[0]).toEqual({
+    method: "PUT",
+    url: `${base}/budget?year=2027`,
+    body: { source: { kind: "empty", baseYear: null, from: null, to: null }, lines: [] },
+  });
+  await waitFor(() => expect(screen.queryByRole("region", { name: "Begroting 2027 maken" })).not.toBeInTheDocument());
+  const grid = within(region("Begroting 2027"));
+  expect(grid.getByText("Er staat nog niets in de begroting van 2027.")).toBeInTheDocument();
+
+  await user().selectOptions(await grid.findByLabelText("Rekening toevoegen"), "4501");
+  await user().click(grid.getByRole("button", { name: "Toevoegen" }));
+  const editor = within(await screen.findByRole("region", { name: "4501 Inkoop kiosk" }));
+  await user().type(editor.getByLabelText("Bedrag per maand"), "250");
+  await user().click(editor.getByRole("button", { name: "Opslaan" }));
+  await waitFor(() => expect(calls("PUT")).toHaveLength(2));
+  expect(await grid.findByRole("button", { name: "4501 Inkoop kiosk wijzigen" })).toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Begroting 2027 maken" })).not.toBeInTheDocument();
+
+  await user().click(grid.getByRole("button", { name: "Begroting 2027 leegmaken" }));
+  await user().click(grid.getByRole("button", { name: "Leegmaken" }));
+  expect(await screen.findByRole("region", { name: "Begroting 2027 maken" })).toBeInTheDocument();
+  expect(within(region("Begroting 2027")).queryByLabelText("Rekening toevoegen")).not.toBeInTheDocument();
+});
+
+it("says which months a file that starts after January leaves out, before its start and after its end", async () => {
+  open();
+  await choose(xlsx({ rows: [mutation({ nr: 2, date: "2026-11-22" }), mutation({ nr: 1, date: "2026-03-01" })] }));
+  const make = region("Begroting 2027 maken");
+  expect(await within(make).findByText("2 mutaties gelezen, van 01-03-2026 t/m 22-11-2026.")).toBeInTheDocument();
+  expect(
+    within(make).getByText(
+      "Januari, februari en december zitten er nog niet in. Regels per maand of per kwartaal vullen dat aan; bij 'zoals 2026' blijven die maanden leeg.",
+    ),
+  ).toBeInTheDocument();
+});
+
+it("says in words when the Worker refuses the source of the proposal", async () => {
+  open();
+  mockApi({ [`PUT ${base}/budget`]: [400, { error: "invalid_source" }] });
+  await choose(xlsx());
+  await tap("Begroting maken");
+  expect(await within(region("Voorstel voor 2027")).findByRole("alert")).toHaveTextContent("Het voorstel past niet bij dit jaar. Maak het voorstel opnieuw.");
 });
 
 it("says so when a file is not a mutatieoverzicht, holds more than one year, or is not of a year before the budget", async () => {
@@ -317,6 +381,31 @@ it("changes a line to the same amount every month, and shows what it becomes nex
   expect(cellsOf(rowIn("Begroting 2027", "4308 Energie"))).toEqual(["4308 Energie", ...Array(12).fill("35"), "420"]);
 });
 
+it("keeps the page when the editor closes, also where scrollIntoView gives a promise (as in Chrome)", async () => {
+  // jsdom has no scrollIntoView; Chrome's returns a promise, which an effect must not hand back to React.
+  const had = Object.getOwnPropertyDescriptor(Element.prototype, "scrollIntoView");
+  Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, writable: true, value: () => Promise.resolve() });
+  try {
+    open({ budgets: { 2027: BUDGET_2027 } });
+    let editor = await edit("4308 Energie");
+    await user().click(editor.getByRole("button", { name: "Annuleren" }));
+    await waitFor(() => expect(screen.queryByRole("region", { name: "4308 Energie" })).not.toBeInTheDocument());
+    expect(screen.getByRole("heading", { name: "Begroting", level: 1 })).toBeInTheDocument();
+    expect(region("Begroting 2027")).toBeInTheDocument();
+
+    editor = await edit("4308 Energie");
+    await retype(editor.getByLabelText("Bedrag per maand"), "35");
+    await user().click(editor.getByRole("button", { name: "Opslaan" }));
+    expect(await screen.findByText("Opgeslagen.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("region", { name: "4308 Energie" })).not.toBeInTheDocument());
+    expect(screen.getByRole("heading", { name: "Begroting", level: 1 })).toBeInTheDocument();
+    expect(cellsOf(rowIn("Begroting 2027", "4308 Energie"))).toEqual(["4308 Energie", ...Array(12).fill("35"), "420"]);
+  } finally {
+    if (had) Object.defineProperty(Element.prototype, "scrollIntoView", had);
+    else delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  }
+});
+
 it("sends a rule per quarter, once a year, like the base, or per month", async () => {
   open({ budgets: { 2027: BUDGET_2027 } });
   let editor = await edit("4308 Energie");
@@ -361,19 +450,33 @@ it("sends a rule per quarter, once a year, like the base, or per month", async (
   expect(calls("PUT")[3]!.body).toEqual({ rule: { kind: "custom", months: [10000, ...Array(10).fill(54500), -500] } });
 });
 
-it("wants whole euros, and offers 'like the base' only with a base", async () => {
+it("wants whole euros, says what is wrong once the field is left or Opslaan is pressed, and offers 'like the base' only with a base", async () => {
   open({ budgets: { 2027: BUDGET_2027 } });
   let editor = await edit("4308 Energie");
-  await retype(editor.getByLabelText("Bedrag per maand"), "31,50");
+  const amount = editor.getByLabelText("Bedrag per maand");
+  const problems = /Vul hele euro's in|niet te lezen|te groot|Vul een bedrag in/;
+  // While typing nothing is said: "1.15" is on its way to "1.153".
+  await retype(amount, "1.15");
+  expect(editor.queryByText(problems)).not.toBeInTheDocument();
+  await user().type(amount, "3");
+  expect(previewOf(editor, "Dat wordt:")).toEqual([...Array(12).fill("1.153"), "13.836"]);
+  await retype(amount, "31,50");
+  expect(editor.queryByText(problems)).not.toBeInTheDocument();
+  // Leaving the field says it, and from then on as it is typed.
+  await user().tab();
   expect(editor.getByText("Vul hele euro's in, zonder centen.")).toBeInTheDocument();
-  expect(editor.getByRole("button", { name: "Opslaan" })).toBeDisabled();
-  await retype(editor.getByLabelText("Bedrag per maand"), "veel");
-  expect(editor.getByText("Dit bedrag kan ik niet lezen.")).toBeInTheDocument();
-  expect(editor.getByRole("button", { name: "Opslaan" })).toBeDisabled();
-  await retype(editor.getByLabelText("Bedrag per maand"), "");
-  expect(editor.getByRole("button", { name: "Opslaan" })).toBeDisabled();
-  await retype(editor.getByLabelText("Bedrag per maand"), "1.153");
-  expect(editor.getByRole("button", { name: "Opslaan" })).toBeEnabled();
+  await retype(amount, "veel");
+  expect(editor.getByText("Dit bedrag is niet te lezen.")).toBeInTheDocument();
+  await retype(amount, "20.000.000");
+  expect(editor.getByText("Dit bedrag is te groot.")).toBeInTheDocument();
+  await user().click(editor.getByRole("button", { name: "Opslaan" }));
+  expect(editor.getByText("Dit bedrag is te groot.")).toBeInTheDocument();
+  await retype(amount, "");
+  expect(editor.getByText("Vul een bedrag in.")).toBeInTheDocument();
+  // Spaces between the thousands, also the ones that do not break.
+  await retype(amount, "1\u00a0153");
+  expect(editor.queryByText(problems)).not.toBeInTheDocument();
+  expect(previewOf(editor, "Dat wordt:")).toEqual([...Array(12).fill("1.153"), "13.836"]);
   await user().click(editor.getByRole("button", { name: "Annuleren" }));
   expect(screen.queryByRole("region", { name: "4308 Energie" })).not.toBeInTheDocument();
   expect(calls("PUT")).toHaveLength(0);
@@ -384,6 +487,25 @@ it("wants whole euros, and offers 'like the base' only with a base", async () =>
   expect(editor.getByLabelText("Maand")).toHaveDisplayValue("juli");
   expect(within(editor.getByLabelText("Ritme")).queryByRole("option", { name: /Zoals/ })).not.toBeInTheDocument();
   expect(editor.queryByRole("row", { name: /^In 2026:/ })).not.toBeInTheDocument();
+});
+
+it("does not save a rule that gives a month beyond ten million euros", async () => {
+  // A base that nearly adds up to nothing: spread like it, a small year gives very large months.
+  const thin = at({ 1: 1000, 2: -999 });
+  open({ budgets: { 2027: { ...BUDGET_2027, lines: [...BUDGET_2027.lines, line("4512", { kind: "pattern", amountCents: 100 }, thin)] } } });
+  const editor = await edit("4512 Schoonmaak");
+  expect(editor.getByLabelText("Ritme")).toHaveDisplayValue("Zoals 2026");
+  const amount = editor.getByLabelText("Bedrag voor het hele jaar");
+  await retype(amount, "20.000");
+  await user().click(editor.getByRole("button", { name: "Opslaan" }));
+  expect(editor.getByText("Zo wordt een maand te groot. Kies een kleiner bedrag of een ander ritme.")).toBeInTheDocument();
+  expect(calls("PUT")).toHaveLength(0);
+  // Exactly ten million in January is still allowed.
+  await retype(amount, "10.000");
+  expect(editor.queryByText(/Zo wordt een maand te groot/)).not.toBeInTheDocument();
+  await user().click(editor.getByRole("button", { name: "Opslaan" }));
+  await waitFor(() => expect(calls("PUT")).toHaveLength(1));
+  expect(calls("PUT")[0]!.body).toEqual({ rule: { kind: "pattern", amountCents: 1_000_000 } });
 });
 
 it("takes a line out of the budget", async () => {
@@ -412,8 +534,12 @@ it("adds an account that is not in the budget yet", async () => {
   const editor = within(await screen.findByRole("region", { name: "4501 Inkoop kiosk" }));
   expect(editor.getByLabelText("Ritme")).toHaveDisplayValue("Elke maand hetzelfde");
   expect(editor.getByLabelText("Bedrag per maand")).toHaveValue("");
-  expect(editor.getByRole("button", { name: "Opslaan" })).toBeDisabled();
+  expect(editor.queryByText("Vul een bedrag in.")).not.toBeInTheDocument();
   expect(editor.queryByRole("button", { name: "Uit de begroting halen" })).not.toBeInTheDocument();
+  // Opslaan without an amount says so, and sends nothing.
+  await user().click(editor.getByRole("button", { name: "Opslaan" }));
+  expect(editor.getByText("Vul een bedrag in.")).toBeInTheDocument();
+  expect(calls("PUT")).toHaveLength(0);
   await user().type(editor.getByLabelText("Bedrag per maand"), "250");
   await user().click(editor.getByRole("button", { name: "Opslaan" }));
   await waitFor(() => expect(calls("PUT")).toHaveLength(1));
@@ -435,6 +561,25 @@ it("asks once more before it empties the year's budget", async () => {
   expect(calls("DELETE")[0]!.url).toBe(`${base}/budget?year=2027`);
   expect(await screen.findByText("Leeggemaakt.")).toBeInTheDocument();
   expect(await screen.findByRole("region", { name: "Begroting 2027 maken" })).toBeInTheDocument();
+});
+
+it("closes the editor when the year is emptied, and when another year is chosen", async () => {
+  open({ budgets: { 2027: BUDGET_2027, 2028: { ...BUDGET_2027, year: 2028 } } });
+  await edit("4308 Energie");
+  const grid = within(region("Begroting 2027"));
+  await user().click(grid.getByRole("button", { name: "Begroting 2027 leegmaken" }));
+  await user().click(grid.getByRole("button", { name: "Leegmaken" }));
+  expect(await screen.findByRole("region", { name: "Begroting 2027 maken" })).toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "4308 Energie" })).not.toBeInTheDocument();
+
+  await user().selectOptions(screen.getByLabelText("Jaar"), "2028");
+  await edit("4308 Energie");
+  await user().selectOptions(screen.getByLabelText("Jaar"), "2027");
+  expect(await screen.findByRole("region", { name: "Begroting 2027 maken" })).toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "4308 Energie" })).not.toBeInTheDocument();
+  await user().selectOptions(screen.getByLabelText("Jaar"), "2028");
+  expect(await screen.findByRole("button", { name: "4308 Energie wijzigen" })).toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "4308 Energie" })).not.toBeInTheDocument();
 });
 
 it("lays the books next to the budget up to a month, an account without a budget line included", async () => {

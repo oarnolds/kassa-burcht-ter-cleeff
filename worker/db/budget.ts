@@ -1,10 +1,11 @@
-import { type Budget, type BudgetActuals, type BudgetLine, type BudgetRule, type BudgetSource, budgetYears, readRule, spread } from "../../shared/budget";
+import { type Budget, type BudgetActuals, type BudgetLine, type BudgetRule, type BudgetSource, budgetYears, readRule, spread, withinLimit } from "../../shared/budget";
 import { type AccountKind, LEDGER_START } from "../../shared/ledger-types";
 import { businessDate } from "../../shared/time";
 import { LedgerError } from "./ledger";
 
 // The begroting (budget): per year and per income or expense account a rule, and the twelve months it gives. Only
-// beheer reads it; it never changes a booking. Every refusal is a LedgerError with status 400.
+// beheer reads it; it never changes a booking. Every refusal is a LedgerError with status 400, thrown before anything
+// is written.
 
 export type { Budget, BudgetActuals, BudgetLine, BudgetSource };
 
@@ -22,6 +23,20 @@ function budgetYear(year: number, now: Date): void {
   if (!budgetYears(businessDate(now.toISOString())).includes(year)) refuse("not_budget_year");
 }
 
+/**
+ * A source that fits the year, or refused ("invalid_source"): an empty start has no year and no dates; a proposal
+ * has both dates in its own year, the first not after the last, and that year is before the budget's.
+ */
+function checkSource({ kind, baseYear, from, to }: BudgetSource, year: number): void {
+  if (kind === "empty") {
+    if (baseYear !== null || from !== null || to !== null) refuse("invalid_source");
+    return;
+  }
+  if (baseYear === null || from === null || to === null) return refuse("invalid_source");
+  const own = String(baseYear);
+  if (from > to || from.slice(0, 4) !== own || to.slice(0, 4) !== own || baseYear >= year) refuse("invalid_source");
+}
+
 type LineRow = { account_code: string; rule: string; base: string | null; months: string };
 type SourceRow = { kind: BudgetSource["kind"]; base_year: number | null; base_from: string | null; base_to: string | null };
 
@@ -34,13 +49,15 @@ const lineOf = (row: LineRow): BudgetLine => ({
 const sourceOf = (row: SourceRow | undefined): BudgetSource | null =>
   row ? { kind: row.kind, baseYear: row.base_year, from: row.base_from, to: row.base_to } : null;
 
-/** The rule read for an account of the chart, with the months it gives; refused as the routes say. */
+/** The rule read for an account of the chart, with the months it gives (none beyond the limit); refused as the routes say. */
 function checkedLine(kinds: Map<string, AccountKind>, accountCode: string, raw: unknown, base: number[] | null): BudgetLine {
   const kind = kinds.get(accountCode) ?? refuse("unknown_account");
   if (kind !== "income" && kind !== "expense") refuse("not_result_account");
   const read = readRule(raw, base);
   if (!read.ok) return refuse(read.error);
-  return { accountCode, rule: read.rule, base, months: spread(read.rule, base) };
+  const months = spread(read.rule, base);
+  if (!withinLimit(months)) refuse("invalid_rule");
+  return { accountCode, rule: read.rule, base, months };
 }
 
 const accountKinds = (db: D1Database) => db.prepare("SELECT code, kind FROM ledger_accounts ORDER BY sort");
@@ -63,6 +80,7 @@ export async function getBudget(db: D1Database, year: number, now: Date): Promis
 /** Replaces the whole year: its source and every line, the months worked out here. Two calls to the database. */
 export async function putBudget(db: D1Database, year: number, body: { source: BudgetSource; lines: NewBudgetLine[] }, now: Date): Promise<Budget> {
   budgetYear(year, now);
+  checkSource(body.source, year);
   const { results } = await accountKinds(db).all<{ code: string; kind: AccountKind }>();
   const kinds = new Map(results.map((row) => [row.code, row.kind]));
   const order = new Map(results.map((row, i) => [row.code, i]));
