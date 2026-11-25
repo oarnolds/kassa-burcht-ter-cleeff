@@ -62,6 +62,31 @@ export const MOLLIE_START = "2026-11-01";
  */
 export const PAYOUT_REFERENCE = /(?:^|\D)(\d{7,8}\.\d{4}\.\d{2})(?!\d)/;
 
+/** At most this many bookings from e-Boekhouden in one request, so it stays within the free plan's 50 database calls and its CPU time. */
+export const MAX_ENTRIES = 40;
+
+/**
+ * Where reading 2026 in from e-Boekhouden stands. `createdOn`: the date the auditfile read in was made (null before
+ * the first finish). `imported`: its bookings in the books, emptied ones not counted. `inUseSince`: the kassa's
+ * ingebruikname as a business date, null while the kassa is not in use.
+ */
+export type EbStatus = { done: boolean; createdOn: string | null; imported: number; inUseSince: string | null; yearClosed: boolean };
+
+/**
+ * What the books hold at the end of 24-11, the day before OVERSTAP, once the auditfile is read in. Amounts as the
+ * ledger has them (debit +, credit −). `emptied`: bookings emptied by this finish because the file no longer has them.
+ */
+export type EbSummary = {
+  imported: number;
+  emptied: number;
+  /** 1000 at the end of 24-11, and what the kassa says belonged in the kluisje then. */
+  cash: { ledgerCents: number; kluisjeCents: number };
+  /** Non-zero only. */
+  open: { accountCode: "1300" | "1700"; cents: number }[];
+  /** Every money account at the end of 24-11; bank: the newest balance the bank gave on or before 24-11. */
+  money: { accountCode: string; ledgerCents: number; bankCents: number | null; bankDate: string | null }[];
+};
+
 /** Where a money account's lines come from. 1000 follows the kassa and 1030 Mollie; a bank is a file or Enable Banking. */
 export type MoneySource = "file" | "enable_banking" | "kassa" | "mollie";
 

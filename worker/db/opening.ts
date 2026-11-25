@@ -29,7 +29,14 @@ const kinds = new Map(ACCOUNTS.map((account) => [account.code, account.kind]));
 /** Accounts shown the other way round: their balance is a credit. */
 const isCreditSide = (code: string) => kinds.get(code) !== "asset" || code === "0135";
 
-const equityKey = (year: number) => `ledger_opening_eb_equity_${year}`;
+/**
+ * A ledger amount (debit +, credit −) as the balance shows it, and back again: an asset as it is; liabilities,
+ * equity and 0135 the other way round.
+ */
+export const asShownOnBalance = (code: string, cents: number) => (isCreditSide(code) ? -cents : cents);
+
+/** In `ledger_settings`: the equity e-Boekhouden shows in the opening of `year`. */
+export const openingEquityKey = (year: number) => `ledger_opening_eb_equity_${year}`;
 const firstYear = () => Number(LEDGER_START.slice(0, 4));
 
 /** The last moment of a `YYYY-MM-DD` day in Amsterdam (23:59:59.999 local time), as a UTC ISO string. */
@@ -93,7 +100,7 @@ export async function getOpening(db: D1Database, year: number, _now: Date): Prom
       )
       .bind(String(year))
       .all<{ account_code: string; amount_cents: number }>(),
-    getLedgerSetting(db, equityKey(year)),
+    getLedgerSetting(db, openingEquityKey(year)),
     expectedCashAt(db, endOfDay(`${year - 1}-12-31`)),
     assetListTotals(db, year),
     db
@@ -105,7 +112,7 @@ export async function getOpening(db: D1Database, year: number, _now: Date): Prom
   let equityCents = 0;
   for (const row of entry.results) {
     if (row.account_code === EQUITY) equityCents = -row.amount_cents;
-    else lines.push({ accountCode: row.account_code, amountCents: isCreditSide(row.account_code) ? -row.amount_cents : row.amount_cents });
+    else lines.push({ accountCode: row.account_code, amountCents: asShownOnBalance(row.account_code, row.amount_cents) });
   }
   if (fromList) {
     // Pasting saves the entry again, so this is what it holds; taken from the list all the same, so the two never differ.
@@ -140,7 +147,7 @@ export async function setOpening(
   }
   const lines: EntryLine[] = [];
   for (const [accountCode, cents] of [...(fromList ?? []).map((line) => [line.accountCode, line.amountCents] as const), ...typed]) {
-    if (cents !== 0) lines.push({ accountCode, amountCents: isCreditSide(accountCode) ? -cents : cents, note: null, assetId: null });
+    if (cents !== 0) lines.push({ accountCode, amountCents: asShownOnBalance(accountCode, cents), note: null, assetId: null });
   }
   const sum = lines.reduce((total, line) => total + line.amountCents, 0);
   if (sum !== 0) lines.push({ accountCode: EQUITY, amountCents: -sum, note: null, assetId: null });
@@ -151,8 +158,8 @@ export async function setOpening(
     now,
   );
   await (input.eBoekhoudenEquityCents === null
-    ? deleteLedgerSettingStatement(db, equityKey(year))
-    : setLedgerSettingStatement(db, equityKey(year), String(input.eBoekhoudenEquityCents), now)
+    ? deleteLedgerSettingStatement(db, openingEquityKey(year))
+    : setLedgerSettingStatement(db, openingEquityKey(year), String(input.eBoekhoudenEquityCents), now)
   ).run();
   return getOpening(db, year, now);
 }

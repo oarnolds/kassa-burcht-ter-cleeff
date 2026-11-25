@@ -92,7 +92,8 @@ function checkDisposed(assets: D1Result, before: EntryLine[], after: EntryLine[]
   }
 }
 
-function sameContent(a: Content, b: Content): boolean {
+/** Same date, description and lines (account, amount, note and toestel, in order): writing it again changes nothing. */
+export function sameContent(a: Content, b: Content): boolean {
   return (
     a.date === b.date &&
     a.description === b.description &&
@@ -117,8 +118,11 @@ const snapshot = (content: Content) => ({
 
 // ---- Reading ----
 
-/** The entries matching `where` (on `ledger_entries e`) with their lines, by date and number. */
-function entryReads(db: D1Database, where: string, values: unknown[]): D1PreparedStatement[] {
+/**
+ * The entries matching `where` (on `ledger_entries e`) with their lines, by date and number: three statements, for
+ * a caller's batch too; `entriesFrom` reads their results.
+ */
+export function entryReads(db: D1Database, where: string, values: unknown[]): D1PreparedStatement[] {
   return [
     db
       .prepare(
@@ -175,9 +179,11 @@ function toEntry(row: EntryRow): Omit<Entry, "lines" | "attachments"> {
   };
 }
 
+/** The entries the three statements of `entryReads` read, from their results in that order. */
+export const entriesFrom = ([entries, lines, attachments]: D1Result[]): Entry[] => toEntries(entries!, lines!, attachments!);
+
 async function readEntries(db: D1Database, where: string, values: unknown[]): Promise<Entry[]> {
-  const [entries, lines, attachments] = await db.batch(entryReads(db, where, values));
-  return toEntries(entries!, lines!, attachments!);
+  return entriesFrom(await db.batch(entryReads(db, where, values)));
 }
 
 const BY_SOURCE = "e.source = ? AND e.source_ref = ?";
@@ -374,6 +380,16 @@ function replaceStatements(db: D1Database, key: Key, year: number, content: Cont
   ];
 }
 
+/**
+ * The history row of a change, for the batch that makes it, before the change's own statements: written only while
+ * the entry's year and the year it goes to are open, like the change itself. `note` says why, when it is no edit.
+ */
+export function historyStatement(db: D1Database, id: string, before: Content, after: Content, note: string | null, now: Date): D1PreparedStatement {
+  return db
+    .prepare(`INSERT INTO ledger_history (entry_id, at, before_json, after_json, note) SELECT id, ?, ?, ?, ? FROM ledger_entries WHERE ${writable(byId(id))}`)
+    .bind(now.toISOString(), JSON.stringify(snapshot(before)), JSON.stringify(snapshot(after)), note, id, yearOf(after.date));
+}
+
 export async function createEntry(db: D1Database, input: NewEntry, now: Date): Promise<Entry> {
   const year = checkContent(input);
   checkResults(await db.batch(checkReads(db, year, input.lines)), input.lines, input.source === "manual");
@@ -450,9 +466,7 @@ async function change(db: D1Database, id: string, content: (entry: Entry) => Con
   const nowIso = now.toISOString();
   await db.batch([
     openYear(db, year),
-    db
-      .prepare(`INSERT INTO ledger_history (entry_id, at, before_json, after_json) SELECT id, ?, ?, ? FROM ledger_entries WHERE ${writable(byId(id))}`)
-      .bind(nowIso, JSON.stringify(snapshot(entry)), JSON.stringify(snapshot(next)), id, year),
+    historyStatement(db, id, entry, next, null, now),
     ...replaceStatements(db, byId(id), year, next, nowIso),
     ...(line ? [bankLineFollows(db, lineId!, id, next.lines.length === 0)] : []),
   ]);

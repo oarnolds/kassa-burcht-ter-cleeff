@@ -263,12 +263,13 @@ it("takes, serves and hides an attachment through the routes", async () => {
   expect((await api(`${base}/attachments/nope/hide`, { method: "POST", cookie })).status).toBe(404);
 });
 
-it("types the opening and the comparison figures through the routes", async () => {
+it("shows the opening and types the comparison figures through the routes", async () => {
+  // The opening comes from e-Boekhouden's auditfile (test/eboekhouden.test.ts), not typed.
   const put = await api(`${base}/opening?year=2026`, { method: "PUT", cookie, json: { lines: [{ accountCode: "1010", amountCents: 100000 }], eBoekhoudenEquityCents: 100000 } });
-  expect(put.status).toBe(200);
+  expect([put.status, await put.json()]).toEqual([409, { error: "opening_from_file" }]);
+  await setOpening(env.DB, 2026, { lines: [{ accountCode: "1010", amountCents: 100000 }], eBoekhoudenEquityCents: 100000 }, NOW);
   expect(await (await api(`${base}/opening?year=2026`, { cookie })).json()).toMatchObject({ year: 2026, equityCents: 100000, eBoekhoudenEquityCents: 100000 });
   expect(await (await api(`${base}/opening?year=2027`, { cookie })).json()).toMatchObject({ year: 2027, lines: [] });
-  expect((await api(`${base}/opening?year=2027`, { method: "PUT", cookie, json: { lines: [] } })).status).toBe(409);
   const figures = await api(`${base}/comparison?year=2025`, { method: "PUT", cookie, json: { figures: [{ accountCode: "8030", amountCents: 118440 }] } });
   expect(await figures.json()).toEqual({ year: 2025, figures: [{ accountCode: "8030", amountCents: 118440 }] });
   const replaced = await api(`${base}/comparison?year=2025`, { method: "PUT", cookie, json: { figures: [{ accountCode: "4308", amountCents: 5 }] } });

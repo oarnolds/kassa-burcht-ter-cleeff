@@ -4,7 +4,7 @@ import { addAttachment, hideAttachment, MAX_ATTACHMENT_BYTES, readAttachment } f
 import { createEntry, editEntry, emptyEntry, entryHistory, getEntry, LedgerError, listEntries } from "../db/ledger";
 import { addAccount, categoryAccounts, listAccounts, patchAccount, setCategoryAccounts } from "../db/ledger-accounts";
 import { accountLines, balanceReport, comparisonYears, getComparison, multiYearReport, overview, resultReport, setComparison } from "../db/ledger-reports";
-import { getOpening, setOpening } from "../db/opening";
+import { getOpening } from "../db/opening";
 import type { AppEnv } from "../env";
 import { runNightly } from "../nightly";
 import { parseDate } from "../lib/params";
@@ -37,10 +37,6 @@ const toContent = (body: z.infer<typeof entryBody>) => ({
   lines: body.lines.map((line) => ({ accountCode: line.accountCode, amountCents: line.amountCents, note: line.note ?? null, assetId: line.assetId || null })),
 });
 
-const openingBody = z.object({
-  lines: z.array(z.object({ accountCode: z.string().max(10), amountCents: cents })).max(100),
-  eBoekhoudenEquityCents: cents.nullish().transform((value) => value ?? null),
-});
 const comparisonBody = z.object({ figures: z.array(z.object({ accountCode: z.string().max(10), amountCents: cents })).max(100) });
 
 const yearOf = (value: string | undefined): number | null => (value && /^\d{4}$/.test(value) ? Number(value) : null);
@@ -171,12 +167,8 @@ adminLedger.get("/opening", async (c) => {
   return c.json(await getOpening(c.env.DB, year, new Date()));
 });
 
-adminLedger.put("/opening", async (c) => {
-  const year = yearOf(c.req.query("year"));
-  const body = openingBody.safeParse(await jsonBody(c));
-  if (year === null || !body.success) return c.json({ error: "invalid" }, 400);
-  return c.json(await setOpening(c.env.DB, year, body.data, new Date()));
-});
+/** The opening of 2026 comes from e-Boekhouden's auditfile and the toestellen list, and is not typed (spec §9). */
+adminLedger.put("/opening", (c) => c.json({ error: "opening_from_file" }, 409));
 
 adminLedger.get("/comparison/years", async (c) => c.json(await comparisonYears(c.env.DB)));
 
