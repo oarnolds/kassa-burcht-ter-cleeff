@@ -9,7 +9,7 @@ import { balancesOn, getEntry } from "../worker/db/ledger";
 import { exportAll } from "../worker/db/maintenance";
 import { getOpening, setOpening } from "../worker/db/opening";
 import { dayReport } from "../worker/db/reports";
-import { meteredDb, resetData } from "./helpers";
+import { meteredDb, openGate, resetData } from "./helpers";
 
 // The kassa routes stamp sales with today's date. These tests set up the kassa's rows for chosen dates
 // directly, as the kassa itself would have written them.
@@ -18,6 +18,7 @@ const IN_USE = "2026-11-21T09:00:00.000Z";
 
 beforeEach(async () => {
   await resetData();
+  await openGate();
   await setInUse(IN_USE);
 });
 
@@ -575,8 +576,6 @@ it("clears the marker when the mapping is saved, so the next sync looks at every
 });
 
 it("books kassa days from the ingebruikname in 2026", async () => {
-  // The gate of the e-Boekhouden import (Task 2) is open.
-  await env.DB.prepare("INSERT INTO ledger_settings (key, value, updated_at) VALUES ('eboekhouden_imported_at', '2026-11-25T12:00:00.000Z', '2026-11-25T12:00:00.000Z')").run();
   await sale({ date: "2026-11-21", lines: [[AARDBEITJE, 1]] });
   await syncKassa(env.DB, new Date("2026-11-22T08:00:00.000Z"));
   expect(amounts(await entry("kassa_day", "2026-11-21"))).toEqual([

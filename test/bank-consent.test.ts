@@ -7,7 +7,7 @@ import { exportAll } from "../worker/db/maintenance";
 import type { Env } from "../worker/env";
 import { runNightly } from "../worker/nightly";
 import { shiftDate } from "../shared/time";
-import { api, asAdmin, resetData, TEST_EB_APP_ID, testRsaKey, useFakeEnableBanking } from "./helpers";
+import { api, asAdmin, openGate, resetData, TEST_EB_APP_ID, testRsaKey, useFakeEnableBanking } from "./helpers";
 
 const eb = useFakeEnableBanking();
 const base = "/api/admin/boekhouding";
@@ -21,6 +21,7 @@ let pem: string;
 
 beforeEach(async () => {
   await resetData();
+  await openGate();
   cookie = (await asAdmin()).cookie;
   pem = (await testRsaKey()).pem;
   ebEnv = { ...env, ENABLE_BANKING_APP_ID: TEST_EB_APP_ID, ENABLE_BANKING_PRIVATE_KEY: pem };

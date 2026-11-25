@@ -5,6 +5,7 @@
 import { LEDGER_START, type EntryLine, type EntrySource } from "../../shared/ledger-types";
 import { businessDate, shiftDate } from "../../shared/time";
 import { firstOpenYear, LedgerError, type NewEntry, upsertSourcedStatements } from "./ledger";
+import { eboekhoudenDoneStatement, gateOpen } from "./eboekhouden";
 import { setLedgerSettingStatement } from "./ledger-settings";
 import { inUseSince } from "./maintenance";
 import { endOfDay } from "./opening";
@@ -82,15 +83,18 @@ export const toLines = (amounts: Amounts): EntryLine[] =>
  */
 export async function syncKassa(db: D1Database, now: Date, maxItems = 40): Promise<KassaSyncResult> {
   const result: KassaSyncResult = { days: 0, late: 0, handovers: 0, left: 0 };
-  const [since, [markerRows, closedRows]] = await Promise.all([
+  const [since, [markerRows, closedRows, gateRows]] = await Promise.all([
     inUseSince(db),
     db.batch([
       db.prepare("SELECT value FROM ledger_settings WHERE key = ?1").bind(MARKER),
       db.prepare("SELECT year FROM ledger_years WHERE status = 'closed'"),
+      eboekhoudenDoneStatement(db),
     ]),
   ]);
   // Not in use yet: what the kassa holds is trial data.
   if (since === null) return result;
+  // 2026 waits for e-Boekhouden's auditfile. Nothing moves, the marker included: the day is booked after the import.
+  if (!gateOpen(gateRows!)) return result;
   const synced = (markerRows!.results[0] as { value: string } | undefined)?.value ?? "";
   const closed = new Set((closedRows!.results as { year: number }[]).map((row) => row.year));
   const from = later(businessDate(since), LEDGER_START);

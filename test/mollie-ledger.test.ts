@@ -8,13 +8,16 @@ import { exportAll } from "../worker/db/maintenance";
 import { type MollieRule, syncMolliePayments } from "../worker/db/mollie-ledger";
 import type { Env } from "../worker/env";
 import { runNightly } from "../worker/nightly";
-import { api, asAdmin, meteredDb, resetData, useFakeMollie } from "./helpers";
+import { api, asAdmin, meteredDb, openGate, resetData, useFakeMollie } from "./helpers";
 
 // Mollie's payments of the website and the QR code, read with the organisation's token from the fake Mollie.
 // The kassa's own sales are set up directly, as the kassa would have written them (with their Mollie payment).
 
 const mollie = useFakeMollie();
-beforeEach(resetData);
+beforeEach(async () => {
+  await resetData();
+  await openGate();
+});
 
 const orgEnv = (over: Partial<Env> = {}): Env => ({ ...env, MOLLIE_ORG_TOKEN: "org_fake", ...over });
 const sync = (now: string, over: Partial<Env> = {}) => syncMolliePayments(orgEnv(over), new Date(now));

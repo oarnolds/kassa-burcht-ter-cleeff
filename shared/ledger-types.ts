@@ -177,6 +177,8 @@ export type LedgerOverview = {
   notUpdatedSince: string | null;
   /** Per money account (only those with any), the lines still to book dated up to the bank's newest balance: part of its difference. */
   toBookByAccount: Record<string, number>;
+  /** The auditfile of e-Boekhouden has been read in; until then the app books nothing by itself. */
+  eboekhoudenDone: boolean;
 };
 
 /**

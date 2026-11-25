@@ -13,6 +13,7 @@ import type { Env } from "../env";
 import { describeFailure, type MollieChargebackRow, type MolliePaymentRow, mollieReadFor, type MollieRefundRow, type PaymentGap } from "../lib/mollie-read";
 import { autoBook, importLines, moneyAccountOf, moneyAccountOnStatement, recordBalance } from "./bank";
 import { add, type Amounts, dayMonthYear, minus, sameAmounts, toLines } from "./kassa-ledger";
+import { eboekhoudenDoneStatement, gateOpen } from "./eboekhouden";
 import { firstOpenYear, LedgerError, type NewEntry, upsertSourcedStatements } from "./ledger";
 import { deleteLedgerSettingStatement, setLedgerSettingStatement } from "./ledger-settings";
 import { endOfDay } from "./opening";
@@ -89,11 +90,12 @@ export async function syncMolliePayments(env: Env, now: Date): Promise<"ok" | "s
   };
   const db = env.DB;
   try {
-    const [newestRows, noteRows, openRows] = await db.batch([
+    const [newestRows, noteRows, openRows, gateRows] = await db.batch([
       db.prepare("SELECT MAX(paid_date) AS date FROM mollie_payments"),
       db.prepare("SELECT value FROM ledger_settings WHERE key = ?1").bind(RESUME_KEY),
       // The days of payments not yet booked (a run stopped half way), oldest first.
       db.prepare("SELECT DISTINCT paid_date AS date FROM mollie_payments WHERE booked = 0 ORDER BY paid_date LIMIT ?1").bind(MAX_DAYS),
+      eboekhoudenDoneStatement(db),
     ]);
     const newest = (newestRows!.results[0] as { date: string | null } | undefined)?.date ?? null;
     const back = newest ? shiftDate(newest, -LOOK_BACK_DAYS) : MOLLIE_START;
@@ -118,7 +120,7 @@ export async function syncMolliePayments(env: Env, now: Date): Promise<"ok" | "s
     // The note goes with the payments it follows, in one batch: what is stored and what is still to read never part.
     const { gap } = payments.data;
     const note = gap ? setLedgerSettingStatement(db, RESUME_KEY, JSON.stringify(gap), now) : kept ? deleteLedgerSettingStatement(db, RESUME_KEY) : null;
-    await storePayments(db, payments.data.rows, open, now, note);
+    await storePayments(db, payments.data.rows, open, gateOpen(gateRows!), now, note);
 
     const balance = await client.primaryBalance();
     if (!balance.ok) return failed(describeFailure(balance));
@@ -137,9 +139,11 @@ export async function syncMolliePayments(env: Env, now: Date): Promise<"ok" | "s
  * description, else `line`. Then, for every day the payments read fall on and every day in `open` (payments not yet
  * booked), at most MAX_DAYS oldest first: the day entry is made equal to the rule payments of that day, and the
  * `line` payments of those days are read onto 1030. A payment is marked booked in the same batch that books it; a
- * kassa payment at once. `note` is written with the payments.
+ * kassa payment at once. `note` is written with the payments. While the auditfile of e-Boekhouden is not read in
+ * (`booking` false) the payments are only stored: no entry, no bank line, nothing marked booked; the days they fall
+ * on are found again from `open` once it is.
  */
-async function storePayments(db: D1Database, rows: MolliePaymentRow[], open: string[], now: Date, note: D1PreparedStatement | null): Promise<void> {
+async function storePayments(db: D1Database, rows: MolliePaymentRow[], open: string[], booking: boolean, now: Date, note: D1PreparedStatement | null): Promise<void> {
   const paid: Paid[] = rows
     .flatMap((row) => (row.status === "paid" && row.paidAt !== null ? [{ ...row, paidAt: row.paidAt, paidDate: businessDate(row.paidAt) }] : []))
     .filter((row) => row.paidDate >= MOLLIE_START)
@@ -186,6 +190,10 @@ async function storePayments(db: D1Database, rows: MolliePaymentRow[], open: str
     }
   }
   if (note) writes.push(note);
+  if (!booking) {
+    if (writes.length > 0) await db.batch(writes);
+    return;
+  }
   const read = await db.batch([
     ...writes,
     db

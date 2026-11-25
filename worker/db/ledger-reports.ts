@@ -10,6 +10,7 @@ import {
   type ResultReport,
 } from "../../shared/ledger-types";
 import { businessDate, shiftDate } from "../../shared/time";
+import { eboekhoudenDoneStatement, gateOpen } from "./eboekhouden";
 import { LedgerError } from "./ledger";
 import { getLedgerSetting } from "./ledger-settings";
 import { moneyAccountsWithTransit } from "./bank";
@@ -294,15 +295,16 @@ export async function overview(db: D1Database, now: Date): Promise<LedgerOvervie
   const today = businessDate(now.toISOString());
   const yesterday = shiftDate(today, -1);
   const year = Number(today.slice(0, 4));
-  const [counts, accounts, resultYearCents, cashDifferenceCents, lastNightly, consent, inUse] = await Promise.all([
-    // Per account and status; `in_difference`: dated up to the bank's newest balance of that account.
-    db
-      .prepare(
+  const [[counts, gate], accounts, resultYearCents, cashDifferenceCents, lastNightly, consent, inUse] = await Promise.all([
+    // Per account and status; `in_difference`: dated up to the bank's newest balance of that account. With the gate of e-Boekhouden's import.
+    db.batch([
+      db.prepare(
         `SELECT b.account_code, b.status, COUNT(*) AS n,
            SUM(b.booking_date <= COALESCE((SELECT MAX(x.date) FROM bank_balances x WHERE x.account_code = b.account_code), '')) AS in_difference
          FROM bank_lines b WHERE b.status IN ('open','waiting') GROUP BY b.account_code, b.status`,
-      )
-      .all<{ account_code: string; status: string; n: number; in_difference: number }>(),
+      ),
+      eboekhoudenDoneStatement(db),
+    ]),
     moneyAccountsWithTransit(db, now),
     year < firstYear ? Promise.resolve(0) : resultOf(db, `${year}-01-01`, today),
     cashDifference(db, yesterday),
@@ -310,9 +312,10 @@ export async function overview(db: D1Database, now: Date): Promise<LedgerOvervie
     consentState(db, now),
     inUseSince(db),
   ]);
-  const count = (status: string) => counts.results.reduce((sum, row) => sum + (row.status === status ? row.n : 0), 0);
+  const rows = counts!.results as { account_code: string; status: string; n: number; in_difference: number }[];
+  const count = (status: string) => rows.reduce((sum, row) => sum + (row.status === status ? row.n : 0), 0);
   const toBookByAccount: Record<string, number> = {};
-  for (const row of counts.results) {
+  for (const row of rows) {
     if (row.in_difference > 0) toBookByAccount[row.account_code] = (toBookByAccount[row.account_code] ?? 0) + row.in_difference;
   }
   const report = parseNightly(lastNightly);
@@ -329,6 +332,7 @@ export async function overview(db: D1Database, now: Date): Promise<LedgerOvervie
     lastNightly: report,
     notUpdatedSince: since !== null && now.getTime() - Date.parse(since) > STALE_MS ? since : null,
     toBookByAccount,
+    eboekhoudenDone: gateOpen(gate!),
   };
 }
 

@@ -17,6 +17,7 @@ const overview = (extra = {}) => ({
   lastNightly: null,
   notUpdatedSince: null,
   toBookByAccount: {},
+  eboekhoudenDone: true,
   ...extra,
 });
 
@@ -222,4 +223,20 @@ it("says how many lines still to book are part of a difference", async () => {
   mockApi({ [`${base}/overview`]: overview({ toBookByAccount: { "1020": 1 } }) });
   renderAt("/beheer/boekhouding");
   expect(await screen.findByRole("listitem", { name: "ING kwartaalrekening" })).toHaveTextContent("waarvan nog te boeken: 1 regel");
+});
+
+it("asks to read in 2026 from e-Boekhouden first", async () => {
+  mockLoggedIn();
+  mockApi({ [`${base}/overview`]: overview({ eboekhoudenDone: false }) });
+  renderAt("/beheer/boekhouding");
+  const link = await screen.findByRole("link", { name: "Lees eerst 2026 in uit e-Boekhouden (Instellingen → Eenmalig). Tot dan boekt de app niets zelf." });
+  expect(link).toHaveAttribute("href", "/beheer/boekhouding/eboekhouden-2026");
+});
+
+it("does not ask for the import once it is done", async () => {
+  mockLoggedIn();
+  mockApi({ [`${base}/overview`]: overview() });
+  renderAt("/beheer/boekhouding");
+  await screen.findByRole("link", { name: "Te boeken: 3" });
+  expect(screen.queryByText(/Lees eerst 2026 in/)).not.toBeInTheDocument();
 });

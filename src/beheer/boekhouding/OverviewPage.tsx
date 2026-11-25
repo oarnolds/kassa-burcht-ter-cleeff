@@ -7,7 +7,7 @@ import { Button } from "../../ui/Button";
 import { Loaded, PageTitle, Problem, Section, count, textLink, today } from "../parts";
 import { useAdminData } from "../useAdmin";
 import { ConsentWarning } from "./ConsentWarning";
-import { cashText, dayOf, failedSteps, notUpdatedText, ranTonight } from "./ledger-alerts";
+import { cashText, dayOf, failedSteps, notUpdatedText, ranTonight, waitingText } from "./ledger-alerts";
 import { ledgerPath, useLedgerWrites } from "./ledger-api";
 
 /** "Vannacht bijgewerkt om 02:00" for a run between midnight and six this morning, else the day. */
@@ -67,6 +67,13 @@ export function OverviewPage() {
         {(o) => (
           <>
             <ConsentWarning overview={o} />
+            {!o.eboekhoudenDone && (
+              <p className="px-2 sm:px-3">
+                <Link className={`${textLink} inline-flex min-h-11 items-center`} to="/beheer/boekhouding/eboekhouden-2026">
+                  {waitingText}
+                </Link>
+              </p>
+            )}
             <Update last={o.lastNightly} notUpdatedSince={o.notUpdatedSince} reload={overview.reload} />
             <Section title="Te boeken">
               <p className="flex flex-wrap items-baseline gap-x-4 px-2 text-lg sm:px-3">

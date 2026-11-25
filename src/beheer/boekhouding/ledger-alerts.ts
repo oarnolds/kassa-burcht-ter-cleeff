@@ -33,9 +33,13 @@ export const notUpdatedText = (since: string): string => `De boekhouding is sind
 /** The kluisje in the books against what the kassa says belongs in it. */
 export const cashText = (cents: number): string => `Kas wijkt ${formatEuro(Math.abs(cents))} af van wat er volgens de kassa in het kluisje hoort`;
 
+/** The auditfile of e-Boekhouden is not read in yet, so the app books nothing by itself. */
+export const waitingText = "Lees eerst 2026 in uit e-Boekhouden (Instellingen → Eenmalig). Tot dan boekt de app niets zelf.";
+
 /** Every warning of the overview beyond the lines to book, the balances and ING's consent, in that order. */
-export function ledgerAlerts(o: { lastNightly: NightlyReport | null; notUpdatedSince: string | null; cashDifferenceCents: number }): string[] {
+export function ledgerAlerts(o: { eboekhoudenDone: boolean; lastNightly: NightlyReport | null; notUpdatedSince: string | null; cashDifferenceCents: number }): string[] {
   return [
+    ...(o.eboekhoudenDone ? [] : [waitingText]),
     ...failedSteps(o.lastNightly),
     ...(o.notUpdatedSince ? [notUpdatedText(o.notUpdatedSince)] : []),
     ...(o.cashDifferenceCents !== 0 ? [cashText(o.cashDifferenceCents)] : []),

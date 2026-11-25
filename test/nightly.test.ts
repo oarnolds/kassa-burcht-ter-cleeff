@@ -5,10 +5,11 @@ import worker from "../worker/index";
 import { LedgerError } from "../worker/db/ledger";
 import { exportAll } from "../worker/db/maintenance";
 import { runNightly } from "../worker/nightly";
-import { api, asAdmin, resetData } from "./helpers";
+import { api, asAdmin, openGate, resetData } from "./helpers";
 
 beforeEach(async () => {
   await resetData();
+  await openGate();
   const { objects } = await env.BACKUPS.list();
   await Promise.all(objects.map((o) => env.BACKUPS.delete(o.key)));
   await env.DB.prepare("DELETE FROM settings WHERE key = 'in_use_since'").run();

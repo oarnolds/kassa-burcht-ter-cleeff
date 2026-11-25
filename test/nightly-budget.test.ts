@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { beforeEach, expect, it, vi } from "vitest";
 import type { Env } from "../worker/env";
 import { runNightly } from "../worker/nightly";
-import { meteredDb, resetData, TEST_EB_APP_ID, testRsaKey, useFakeBoth } from "./helpers";
+import { meteredDb, openGate, resetData, TEST_EB_APP_ID, testRsaKey, useFakeBoth } from "./helpers";
 
 // A whole night on the free plan: the kassa, ING through Enable Banking and Mollie, each with real work to do,
 // within the 50 database calls and 50 external calls a cron run may make. Both fakes answer every fetch.
@@ -12,6 +12,7 @@ const NIGHT = new Date("2027-03-09T02:00:00.000Z");
 
 beforeEach(async () => {
   await resetData();
+  await openGate();
   await env.DB.batch([
     env.DB.prepare("DELETE FROM settings WHERE key = 'in_use_since'"),
     env.DB.prepare("INSERT INTO settings (key, value) VALUES ('in_use_since', '2026-11-21T09:00:00.000Z')"),

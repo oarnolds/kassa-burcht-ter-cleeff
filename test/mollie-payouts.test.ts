@@ -8,13 +8,16 @@ import { overview } from "../worker/db/ledger-reports";
 import { type MollieMonth, mollieMonth, syncMolliePayments, syncSettlements } from "../worker/db/mollie-ledger";
 import type { Env } from "../worker/env";
 import { runNightly } from "../worker/nightly";
-import { api, asAdmin, resetData, useFakeMollie } from "./helpers";
+import { api, asAdmin, openGate, resetData, useFakeMollie } from "./helpers";
 
 // Mollie's payouts arriving on ING betaal (1010), booked with Mollie's costs, and the monthly comparison of the
 // kassa's pin with Mollie. Mollie is the fake one; the ING lines are read in as from a bank file.
 
 const mollie = useFakeMollie();
-beforeEach(resetData);
+beforeEach(async () => {
+  await resetData();
+  await openGate();
+});
 
 const NOW = new Date("2027-03-16T02:00:00.000Z");
 const orgEnv = (over: Partial<Env> = {}): Env => ({ ...env, MOLLIE_ORG_TOKEN: "org_fake", ...over });

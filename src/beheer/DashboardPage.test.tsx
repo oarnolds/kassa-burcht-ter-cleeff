@@ -23,6 +23,7 @@ const overview = (extra = {}) => ({
   lastNightly: null,
   notUpdatedSince: null,
   toBookByAccount: {},
+  eboekhoudenDone: true,
   ...extra,
 });
 const open = (answer: unknown) => {
@@ -104,4 +105,9 @@ it("says nothing of the nightly run or the kas when all is well", async () => {
   open(overview({ lastNightly: { at: "2027-03-07T01:00:00.000Z", steps: { kassa: "ok", ing: "skipped", mollie: "ok" } } }));
   expect(await screen.findByText("In het kluisje hoort")).toBeInTheDocument();
   expect(screen.queryByText(/niet gelukt|niet bijgewerkt|Kas wijkt/)).not.toBeInTheDocument();
+});
+
+it("tells on the first page that the books wait for e-Boekhouden", async () => {
+  open(overview({ eboekhoudenDone: false }));
+  expect(await screen.findByRole("link", { name: /Lees eerst 2026 in uit e-Boekhouden/ })).toHaveAttribute("href", "/beheer/boekhouding");
 });

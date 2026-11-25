@@ -5,12 +5,13 @@ import type { BankLine, Entry, ImportResult } from "../shared/ledger-types";
 import { autoBook, bookLine, importLines, OPEN_LINES_SQL, openLines } from "../worker/db/bank";
 import { balancesOn, entryHistory, getEntry, upsertSourced } from "../worker/db/ledger";
 import { yearChecks } from "../worker/db/year";
-import { api, asAdmin, meteredDb, resetData } from "./helpers";
+import { api, asAdmin, meteredDb, openGate, resetData } from "./helpers";
 
 let cookie: string;
 
 beforeEach(async () => {
   await resetData();
+  await openGate();
   cookie = (await asAdmin()).cookie;
 });
 

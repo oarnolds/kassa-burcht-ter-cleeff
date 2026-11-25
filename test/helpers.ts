@@ -299,3 +299,10 @@ export async function pinStatusOf(token: string, id: string): Promise<PinStatus>
 export function webhook(paymentId: string): Promise<Response> {
   return api("/api/mollie/webhook", { method: "POST", form: { id: paymentId } });
 }
+
+/** Opens the gate of the e-Boekhouden import: the auditfile has been read in, so the app may book by itself. */
+export async function openGate(): Promise<void> {
+  await env.DB.prepare(
+    "INSERT INTO ledger_settings (key, value, updated_at) VALUES ('eboekhouden_imported_at', '2026-11-25T12:00:00.000Z', '2026-11-25T12:00:00.000Z') ON CONFLICT(key) DO NOTHING",
+  ).run();
+}

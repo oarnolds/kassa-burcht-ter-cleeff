@@ -5,6 +5,7 @@ import { businessDate, shiftDate } from "../../shared/time";
 import { sha256Hex } from "../lib/crypto";
 import { type Entry, type EntryLine } from "../../shared/ledger-types";
 import { checkAssetLinks } from "./assets";
+import { eboekhoudenDoneStatement, gateOpen } from "./eboekhouden";
 import { dayMonthYear } from "./kassa-ledger";
 import { createEntry, editEntry, entrySnapshot, LedgerError, upsertSourcedStatements } from "./ledger";
 import { endOfDay } from "./opening";
@@ -551,7 +552,7 @@ const payoutReference = (row: OpenRow): string | null =>
  * many lines were booked.
  */
 export async function autoBook(db: D1Database, now: Date): Promise<number> {
-  const [lines, accounts, settlements] = await db.batch([
+  const [lines, accounts, settlements, gate] = await db.batch([
     db
       .prepare(
         `SELECT b.id, b.account_code, b.booking_date, b.amount_cents, b.counterparty_name, b.counterparty_iban, b.description,
@@ -568,7 +569,10 @@ export async function autoBook(db: D1Database, now: Date): Promise<number> {
          EXISTS (SELECT 1 FROM ledger_entries e WHERE e.source = 'mollie_settlement' AND e.source_ref = s.id) AS booked
        FROM mollie_settlements s WHERE s.reference IS NOT NULL`,
     ),
+    eboekhoudenDoneStatement(db),
   ]);
+  // 2026 waits for e-Boekhouden's auditfile: the lines stay as they are (not even marked) until it is read in.
+  if (!gateOpen(gate!)) return 0;
   const others = (accounts!.results as { account_code: string; identifier: string }[]).map((row) => ({
     code: row.account_code,
     id: normal(row.identifier),
