@@ -1,12 +1,11 @@
 import type { CamtLine, CamtStatement } from "../../shared/camt";
-import { type BankLine, type ImportResult, LEDGER_START, type MoneyAccount, type MoneySource, OVERSTAP, PAYOUT_REFERENCE } from "../../shared/ledger-types";
+import { type BankLine, type ImportResult, LEDGER_START, type MoneyAccount, MOLLIE_START, type MoneySource, OVERSTAP, PAYOUT_REFERENCE } from "../../shared/ledger-types";
 import { formatEuro } from "../../shared/money";
 import { businessDate, shiftDate } from "../../shared/time";
 import { sha256Hex } from "../lib/crypto";
 import { type Entry, type EntryLine } from "../../shared/ledger-types";
 import { checkAssetLinks } from "./assets";
-import { eboekhoudenDoneStatement, gateOpen } from "./eboekhouden";
-import { dayMonthYear } from "./kassa-ledger";
+import { eboekhoudenDoneStatement, gateOpen, PAYOUTS_KEY } from "./eboekhouden";
 import { createEntry, editEntry, entrySnapshot, LedgerError, upsertSourcedStatements } from "./ledger";
 import { endOfDay } from "./opening";
 
@@ -321,15 +320,16 @@ const toMoneyAccount = (row: AccountRow): MoneyAccount => ({
 
 const today = (now: Date) => businessDate(now.toISOString());
 
-/** The first moment of the ledger, 1 January 2027 00:00 in Amsterdam, as a UTC ISO string. */
-const LEDGER_START_MOMENT = new Date(Date.parse(endOfDay(FIRST_BALANCE_DATE)) + 1).toISOString();
+/** The first moment of Mollie in the app, 1 November 2026 00:00 in Amsterdam, as a UTC ISO string. */
+const MOLLIE_START_MOMENT = new Date(Date.parse(endOfDay(shiftDate(MOLLIE_START, -1))) + 1).toISOString();
 
 /**
- * Mollie's payouts on their way to ING at the end of Amsterdam day `date`: settled from LEDGER_START up to the end
- * of that day (not failed), and not arrived by then: no payout entry (`mollie_settlement`) dated on or before
+ * Mollie's payouts on their way to ING at the end of Amsterdam day `date`: settled from MOLLIE_START up to the end
+ * of that day (not failed), not one e-Boekhouden booked (its reference is in the `PAYOUTS_KEY` list, read here with
+ * `json_each`; no setting is an empty list), and not arrived by then: no payout entry (`mollie_settlement`) dated on or before
  * `date`, and no booked credit on ING betaal dated on or before `date` that carries the payout's reference (a payout
  * line booked by hand). Their amount plus costs, as `cents`: Mollie's balance has let go of them, 1030 still holds
- * them. A payout settled before LEDGER_START is the opening's (on its way as 1080), never this. A statement, for a
+ * them. A payout from before MOLLIE_START is e-Boekhouden's, never this. A statement, for a
  * caller's batch; `payoutsInTransit` runs it.
  */
 export function payoutsInTransitStatement(db: D1Database, date: string): D1PreparedStatement {
@@ -337,6 +337,8 @@ export function payoutsInTransitStatement(db: D1Database, date: string): D1Prepa
     .prepare(
       `SELECT COALESCE(SUM(s.amount_cents + abs(s.costs_cents)), 0) AS cents FROM mollie_settlements s
        WHERE s.status <> 'failed' AND s.amount_cents > 0 AND s.settled_at >= ?1 AND s.settled_at <= ?2
+         AND (s.reference IS NULL OR s.reference NOT IN
+           (SELECT value FROM json_each(COALESCE((SELECT value FROM ledger_settings WHERE key = ?4), '[]'))))
          AND NOT EXISTS (SELECT 1 FROM ledger_entries e WHERE e.source = 'mollie_settlement' AND e.source_ref = s.id AND e.date <= ?3)
          AND NOT EXISTS (
            SELECT 1 FROM bank_lines b
@@ -344,7 +346,7 @@ export function payoutsInTransitStatement(db: D1Database, date: string): D1Prepa
              AND b.booking_date >= date(substr(s.settled_at, 1, 10), '-1 day') AND b.booking_date <= ?3
              AND s.reference IS NOT NULL AND instr(b.description, s.reference) > 0)`,
     )
-    .bind(LEDGER_START_MOMENT, endOfDay(date), date);
+    .bind(MOLLIE_START_MOMENT, endOfDay(date), date, PAYOUTS_KEY);
 }
 
 export async function payoutsInTransit(db: D1Database, date: string): Promise<number> {
@@ -545,14 +547,14 @@ const payoutReference = (row: OpenRow): string | null =>
 /**
  * Lines that book themselves. A payout of Mollie on ING betaal, by the reference in its description: known with the
  * same amount, it is booked with Mollie's costs (debit 1010 the payout, debit 4511 the costs, credit 1030 both);
- * not known yet, it waits for Mollie; settled before LEDGER_START, known with another amount, or booked already from
+ * not known yet, it waits for Mollie; in e-Boekhouden already (its reference is in the `PAYOUTS_KEY` list), known with another amount, or booked already from
  * another line, it stays open with the reason, and the app never guesses. A line booked by hand (also one that
  * waited) is left alone. Own transfers and kasstortings, of `open` lines only, against 1080.
  * Lines in years that are not closed; a second run finds nothing more. In batches, not one call per line. Gives how
  * many lines were booked.
  */
 export async function autoBook(db: D1Database, now: Date): Promise<number> {
-  const [lines, accounts, settlements, gate] = await db.batch([
+  const [lines, accounts, settlements, gate, eb] = await db.batch([
     db
       .prepare(
         `SELECT b.id, b.account_code, b.booking_date, b.amount_cents, b.counterparty_name, b.counterparty_iban, b.description,
@@ -570,6 +572,7 @@ export async function autoBook(db: D1Database, now: Date): Promise<number> {
        FROM mollie_settlements s WHERE s.reference IS NOT NULL`,
     ),
     eboekhoudenDoneStatement(db),
+    db.prepare("SELECT value FROM ledger_settings WHERE key = ?1").bind(PAYOUTS_KEY),
   ]);
   // 2026 waits for e-Boekhouden's auditfile: the lines stay as they are (not even marked) until it is read in.
   if (!gateOpen(gate!)) return 0;
@@ -578,6 +581,7 @@ export async function autoBook(db: D1Database, now: Date): Promise<number> {
     id: normal(row.identifier),
     word: new RegExp(`(^|[^A-Za-z0-9])${escapeRegExp(row.identifier.trim())}($|[^A-Za-z0-9])`, "i"),
   }));
+  const inEboekhouden = new Set<string>(JSON.parse((eb!.results[0] as { value: string } | undefined)?.value ?? "[]"));
   const payouts = new Map((settlements!.results as PayoutRow[]).map((row) => [row.reference, row]));
   // A payout is booked from one line only: the oldest that carries it, or the one that already did.
   const taken = new Set([...payouts.values()].filter((payout) => payout.booked === 1).map((payout) => payout.id));
@@ -609,18 +613,10 @@ export async function autoBook(db: D1Database, now: Date): Promise<number> {
   const work = (lines!.results as OpenRow[]).flatMap((row): Work[] => {
     const reference = payoutReference(row);
     if (reference !== null) {
+      // e-Boekhouden booked this payout already (a line from before the overstap, typed or read in again).
+      if (inEboekhouden.has(reference)) return mark(row, "open", null, `Uitbetaling ${reference} staat al in e-Boekhouden.`);
       const payout = payouts.get(reference);
       if (!payout) return mark(row, "waiting", "mollie", null);
-      // Settled before the books begin: its costs are in e-Boekhouden, and the money may stand in the opening as underway.
-      const settled = payout.settled_at === null ? null : businessDate(payout.settled_at);
-      if (settled !== null && settled < LEDGER_START) {
-        return mark(
-          row,
-          "open",
-          null,
-          `Uitbetaling ${reference} is van ${dayMonthYear(settled)} (${settled.slice(0, 4)}): boek hem tegen 1080 Kruisposten als hij in de beginbalans onderweg stond.`,
-        );
-      }
       if (payout.amount_cents !== row.amount_cents) return mark(row, "open", null, `Bedrag wijkt af van de uitbetaling bij Mollie (${formatEuro(payout.amount_cents)})`);
       if (taken.has(payout.id)) return mark(row, "open", null, `Uitbetaling ${reference} is al geboekt`);
       taken.add(payout.id);

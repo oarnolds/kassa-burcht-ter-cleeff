@@ -252,36 +252,64 @@ it("lets him book a waiting payout line by hand, and the payout that follows boo
   expect(await payoutsInTransit(env.DB, "2027-03-09")).toBe(0);
 });
 
-it("leaves a payout settled before the books begin to the penningmeester", async () => {
-  // Settled before the books begin, it lands on ING after the overstap: the line comes in first and waits.
-  await ingLine("2026-11-26", 9812, "05665564.2512.03 Mollie");
-  expect(await autoBook(env.DB, NOW)).toBe(0);
-  expect(await lineOf("05665564.2512.03 Mollie")).toMatchObject({ status: "waiting", waiting_for: "mollie" });
+/** The references e-Boekhouden booked, as the import keeps them. */
+const eboekhoudenPaid = (...references: string[]) =>
+  env.DB.prepare("INSERT INTO ledger_settings (key, value, updated_at) VALUES ('eboekhouden_payouts', ?1, '2026-11-25T12:00:00.000Z') ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+    .bind(JSON.stringify(references))
+    .run();
 
-  // Mollie is read from 1 October 2026 on, so a payout of 2025 is put in by hand.
-  await env.DB.prepare(
-    "INSERT INTO mollie_settlements (id, reference, status, settled_at, amount_cents, costs_cents) VALUES ('stl_2025', '05665564.2512.03', 'paidout', '2025-12-30T06:00:00.000Z', 9812, 188)",
-  ).run();
+it("leaves a payout line e-Boekhouden has open with a note", async () => {
+  await eboekhoudenPaid("05665564.2611.01");
+  // As ING writes it (a letter glued to the reference), typed or read in again after the overstap.
+  await ingLine("2026-11-26", 9812, "P05665564.2611.01  RF1");
+  // Mollie does not even know it: it is not waiting, it stays open with the reason.
+  expect(await autoBook(env.DB, NOW)).toBe(0);
+  const note = "Uitbetaling 05665564.2611.01 staat al in e-Boekhouden.";
+  expect(await lineOf("P05665564.2611.01  RF1")).toMatchObject({ status: "open", waiting_for: null, note, entry_id: null });
 
-  // Its costs are 2025's, booked in e-Boekhouden: the app does not book it, and says what to do.
+  // Also when Mollie does know it, and a second run changes nothing.
+  mollie.current.addSettlement({ reference: "05665564.2611.01", amount: "98.12", settledAt: "2026-11-02T06:00:00+00:00", costs: { "2026": { "11": ["1.88"] } } });
+  expect(await syncSettlements(orgEnv(), new Date("2026-11-27T02:00:00.000Z"))).toBe("ok");
   expect(await autoBook(env.DB, NOW)).toBe(0);
-  expect(await lineOf("05665564.2512.03 Mollie")).toMatchObject({
-    status: "open",
-    waiting_for: null,
-    note: "Uitbetaling 05665564.2512.03 is van 30-12-2025 (2025): boek hem tegen 1080 Kruisposten als hij in de beginbalans onderweg stond.",
-    entry_id: null,
-  });
   expect(await autoBook(env.DB, NOW)).toBe(0);
-  expect(await count("ledger_entries")).toBe(0);
-
-  // He books it against 1080, and that is that.
-  const line = (await lineOf("05665564.2512.03 Mollie"))!;
-  await bookLine(env.DB, line.id, { split: [{ accountCode: "1080", amountCents: -9812 }] }, NOW);
-  expect(await autoBook(env.DB, NOW)).toBe(0);
-  expect(await lineOf("05665564.2512.03 Mollie")).toMatchObject({ status: "booked" });
+  expect(await lineOf("P05665564.2611.01  RF1")).toMatchObject({ status: "open", note, entry_id: null });
   expect(await count("ledger_entries WHERE source = 'mollie_settlement'")).toBe(0);
-  // It left Mollie before the books began, so 1030 never held it: it is never "onderweg" in the comparison.
-  expect(await payoutsInTransit(env.DB, "2026-11-30")).toBe(0);
+});
+
+it("does not count e-Boekhouden's payout as in transit", async () => {
+  mollie.current.addSettlement({ reference: "05665564.2611.01", amount: "98.12", settledAt: "2026-11-01T06:00:00+00:00", costs: { "2026": { "11": ["1.88"] } } });
+  expect(await syncSettlements(orgEnv(), new Date("2026-11-27T02:00:00.000Z"))).toBe("ok");
+  // Without the list it is on its way (settled on the first day of Mollie in the app) ...
+  expect(await payoutsInTransit(env.DB, "2026-11-10")).toBe(10000);
+  // ... with the reference in it, e-Boekhouden has it: 0.
+  await eboekhoudenPaid("05665564.2611.01");
+  expect(await payoutsInTransit(env.DB, "2026-11-10")).toBe(0);
+  // A payout of before Mollie's start is never in transit either.
+  await env.DB.prepare(
+    "INSERT INTO mollie_settlements (id, reference, status, settled_at, amount_cents, costs_cents) VALUES ('stl_oct', '05665564.2610.01', 'paidout', '2026-10-30T06:00:00.000Z', 5000, 100)",
+  ).run();
+  expect(await payoutsInTransit(env.DB, "2026-11-10")).toBe(0);
+});
+
+it("books the first payout of the app with its costs", async () => {
+  await eboekhoudenPaid("05665564.2611.01");
+  paid("tr_rule", "32.00", "Lidm. Speeltuin ter Cleefte", "2026-11-03T10:00:00+00:00");
+  paid("tr_pin", "20.00", "Kassa bon", "2026-11-21T10:00:00+00:00", "pointofsale");
+  const first = mollie.current.addSettlement({ reference: "05665564.2612.01", amount: "51.00", settledAt: "2026-12-01T06:00:00+00:00", costs: { "2026": { "12": ["1.00"] } } });
+  const now = new Date("2026-12-03T02:00:00.000Z");
+  expect(await syncMolliePayments(orgEnv(), now)).toBe("ok");
+  expect(await syncSettlements(orgEnv(), now)).toBe("ok");
+  // On its way until the line arrives on ING.
+  expect(await payoutsInTransit(env.DB, "2026-12-01")).toBe(5200);
+
+  await ingLine("2026-12-02", 5100, "P05665564.2612.01  RF1");
+  expect(await autoBook(env.DB, now)).toBe(1);
+  expect(amounts(await entry("mollie_settlement", first.id))).toEqual([
+    ["1010", 5100],
+    ["4511", 100],
+    ["1030", -5200],
+  ]);
+  expect(await payoutsInTransit(env.DB, "2026-12-02")).toBe(0);
 });
 
 it("reads Mollie's payouts from 1 October 2026 on, so the payout of 2 November is known", async () => {
@@ -289,6 +317,14 @@ it("reads Mollie's payouts from 1 October 2026 on, so the payout of 2 November i
   const november = mollie.current.addSettlement({ reference: "05665564.2611.01", amount: "98.12", settledAt: "2026-11-02T06:00:00+00:00", costs: { "2026": { "11": ["1.88"] } } });
   expect(await settle(new Date("2026-11-26T02:00:00.000Z"))).toBe("ok");
   expect((await env.DB.prepare("SELECT id FROM mollie_settlements").all()).results).toEqual([{ id: november.id }]);
+});
+
+it("starts the Mollie months in November 2026", async () => {
+  const { cookie } = await asAdmin();
+  const before = await api("/api/admin/boekhouding/mollie/month?month=2026-10", { cookie });
+  expect(before.status).toBe(400);
+  expect(await before.json()).toEqual({ error: "before_mollie_start" });
+  expect((await api("/api/admin/boekhouding/mollie/month?month=2026-11", { cookie })).status).toBe(200);
 });
 
 it("compares the kassa's pin with Mollie's, payment by payment", async () => {

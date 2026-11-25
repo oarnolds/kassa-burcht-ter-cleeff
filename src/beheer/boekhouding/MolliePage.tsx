@@ -1,5 +1,5 @@
 import { useSearchParams } from "react-router";
-import type { LedgerAccount, MollieMonth } from "../../../shared/ledger-types";
+import { type LedgerAccount, MOLLIE_START, type MollieMonth } from "../../../shared/ledger-types";
 import { formatEuro } from "../../../shared/money";
 import { formatDateNl, monthOf } from "../../../shared/time";
 import { Button } from "../../ui/Button";
@@ -8,6 +8,8 @@ import { useAdminData } from "../useAdmin";
 import { ledgerPath } from "./ledger-api";
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+/** The first month the app has Mollie in: earlier ones are e-Boekhouden's. */
+const FIRST_MONTH = MOLLIE_START.slice(0, 7);
 const monthName = new Intl.DateTimeFormat("nl-NL", { month: "long", year: "numeric", timeZone: "UTC" });
 
 function shiftMonth(month: string, by: number): string {
@@ -86,7 +88,7 @@ export function MolliePage() {
   const [params, setParams] = useSearchParams();
   const current = monthOf(today());
   const asked = params.get("maand");
-  const month = asked && MONTH.test(asked) ? asked : current;
+  const month = asked && MONTH.test(asked) && asked >= FIRST_MONTH ? asked : current;
   const data = useAdminData<MollieMonth>(ledgerPath.mollieMonth(month));
   const accounts = useAdminData<LedgerAccount[]>(ledgerPath.accounts);
   const names = new Map((accounts.data ?? []).map((account) => [account.code, account.name]));
@@ -95,7 +97,7 @@ export function MolliePage() {
     <div>
       <PageTitle>Mollie</PageTitle>
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <Button onClick={() => open(shiftMonth(month, -1))}>Vorige maand</Button>
+        <Button disabled={month <= FIRST_MONTH} onClick={() => open(shiftMonth(month, -1))}>Vorige maand</Button>
         <h2 className="text-xl font-bold">{monthName.format(new Date(`${month}-01T00:00:00Z`))}</h2>
         <Button disabled={month >= current} onClick={() => open(shiftMonth(month, 1))}>
           Volgende maand

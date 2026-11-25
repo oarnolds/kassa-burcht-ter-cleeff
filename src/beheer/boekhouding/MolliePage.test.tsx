@@ -92,3 +92,32 @@ it("shows a payout on its way to ING as onderweg, and only the rest as a differe
   expect(await screen.findByText("Onderweg naar ING € 100,00")).toBeInTheDocument();
   expect(saldo().getByText("verschil € 2,50")).toBeInTheDocument();
 });
+
+it("offers Mollie months from November 2026 on", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-12-10T10:00:00.000Z") });
+  try {
+    mockLoggedIn();
+    mockApi({ [`${base}/accounts`]: named, [`${base}/mollie/month`]: (req: { url: string }) => month({ month: new URL(req.url, "http://localhost").searchParams.get("month")! }) });
+    renderAt("/beheer/boekhouding/mollie");
+    expect(await screen.findByRole("heading", { name: "december 2026" })).toBeInTheDocument();
+    await tap("Vorige maand");
+    expect(await screen.findByRole("heading", { name: "november 2026" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Vorige maand" })).toBeDisabled();
+    expect(calls("GET").some((call) => call.url.includes("month=2026-10"))).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("falls back to the current month for a month before Mollie's start", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-12-10T10:00:00.000Z") });
+  try {
+    mockLoggedIn();
+    mockApi({ [`${base}/accounts`]: named, [`${base}/mollie/month`]: (req: { url: string }) => month({ month: new URL(req.url, "http://localhost").searchParams.get("month")! }) });
+    renderAt("/beheer/boekhouding/mollie?maand=2026-10");
+    expect(await screen.findByRole("heading", { name: "december 2026" })).toBeInTheDocument();
+    expect(calls("GET").some((call) => call.url.includes("month=2026-10"))).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
+});

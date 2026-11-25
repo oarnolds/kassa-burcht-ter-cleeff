@@ -438,6 +438,7 @@ export async function syncSettlements(env: Env, now: Date): Promise<"ok" | "skip
  * payouts on their way when Mollie gave a balance.
  */
 export async function mollieMonth(db: D1Database, month: string, now: Date = new Date()): Promise<MollieMonth> {
+  if (month < MOLLIE_START.slice(0, 7)) throw new LedgerError("before_mollie_start", 400);
   const { first, last } = monthRange(month);
   const today = businessDate(now.toISOString());
   const until = last < today ? last : today;
