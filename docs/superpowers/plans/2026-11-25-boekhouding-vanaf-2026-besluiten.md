@@ -4,7 +4,7 @@ Hoort bij het plan `2026-11-25-boekhouding-vanaf-2026.md` en het ontwerp `../spe
 
 Tijdens het bouwen (25 november 2026, taak voor taak, met per taak een frisse bouwer en een frisse controleur) heeft de bouwer (Claude) besluiten genomen waar het plan of het ontwerp geen antwoord gaf, of waar het plan niet klopte. Hieronder staan ze allemaal, met wat het kost als het besluit verkeerd blijkt. Daarna volgen: wat er op het echte auditbestand is gecontroleerd, de stappen om live te zetten (voorbereid, niet gedaan), wat live nog moet worden nagekeken, en de kleine punten uit de controles die bewust zijn blijven liggen. Onderaan staan de oorspronkelijke regels uit het bouwlogboek, letterlijk (in het Engels).
 
-Stand: taken 1 tot en met 10 zijn af. Taken 1 tot en met 9 zijn elk door een eigen controleur nagekeken. Bij de volledige controle in taak 10 slaagde alles: 618 tests van de app, 517 van de Worker, de typecontrole, en 33 van de 33 tests die de kassa en beheer in de browser nalopen. Er is niets samengevoegd in `main`, niets online gezet, en de live database is niet aangeraakt.
+Stand: taken 1 tot en met 10 zijn af. Taken 1 tot en met 9 zijn elk door een eigen controleur nagekeken. Daarna is de hele tak nog eens nagekeken; wat die laatste controle vond, is in één ronde opgelost (besluit 57 tot en met 63). Na die ronde slaagde alles: 624 tests van de app, 526 van de Worker, de typecontrole, en 33 van de 33 tests die de kassa en beheer in de browser nalopen. Er is niets samengevoegd in `main`, niets online gezet, en de live database is niet aangeraakt.
 
 ## Besluiten
 
@@ -103,6 +103,18 @@ Besluit 20, 26 en 44 tot en met 48 zijn de zeven keuzes van de bouwer van dit sc
 55. Het handboek zegt 1300 en 1700 pas te verbergen als er na het inlezen niets meer op open staat. *Kost:* niets.
 56. Het handboek houdt "je", zoals het al was; de schermen en dit bestand zeggen "u". *Kost:* niets.
 
+### Na de laatste controle
+
+De laatste controle van de hele tak vond twee ernstige punten, één belangrijk punt en een paar kleine. Ze zijn in één ronde opgelost. Dit zijn de besluiten die daarbij hoorden.
+
+57. **Overnemen boekt meteen de kassa** (R12). Zolang de poort dicht was, stonden de kassadagen vanaf 21 november nog niet in de boeken. Daardoor toonde de samenvatting na Overnemen het wisselgeld plus de contante verkoop van 21 tot en met 24 november als kasverschil, en het handboek zei dat verschil te boeken. Dan was 1000 Kas later die verkoop te hoog geweest, met een kasverschil dat niemand kon uitleggen. Nu boekt Overnemen de kassa direct nadat de poort opengaat, en rekent pas daarna 1000 Kas uit. Alleen het wisselgeld van de eerste telling kan dan nog verschillen. Lukt het boeken van de kassa op dat moment niet, dan geeft Overnemen toch antwoord en probeert de nachtelijke taak het opnieuw. *Kost:* een paar databaseaanroepen extra bij Overnemen (gemeten: 11 voor het hele verzoek, met 40 kassadagen; de grens is 50). Lukt de kassa bij Overnemen niet, dan klopt de kas in de samenvatting niet; de eerstvolgende keer bijwerken zegt dan dat de kassa niet lukte.
+58. **Geen kasverschil op het Overzicht vóór het inlezen** (R13). Zolang het auditbestand niet is ingelezen, staan de kassadagen niet in de boeken, dus zegt een verschil niets. Het Overzicht toont dan geen "Kas wijkt af". *Kost:* niets.
+59. **De regels van Mollie vanaf 1 november** (R14). Een betaling via de website of de QR-code zonder regel, een terugbetaling en een terugboeking van 1 tot en met 24 november werden weggelaten: alle regels op een geldrekening werden pas vanaf 25 november bewaard. 1030 zou dan afwijken van het saldo bij Mollie, zonder dat er iets in Te boeken stond. Nu beginnen de regels van Mollie (1030) op 1 november en die van een bank op 25 november. Het vanzelf boeken kijkt op dezelfde manier. *Kost:* niets; zo staat het in het ontwerp (§12).
+60. **De toestellenlijst opnieuw plakken** (R15). Een lijst die live is geplakt vóór deze versie, heeft de stand van 31 december 2026. De beginbalans van 2026 zou dan een jaar afschrijving te veel hebben, en de app zou de afschrijving van 2026 nog eens boeken. Niets anders merkt dat op. Migratie 0013 zet daarom een merkteken als er live al geplakte toestellen zijn. Het Overzicht van beheer, het Overzicht van de boekhouding en Toestellen (boven het plakvak) zeggen dan "Plak Vaste activa 2026 opnieuw bij Toestellen: de app neemt nu de stand van 1 januari 2026 over." Opnieuw plakken haalt het merkteken weg. Toestellen haalt daarvoor het overzicht op. *Kost:* een zin extra op drie plekken tot u plakt, en één verzoek extra bij het openen van Toestellen.
+61. **Een oud auditbestand** (R16). Is het bestand gemaakt vóór 25 november 2026, dan waarschuwt het scherm vóór Overnemen: "wat na het maken in e-Boekhouden is geboekt, staat er niet in; download het opnieuw." Overnemen kan wel. *Kost:* leest u toch een oud bestand in, dan ontbreken de boekingen van daarna. Het verschil met de bank laat dat zien.
+62. **De geldrekeningen na Overnemen** (R17). 1030 Mollie staat er niet meer bij, net als 1000 Kas: Mollie begint in de app op nul. Heeft de bank geen saldo op of vóór 24 november, dan zegt het scherm: "Vergelijk met uw bankapp, of met het overzicht na Nu bijwerken." Bij ING betaal via Enable Banking is dat altijd zo, want die saldi krijgen de datum van het ophalen. *Kost:* niets.
+63. **Lange omschrijvingen** (M4). Op het echte bestand nagekeken, alleen getallen: een omschrijving is hoogstens 200 tekens, en een boeking heeft hoogstens 4 regels. De Worker laat 500 tekens per boeking, 1000 per regel en 100 regels toe; dat blijft zo. *Kost:* komt er ooit een langere tekst, dan weigert één portie met een Nederlandse foutmelding. Er wordt niets half geschreven: het scherm stopt en zegt geen "klaar".
+
 ## Gecontroleerd op het echte auditbestand
 
 Op 25 november 2026, door de leidende sessie, op een kopie zonder namen en omschrijvingen. Hieronder alleen aantallen, bedragen, data en kenmerken van Mollie.
@@ -136,7 +148,7 @@ Elke stap pas na uw ja. Niemand leest of verandert de live database zonder uw ja
    npx wrangler d1 migrations apply kassa --remote
    ```
 
-   Dit zet twee migraties op de live database: 0012 (de tabel met boekingen opnieuw opgebouwd, met de bron e-Boekhouden erbij) en 0013 (het jaar 2026 open). Gaat er iets mis, dan kan de database terug naar het herstelpunt:
+   Dit zet twee migraties op de live database: 0012 (de tabel met boekingen opnieuw opgebouwd, met de bron e-Boekhouden erbij) en 0013 (het jaar 2026 open, en het merkteken om de toestellenlijst opnieuw te plakken als er live al een staat, besluit 60). Gaat er iets mis, dan kan de database terug naar het herstelpunt:
 
    ```bash
    npx wrangler d1 time-travel restore kassa --bookmark=<de bookmark van hierboven>
@@ -152,12 +164,12 @@ Elke stap pas na uw ja. Niemand leest of verandert de live database zonder uw ja
 
 - Tot u het auditbestand inleest, boekt de app in 2026 niets zelf. Het Overzicht zegt dat: "Lees eerst 2026 in uit e-Boekhouden (Instellingen → Eenmalig). Tot dan boekt de app niets zelf." Bankregels en betalingen van Mollie worden wel al opgehaald.
 - Is er van 16 tot en met 24 november iets op ASN gebeurd? e-Boekhouden heeft ASN tot en met 15 november. Boek dat dan eerst in e-Boekhouden en download het auditbestand opnieuw.
-- Plak **Vaste activa 2026** bij **Toestellen**. Plakt u vóór het inlezen, dan vullen de toestellen de beginbalans meteen; plakt u erna, dan wordt de beginbalans opnieuw bewaard. Allebei goed.
+- Plak **Vaste activa 2026** bij **Toestellen**, ook als u de lijst al vóór 25 november 2026 had geplakt: die had de stand van 31 december 2026 (besluit 60). Plakt u vóór het inlezen, dan vullen de toestellen de beginbalans meteen; plakt u erna, dan wordt de beginbalans opnieuw bewaard. Allebei goed.
 - Lees het auditbestand in bij **Boekhouding → Instellingen → Eenmalig → 2026 uit e-Boekhouden inlezen** en tik op **Overnemen**. Dat doet u zelf; niemand anders zet gegevens in de live database.
-- Kijk na Overnemen de samenvatting na: de kas naast het kluisje (boek een verschil één keer, zie het handboek), wat er op 1300 en 1700 open staat, en per bankrekening het saldo in de boeken naast dat van de bank. In de boeken hoort 1010 dan op € 21.734,49 te staan.
-- Tik op **Nu bijwerken** op het Overzicht, of wacht tot de nacht. Dan komen de kassa vanaf 21 november, ING vanaf 25 november en Mollie vanaf november erin.
+- Kijk na Overnemen de samenvatting na: de kas naast het kluisje, wat er op 1300 en 1700 open staat, en per bankrekening het saldo in de boeken naast dat van de bank. Overnemen heeft de kassadagen vanaf 21 november dan al geboekt (besluit 57): alleen het wisselgeld van de eerste telling kan nog verschillen; boek dat één keer, zie het handboek. In de boeken hoort 1010 dan op € 21.734,49 te staan.
+- Tik op **Nu bijwerken** op het Overzicht, of wacht tot de nacht. Dan komen ING vanaf 25 november en Mollie vanaf november erin.
 
-Vooraf live kijken is niet nodig: de app vangt een getypte beginbalans van 2027, een geplakte toestellenlijst en vergelijkingscijfers voor 2026 zelf op (besluit 38 tot en met 40).
+Vooraf live kijken is niet nodig: de app vangt een getypte beginbalans van 2027, een geplakte toestellenlijst en vergelijkingscijfers voor 2026 zelf op (besluit 38 tot en met 40, en 60).
 
 ## Live nog na te kijken
 
@@ -170,7 +182,7 @@ Vooraf live kijken is niet nodig: de app vangt een getypte beginbalans van 2027,
 
 De controleurs vonden ze. Geen ervan houdt het live zetten tegen; het gaat vooral om ontbrekende tests en kleine netheid.
 
-1. Een paar dingen hebben geen eigen test: het filter op terugbetalingen vanaf november; dat een ingetypte regel op 25 november wél mag; dat de regels van een rekening zonder plek bij de boekingen blijven; de volgorde van boekingsnummers; meer vormen van een kapot bedrag; enkele en lege tellingen en de extra foutmeldingen op het inleesscherm; een datum met één cijfer in het jaaroverzicht; de ingebruikname zonder ingelezen bestand.
+1. Een paar dingen hebben geen eigen test: dat een ingetypte regel op 25 november wél mag; dat de regels van een rekening zonder plek bij de boekingen blijven; de volgorde van boekingsnummers; meer vormen van een kapot bedrag; enkele en lege tellingen en de extra foutmeldingen op het inleesscherm; een datum met één cijfer in het jaaroverzicht; de ingebruikname zonder ingelezen bestand.
 2. Hier en daar staat in de naam of uitleg van een test nog 2027 waar 2026 bedoeld is.
 3. De test dat de poort geen extra databaseaanroep kost, vergelijkt niet met een precieze telling.
 4. Wordt 2026 precies tussen het lezen en het schrijven van "klaar" afgesloten, dan houdt niets het openen van de poort en het weghalen van het eigen vermogen van 2027 tegen. Dat kan alleen als u in twee vensters tegelijk werkt.
@@ -220,6 +232,15 @@ De controleurs vonden ze. Geen ervan houdt het live zetten tegen; het gaat voora
 29. R10: the Begroting page keeps opening on 2027 at the earliest (a named first budget year = FIRST_LEDGER_YEAR + 1); 2026 stays selectable; the e2e workaround (select 2027) goes back out — why: spec §13 — cost if wrong: one click to pick 2026 if he ever wants a 2026 budget.
 30. Task 8: fix round 1/5 (1 addressed, 0 open — budget page opens on 2027 via FIRST_BUDGET_YEAR (R10), e2e workaround removed; full e2e 33/33; commits 106c7b4..7d67062)
 31. R11 (T9): when the kassa has no ingebruikname (inUseSince null), the second note (8011/8012) is left out — why: its date comes from inUseSince; live has 21-11-2026 — cost if wrong: a jaaroverzicht without that explanation in a case that does not occur live.
+32. Final review (opus): With fixes. Critical C1 (kas summary after Overnemen counts float + 21–24 Nov cash as a difference, because the kassa days are not booked yet at finish; page/README tell him to book it), Critical C2 (Mollie no-rule payments, refunds, chargebacks dated 1–24 Nov dropped by storeLines' OVERSTAP floor for 1030), Important I1 (a toestellen list pasted live before this deploy holds the 31-12-2026 state and can silently stay). Minors M1–M7. Deferred-minor triage: only T1 "reversals filter untested" must be fixed (with C2).
+33. M4 checked on the real file (python3 -I, numbers only): descriptions max 200 characters (Worker allows 500/1000), max 4 lines per booking (allows 100) → no change needed. Ruling: Worker zod limits stay — the real file is far within them — cost if wrong: a later file with a longer text refuses one chunk with a Dutch error; nothing half-written (page stops, no finish).
+34. R12: finishImport runs syncKassa right after opening the gate (errors caught; the nightly run retries), then computes the summary — why: spec §10 defines 1000 "volgens de boeken" including the kassa days; the gate made that impossible at finish — cost if wrong: one extra sync inside the finish request (a few database calls).
+35. R13: overview cashDifference is 0 while the gate is closed — why: the difference is meaningless before the import and would push him to book a wrong correction — cost if wrong: none.
+36. R14: storeLines floors Mollie-origin lines (1030) at MOLLIE_START, bank lines at OVERSTAP; autoBook likewise for 1030 lines if it handles them — why: spec §12 / decision MOLLIE_START covers payments, refunds and chargebacks from 1-11 — cost if wrong: none.
+37. R15: migration 0013 also sets a ledger setting marking a toestellen list pasted before this version (only when pasted assets exist); the Overzicht and Toestellen say "plak opnieuw" until the next paste clears it; README and besluiten say to paste again also if pasted before — why: a list pasted under the old rule holds the 31-12-2026 state; no other check catches it (spec §3, §17) — cost if wrong: one extra sentence on two pages until he pastes.
+38. R16: an auditfile made before 25-11-2026 gets a warning on the preview, not a refusal — why: ING lines up to 24-11 might be missing from both systems; a warning is enough, he decides — cost if wrong: he imports an old file after reading the warning; the bank difference shows it.
+39. R17: the import summary leaves out 1030 (like 1000) and, without a bank balance on or before 24-11, points him to his bank app or to the Overzicht after Nu bijwerken — why: Enable Banking dates balances on the fetch day, so the comparison would always be empty — cost if wrong: none.
+40. Final fix wave: ONE fixer (opus) with C1, C2 (+T1 reversal tests), I1, M1–M3, M5–M7, R12–R17, docs updates. FIX_BASE=520d3c4.
 
 ### Kleine punten die zijn blijven liggen, letterlijk
 
