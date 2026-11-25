@@ -183,6 +183,8 @@ export type XafOptions = {
   opening?: Record<string, string>;
   /** Added to the general ledger, e.g. `{ id: "4999", name: "Onbekende kosten" }`. */
   extraAccounts?: { id: string; name: string }[];
+  /** The day the file was made, instead of 2026-11-25. */
+  createdOn?: string;
 };
 
 /**
@@ -211,7 +213,7 @@ export function buildXaf(options: XafOptions = {}): string {
   return (
     `<?xml version="1.0" encoding="UTF-8"?>\n<auditfile xmlns="${NAMESPACE}">` +
     `<header>${el("fiscalYear", options.fiscalYear ?? 2026)}${el("startDate", "2026-01-01")}${el("endDate", "2026-12-31")}${el("curCode", "EUR")}` +
-    `${el("dateCreated", "2026-11-25")}${el("softwareDesc", "e-Boekhouden.nl")}${el("softwareVersion", "4.0")}</header>` +
+    `${el("dateCreated", options.createdOn ?? "2026-11-25")}${el("softwareDesc", "e-Boekhouden.nl")}${el("softwareVersion", "4.0")}</header>` +
     `<company>${el("Commercenr", "00000000")}${el("companyName", "Speeltuinvereniging De Zandbak")}${el("taxRegistrationCountry", "NL")}` +
     `${el("taxRegIdent", "")}${address("Schommelpad 1", "Voorbeeldstad", "1234 EF")}` +
     `<customersSuppliers>${CUSTOMERS_SUPPLIERS}</customersSuppliers>` +

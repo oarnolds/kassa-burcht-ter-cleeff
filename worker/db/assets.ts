@@ -9,7 +9,7 @@ import { getOpening, setOpening } from "./opening";
 
 // The speeltoestellen and inventaris (spec §12): the list behind 0130 and 0135, the yearly depreciation (debit 4601,
 // credit 0135 per toestel) and a disposal. A toestel pasted from e-Boekhouden is an "opening" toestel (its cost and
-// what was written off up to 2026 are in its row); one bought later gets its cost from its 0130 lines.
+// what was written off before 1 January 2026 are in its row); one bought later gets its cost from its 0130 lines.
 
 export type { Asset, DepreciationPlan };
 
@@ -275,7 +275,7 @@ export async function depreciationPlan(db: D1Database, year: number): Promise<De
 const statusStatement = (db: D1Database, year: number) => db.prepare("SELECT status FROM ledger_years WHERE year = ?").bind(year);
 const isClosed = (result: D1Result | undefined) => (result?.results[0] as { status: string } | undefined)?.status === "closed";
 
-/** The year the page opens on: the earliest open year (from 2027 to this one) whose depreciation is not booked as planned; else this year. One call. */
+/** The year the page opens on: the earliest open year (from the first year of the books to this one) whose depreciation is not booked as planned; else this year. One call. */
 export async function defaultDepreciationYear(db: D1Database, now: Date): Promise<number> {
   const last = Math.max(FIRST_YEAR, yearOf(businessDate(now.toISOString())));
   const years = Array.from({ length: last - FIRST_YEAR + 1 }, (_, i) => FIRST_YEAR + i);

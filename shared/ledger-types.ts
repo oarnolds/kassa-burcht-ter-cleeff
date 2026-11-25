@@ -236,7 +236,7 @@ export type LedgerYear = {
 /**
  * A toestel of the list behind 0130 and 0135 (spec §12). `costCents`: pasted from e-Boekhouden, or for one bought
  * later what is booked on 0130 for it; `purchaseDate` is then the date of its first 0130 line (null while there is
- * none). `writtenOffCents`: up to 31 December 2026 from e-Boekhouden plus what is on 0135 for it since. A toestel
+ * none). `writtenOffCents`: before 1 January 2026 from e-Boekhouden plus what is on 0135 for it since. A toestel
  * that is disposed of has nothing left: `writtenOffCents` = `costCents`, `bookValueCents` 0.
  */
 export type Asset = {

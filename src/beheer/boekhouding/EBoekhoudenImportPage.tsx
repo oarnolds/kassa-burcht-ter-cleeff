@@ -25,6 +25,8 @@ const ASSET_ACCOUNTS = ["0130", "0135", "4601"];
 /** A payment from the overstap on of what is open on these belongs on them, not on income or costs (spec §7.3). */
 const OPEN_ITEMS = ["1300", "1700"];
 const KAS = "1000";
+/** Starts on nil in the app (spec §9); its balance at Mollie is laid next to the books on the Overzicht. */
+const MOLLIE = "1030";
 const REVOLUT = "1012";
 
 type Read = { file: XafFile; plan: XafPlan };
@@ -161,6 +163,9 @@ function ReadFile(props: {
       <Section title="Het bestand">
         <div className="flex flex-col gap-1 px-2 text-lg sm:px-3">
           <p>{`Boekjaar ${plan.year}, gemaakt op ${formatDateNl(plan.createdOn)}`}</p>
+          {plan.createdOn < OVERSTAP && (
+            <p className="font-semibold">{`Dit bestand is gemaakt vóór ${formatDateNl(OVERSTAP)}: wat na het maken in e-Boekhouden is geboekt, staat er niet in; download het opnieuw.`}</p>
+          )}
           <p>{`${count(total, "boeking", "boekingen")} van 1 januari tot en met 24 november; ${skipped} vanaf 25 november ${skipped === 1 ? "wordt" : "worden"} overgeslagen`}</p>
         </div>
       </Section>
@@ -254,7 +259,7 @@ function ReadFile(props: {
   );
 }
 
-/** What the books hold at the end of 24-11 once the file is in: the kas next to the kluisje, each money account next to its bank. */
+/** What the books hold at the end of 24-11 once the file is in: the kas next to the kluisje, each bank account next to its bank. */
 function Done({ summary, chart }: { summary: EbSummary; chart: Chart }) {
   const { ledgerCents, kluisjeCents } = summary.cash;
   const { imported, emptied } = summary;
@@ -287,7 +292,7 @@ function Done({ summary, chart }: { summary: EbSummary; chart: Chart }) {
       <Section title="Geldrekeningen op 24 november">
         <ul className="px-2 sm:px-3">
           {summary.money
-            .filter((account) => account.accountCode !== KAS)
+            .filter((account) => account.accountCode !== KAS && account.accountCode !== MOLLIE)
             .map((account) => {
               const name = chart.get(account.accountCode)?.name ?? account.accountCode;
               return (
@@ -298,7 +303,7 @@ function Done({ summary, chart }: { summary: EbSummary; chart: Chart }) {
                     <strong className="tabular-nums">{formatEuro(account.ledgerCents)}</strong>
                   </span>
                   {account.bankCents === null || account.bankDate === null ? (
-                    <span className="text-ink/70">{`Geen saldo van de bank op of vóór ${formatDateNl(LAST_DAY)}.`}</span>
+                    <span className="text-ink/70">{`Geen saldo van de bank op of vóór ${formatDateNl(LAST_DAY)}. Vergelijk met uw bankapp, of met het overzicht na Nu bijwerken.`}</span>
                   ) : (
                     <>
                       <span className="flex flex-wrap justify-between gap-x-4">

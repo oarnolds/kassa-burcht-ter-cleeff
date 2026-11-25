@@ -28,6 +28,7 @@ export const ebSummary = (extra: Partial<EbSummary> = {}): EbSummary => ({
     { accountCode: "1010", ledgerCents: 1339405, bankCents: 1339405, bankDate: "2026-11-24" },
     { accountCode: "1020", ledgerCents: 1088345, bankCents: 1080000, bankDate: "2026-10-31" },
     { accountCode: "1021", ledgerCents: 0, bankCents: null, bankDate: null },
+    { accountCode: "1030", ledgerCents: 0, bankCents: null, bankDate: null },
   ],
   ...extra,
 });

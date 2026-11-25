@@ -73,7 +73,7 @@ export function expectedCashStatement(db: D1Database, atIso: string): D1Prepared
 
 /**
  * 0130 and 0135 of the first year's opening as the balance shows them, from the toestellen pasted from
- * e-Boekhouden: their cost and what was written off up to 2026. Null while none were pasted.
+ * e-Boekhouden: their cost and what was written off before 1 January 2026. Null while none were pasted.
  */
 async function assetListTotals(db: D1Database, year: number): Promise<{ accountCode: string; amountCents: number }[] | null> {
   if (year !== firstYear()) return null;

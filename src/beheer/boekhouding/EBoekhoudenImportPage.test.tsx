@@ -95,6 +95,26 @@ it("shows what the file holds before anything is saved", async () => {
   expect(calls("POST")).toHaveLength(0);
 });
 
+it("warns about a file made before the overstap, and still takes it", async () => {
+  open();
+  await choose(xaf(buildXaf({ createdOn: "2026-11-20" })));
+  const file = within(await screen.findByRole("region", { name: "Het bestand" }));
+  expect(file.getByText("Boekjaar 2026, gemaakt op 20-11-2026")).toBeInTheDocument();
+  expect(
+    file.getByText(
+      "Dit bestand is gemaakt vóór 25-11-2026: wat na het maken in e-Boekhouden is geboekt, staat er niet in; download het opnieuw.",
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Overnemen" })).toBeEnabled();
+});
+
+it("does not warn about a file made on the overstap", async () => {
+  open();
+  await choose(xaf());
+  await screen.findByRole("region", { name: "Het bestand" });
+  expect(screen.queryByText(/gemaakt vóór/)).not.toBeInTheDocument();
+});
+
 it("asks a place for an unknown account before Overnemen", async () => {
   open();
   const unknown = booking("1010", "10020", "2026-08-15", "Iets onbekends", debit("4999", "20"), credit("1010", "20"));
@@ -244,9 +264,11 @@ it("shows the kas difference after Overnemen", async () => {
   expect(openItems.getByText("1700 Nog te betalen: € 120,00")).toBeInTheDocument();
   expect(openItems.getByText("Boek de betaling hiervan in Te boeken op 1300 (of 1700).")).toBeInTheDocument();
 
-  // Each money account next to its bank; the kas has its own line above.
+  // Each bank account next to its bank; the kas has its own line above, and Mollie starts on nil.
   const money = within(screen.getByRole("region", { name: "Geldrekeningen op 24 november" }));
   expect(money.queryByRole("listitem", { name: "Kas (kluisje)" })).not.toBeInTheDocument();
+  expect(money.queryByRole("listitem", { name: /Mollie/ })).not.toBeInTheDocument();
+  expect(money.getAllByRole("listitem")).toHaveLength(3);
   const ing = within(money.getByRole("listitem", { name: "ING betaalrekening" }));
   expect(ing.getByText("Saldo bij de bank op 24-11-2026")).toBeInTheDocument();
   expect(ing.getByText("verschil € 0,00")).toBeInTheDocument();
@@ -255,7 +277,11 @@ it("shows the kas difference after Overnemen", async () => {
   expect(asn.getByText("Saldo bij de bank op 31-10-2026")).toBeInTheDocument();
   expect(asn.getByText("€ 10.800,00")).toBeInTheDocument();
   expect(asn.getByText("verschil € 83,45")).toBeInTheDocument();
-  expect(within(money.getByRole("listitem", { name: "ASN deposito" })).getByText("Geen saldo van de bank op of vóór 24-11-2026.")).toBeInTheDocument();
+  expect(
+    within(money.getByRole("listitem", { name: "ASN deposito" })).getByText(
+      "Geen saldo van de bank op of vóór 24-11-2026. Vergelijk met uw bankapp, of met het overzicht na Nu bijwerken.",
+    ),
+  ).toBeInTheDocument();
   const update = screen.getByText(/worden vannacht bijgewerkt/);
   expect(update).toHaveTextContent("De kassa, ING en Mollie worden vannacht bijgewerkt, of nu met Nu bijwerken op het overzicht.");
   expect(within(update).getByRole("link", { name: "het overzicht" })).toHaveAttribute("href", "/beheer/boekhouding");

@@ -11,7 +11,7 @@ const SOURCES = ["file", "enable_banking"];
 export const bankAccounts = (accounts: MoneyAccount[]): MoneyAccount[] => accounts.filter((account) => SOURCES.includes(account.source));
 
 /** A refusal of an import, in words. */
-function explainImport(status: number, error: string, account: string): string {
+function explainBankImport(status: number, error: string, account: string): string {
   if (error === "wrong_account") return `Dit bestand hoort bij een andere rekening (${account}).`;
   if (error === "identifier_missing") return "Vul eerst bij Instellingen het kenmerk van deze rekening in.";
   if (error === "not_a_bank_account") return "Dit is geen bankrekening.";
@@ -36,7 +36,7 @@ export function BankUpload({ account, onDone }: { account: MoneyAccount; onDone(
           const answer = await api.importStatement(account.accountCode, part);
           if (!answer.ok) {
             onDone();
-            return setMessage({ problem: true, text: explainImport(answer.status, answer.error, statement.account) });
+            return setMessage({ problem: true, text: explainBankImport(answer.status, answer.error, statement.account) });
           }
           total.added += answer.data.added;
           total.known += answer.data.known;

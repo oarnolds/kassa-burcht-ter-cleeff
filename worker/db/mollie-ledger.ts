@@ -13,7 +13,7 @@ import type { Env } from "../env";
 import { describeFailure, type MollieChargebackRow, type MolliePaymentRow, mollieReadFor, type MollieRefundRow, type PaymentGap } from "../lib/mollie-read";
 import { autoBook, importLines, moneyAccountOf, moneyAccountOnStatement, recordBalance } from "./bank";
 import { add, type Amounts, dayMonthYear, minus, sameAmounts, toLines } from "./kassa-ledger";
-import { eboekhoudenDoneStatement, gateOpen } from "./eboekhouden";
+import { eboekhoudenDoneStatement, gateOpen, PAYOUTS_KEY } from "./eboekhouden";
 import { firstOpenYear, LedgerError, type NewEntry, upsertSourcedStatements } from "./ledger";
 import { deleteLedgerSettingStatement, setLedgerSettingStatement } from "./ledger-settings";
 import { endOfDay } from "./opening";
@@ -374,7 +374,7 @@ async function storeReversals(
 
 /**
  * Nightly, after the payments: Mollie's payouts (settlements) that are still open or were settled since a week
- * before the newest one kept (or, the first time, since 1 December 2026), each kept once by its id, a later read bringing its status,
+ * before the newest one kept (or, the first time, since 1 October 2026), each kept once by its id, a later read bringing its status,
  * date, amount and costs up to date (the costs with Mollie's sign). Then `autoBook`, which books a payout line on
  * ING that waited for it. A failure of Mollie gives its name, logged as a fixed text with that name only.
  */
@@ -432,10 +432,10 @@ export async function syncSettlements(env: Env, now: Date): Promise<"ok" | "skip
  * turned-back ones included (as the kassa's own reports count them); Mollie's: the terminal payments paid in the
  * month. Per payment what is on one side only: a paid pin sale (not a turn-back) whose payment Mollie does not
  * have, and a terminal payment no paid sale has. The rule payments of the month per account, the costs of the
- * payouts settled in it, and 1030 next to Mollie's balance as it stood at the end of the month (or today, in the
- * current one): the newest balance on or before that day, with the ledger on that balance's own date and the
- * payouts then on their way to ING left out, as the Overzicht lays them. One batch, and one more read for the
- * payouts on their way when Mollie gave a balance.
+ * payouts settled in it (not those e-Boekhouden booked), and 1030 next to Mollie's balance as it stood at the end of
+ * the month (or today, in the current one): the newest balance on or before that day, with the ledger on that
+ * balance's own date and the payouts then on their way to ING left out, as the Overzicht lays them. One batch, and
+ * one more read for the payouts on their way when Mollie gave a balance.
  */
 export async function mollieMonth(db: D1Database, month: string, now: Date = new Date()): Promise<MollieMonth> {
   if (month < MOLLIE_START.slice(0, 7)) throw new LedgerError("before_mollie_start", 400);
@@ -471,10 +471,14 @@ export async function mollieMonth(db: D1Database, month: string, now: Date = new
          WHERE kind = 'rule' AND paid_date BETWEEN ?1 AND ?2 GROUP BY account_code ORDER BY account_code`,
       )
       .bind(first, last),
-    // Settled in the month as Amsterdam counts its days; the moments are kept in UTC.
+    // Settled in the month as Amsterdam counts its days; the moments are kept in UTC. A payout e-Boekhouden booked
+    // (its reference is in the `PAYOUTS_KEY` list) has its costs there, not in the app.
     db
-      .prepare("SELECT COALESCE(SUM(abs(costs_cents)), 0) AS cents FROM mollie_settlements WHERE settled_at >= ?1 AND settled_at <= ?2")
-      .bind(startOfDay(first), endOfDay(last)),
+      .prepare(
+        `SELECT COALESCE(SUM(abs(costs_cents)), 0) AS cents FROM mollie_settlements WHERE settled_at >= ?1 AND settled_at <= ?2
+           AND (reference IS NULL OR reference NOT IN (SELECT value FROM json_each(COALESCE((SELECT value FROM ledger_settings WHERE key = ?3), '[]'))))`,
+      )
+      .bind(startOfDay(first), endOfDay(last), PAYOUTS_KEY),
     moneyAccountOnStatement(db, MOLLIE, until),
   ]);
   const sum = (result: D1Result) => (result.results[0] as { cents: number }).cents;

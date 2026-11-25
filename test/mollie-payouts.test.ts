@@ -319,6 +319,17 @@ it("reads Mollie's payouts from 1 October 2026 on, so the payout of 2 November i
   expect((await env.DB.prepare("SELECT id FROM mollie_settlements").all()).results).toEqual([{ id: november.id }]);
 });
 
+it("leaves the costs of e-Boekhouden's payout out of November's", async () => {
+  // The payout of 2 November is in e-Boekhouden, its costs too; the one of 16 November is the app's.
+  mollie.current.addSettlement({ reference: "05665564.2611.01", amount: "98.12", settledAt: "2026-11-02T06:00:00+00:00", costs: { "2026": { "11": ["1.88"] } } });
+  mollie.current.addSettlement({ reference: "05665564.2611.02", amount: "40.00", settledAt: "2026-11-16T06:00:00+00:00", costs: { "2026": { "11": ["0.75"] } } });
+  const now = new Date("2026-11-27T02:00:00.000Z");
+  expect(await settle(now)).toBe("ok");
+  expect((await mollieMonth(env.DB, "2026-11", now)).costsCents).toBe(188 + 75);
+  await eboekhoudenPaid("05665564.2610.01", "05665564.2611.01");
+  expect((await mollieMonth(env.DB, "2026-11", now)).costsCents).toBe(75);
+});
+
 it("starts the Mollie months in November 2026", async () => {
   const { cookie } = await asAdmin();
   const before = await api("/api/admin/boekhouding/mollie/month?month=2026-10", { cookie });
