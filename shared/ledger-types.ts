@@ -281,6 +281,8 @@ export type YearExport = {
   depreciation: DepreciationPlan;
   entryCount: number;
   accounts: Pick<LedgerAccount, "code" | "name" | "kind">[];
+  /** Where the first months come from (spec §13): for the year of `LEDGER_START` once e-Boekhouden's file is read in; else empty. */
+  notes: string[];
 };
 
 /** A change of one of the year's entries, for the jaaroverzicht; `id` orders them and asks for the next page. */

@@ -64,6 +64,7 @@ it("gives the year's figures for the overview", async () => {
     // The opening, three of his own, the depreciation and the closing entry.
     entryCount: 6,
     accounts: expect.any(Array),
+    notes: [],
   } satisfies YearExport);
   expect(closed.opening).toMatchObject({ date: "2026-01-01", resultCents: 0 });
   expect(Object.fromEntries(closed.opening.rows.map((row) => [row.code, row.cents]))).toEqual({ "0130": 949600, "0135": -902120, "1010": 500000, "1400": 517480, "1700": 30000 });
@@ -94,6 +95,33 @@ it("gives the year's figures for the overview", async () => {
   expect((await api(`${path}/year/abcd/export`, { cookie })).status).toBe(400);
   expect(await (await api(`${path}/year/2025/export`, { cookie })).json()).toEqual({ error: "year_unknown" });
   expect(await (await api(`${path}/year/2030/export`, { cookie })).json()).toEqual({ error: "year_unknown" });
+});
+
+const setting = (key: string, value: string) =>
+  env.DB.prepare("INSERT INTO ledger_settings (key, value, updated_at) VALUES (?1, ?2, ?3) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(key, value, BEFORE.toISOString()).run();
+
+it("explains where 2026 comes from in the jaaroverzicht", async () => {
+  expect((await yearExport(env, 2026, NOW)).notes).toEqual([]);
+  // Read in from the auditfile of 25 November, the kassa in use since 21 November (Amsterdam time).
+  await setting("eboekhouden_imported_at", "2026-11-25");
+  expect((await yearExport(env, 2026, NOW)).notes).toEqual([
+    "Boekingen tot en met 24-11-2026 komen uit e-Boekhouden (auditbestand van 25-11-2026); hun bijlagen staan in e-Boekhouden.",
+  ]);
+  await env.DB.prepare("INSERT INTO settings (key, value) VALUES ('in_use_since', '2026-11-20T23:30:00.000Z')").run();
+  const metered = meteredDb(env.DB);
+  const read = await yearExport({ ...env, DB: metered.db }, 2026, NOW);
+  expect(read.notes).toEqual([
+    "Boekingen tot en met 24-11-2026 komen uit e-Boekhouden (auditbestand van 25-11-2026); hun bijlagen staan in e-Boekhouden.",
+    "Tot 21-11-2026 staat op 8011 de contante verkoop en op 8012 de pin- en online-verkoop, zoals e-Boekhouden boekte; daarna kiosk en entree.",
+  ]);
+  // Both are read in the batch the export makes already: still its eight calls.
+  expect(metered.calls()).toBeLessThanOrEqual(8);
+});
+
+it("has no notes for a later year", async () => {
+  await setting("eboekhouden_imported_at", "2026-11-25");
+  await env.DB.prepare("INSERT INTO settings (key, value) VALUES ('in_use_since', '2026-11-20T23:30:00.000Z')").run();
+  expect((await yearExport(env, 2027, NOW)).notes).toEqual([]);
 });
 
 /** `count` entries of 2026 numbered 1, 2, …, each with two lines, written straight into the tables. */

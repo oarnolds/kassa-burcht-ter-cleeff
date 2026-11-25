@@ -78,6 +78,19 @@ it("prints an open year as Voorlopig, right away when the PDF button opened it",
   await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
 });
 
+it("puts the notes on top of the Excel and the PDF", async () => {
+  const notes = ["Boekingen tot en met 24-11-2027 komen uit elders; hun bijlagen staan daar.", "Tot 21-11-2027 staat het op twee rekeningen."];
+  mockLoggedIn();
+  mockApi({ [`${base}/year/2027/export`]: yearData({ notes }) });
+  renderAt(page);
+  const first = await screen.findByText(notes[0]!);
+  const second = screen.getByText(notes[1]!);
+  const title = screen.getByRole("heading", { name: "Jaaroverzicht 2027" });
+  expect(title.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(second.compareDocumentPosition(screen.getByRole("region", { name: "Balans" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
 it("says when the overview cannot be fetched", async () => {
   mockLoggedIn();
   mockApi({ [`${base}/year/2027/export`]: [500, { error: "server" }] });

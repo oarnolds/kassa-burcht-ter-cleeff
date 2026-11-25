@@ -171,6 +171,11 @@ export function PrintYearPage() {
               ) : (
                 closed && <p className="mt-1 text-ink/70">{`Afgesloten op ${dayOf(closed)}`}</p>
               )}
+              {data.notes.map((note) => (
+                <p key={note} className="mt-1 text-ink/70">
+                  {note}
+                </p>
+              ))}
               <Balance data={data} />
               <Result data={data} />
               <PrintOnce when={search.get("print") === "1"} />

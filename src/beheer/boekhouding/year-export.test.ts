@@ -143,6 +143,15 @@ it("writes every sheet, with Voorlopig for an open year", async () => {
   expect(rowsOf(open.sheet("Wijzigingen"))).toContainEqual(["Geen wijzigingen"]);
 });
 
+it("puts the notes on top of the Excel and the PDF", async () => {
+  const notes = ["Boekingen tot en met 24-11-2027 komen uit elders; hun bijlagen staan daar.", "Tot 21-11-2027 staat het op twee rekeningen."];
+  const book = await sheetsOf(await buildWorkbook(yearData({ notes }), yearEntries(), yearChanges()));
+  // On the first sheet each note has its own row, above the heading; the rest follows below, a blank row between.
+  expect(rowsOf(book.sheet("Balans")).slice(0, 7)).toEqual([[notes[0]], [notes[1]], [], ["Jaaroverzicht 2027"], ["Afgesloten op 04-02-2028"], [], ["Rekening", "Naam", "01-01-2027", "31-12-2027"]]);
+  // The other sheets stay as they were.
+  for (const name of SHEETS.slice(1)) expect(cellsOf(book.sheet(name)).get("A1")!.value).toBe("Jaaroverzicht 2027");
+});
+
 it("names each attachment after its entry number", async () => {
   const fetched: string[] = [];
   const progress = vi.fn();

@@ -1,12 +1,14 @@
-import { type EntryLine, LEDGER_START, type LedgerYear, type YearCheck, type YearExport } from "../../shared/ledger-types";
+import { type EntryLine, LEDGER_START, OVERSTAP, type LedgerYear, type YearCheck, type YearExport } from "../../shared/ledger-types";
 import { formatEuro } from "../../shared/money";
-import { businessDate } from "../../shared/time";
+import { businessDate, shiftDate } from "../../shared/time";
 import type { Env } from "../env";
 import { planOf, planStatements, toAssets } from "./assets";
 import { moneyAccountsFrom, moneyAccountsOnStatement, payoutsInTransitStatement } from "./bank";
+import { IMPORTED_KEY } from "./eboekhouden";
 import { dayMonthYear } from "./kassa-ledger";
 import { LedgerError, upsertSourcedStatements } from "./ledger";
 import { balanceReport, openingReport, resultReport } from "./ledger-reports";
+import { IN_USE_KEY } from "./maintenance";
 import { endOfDay, expectedCashStatement } from "./opening";
 
 // Closing a year (spec §13): the checks, then one entry on 31 December that brings every income and expense account
@@ -143,6 +145,24 @@ function checksFrom(year: number, read: D1Result[]): YearCheck[] {
   );
 
   return [bankLines, bankBalances, kas, mollieCheck, depreciationCheck, inTransit, assets];
+}
+
+/**
+ * What the jaaroverzicht of the first year says about where its first months come from (spec §13): the booking up to
+ * the day before `OVERSTAP` is e-Boekhouden's, from the auditfile of `importedOn`; and, when the kassa is in use, what
+ * 8011 and 8012 held before it. Nothing until the file is read in, nothing for another year.
+ */
+function notesFor(year: number, importedOn: string | undefined, inUse: string | undefined): string[] {
+  if (year !== FIRST_YEAR || importedOn === undefined) return [];
+  const notes = [
+    `Boekingen tot en met ${dayMonthYear(shiftDate(OVERSTAP, -1))} komen uit e-Boekhouden (auditbestand van ${dayMonthYear(importedOn)}); hun bijlagen staan in e-Boekhouden.`,
+  ];
+  if (inUse !== undefined) {
+    notes.push(
+      `Tot ${dayMonthYear(businessDate(inUse))} staat op 8011 de contante verkoop en op 8012 de pin- en online-verkoop, zoals e-Boekhouden boekte; daarna kiosk en entree.`,
+    );
+  }
+  return notes;
 }
 
 /** The checks of a year (spec §13), in one call to the database. Also for a year that is open still, or closed. */
@@ -300,12 +320,14 @@ export async function listYears(db: D1Database): Promise<LedgerYear[]> {
 export async function yearExport(env: Env, year: number, _now: Date): Promise<YearExport> {
   if (year < FIRST_YEAR) throw new LedgerError("year_unknown", 400);
   const db = env.DB;
-  const [[status, events, count, accounts, ...read], opening, closing, result] = await Promise.all([
+  const [[status, events, count, accounts, imported, inUse, ...read], opening, closing, result] = await Promise.all([
     db.batch([
       statusStatement(db, year),
       db.prepare("SELECT at, kind, note FROM ledger_year_events WHERE year = ? ORDER BY id").bind(year),
       db.prepare("SELECT COUNT(*) AS n FROM ledger_entries WHERE year = ?").bind(year),
       db.prepare("SELECT code, name, kind FROM ledger_accounts ORDER BY sort"),
+      db.prepare("SELECT value FROM ledger_settings WHERE key = ?1").bind(IMPORTED_KEY),
+      db.prepare("SELECT value FROM settings WHERE key = ?1").bind(IN_USE_KEY),
       ...checkStatements(db, year),
     ]),
     openingReport(db, year),
@@ -328,5 +350,6 @@ export async function yearExport(env: Env, year: number, _now: Date): Promise<Ye
     depreciation: planOf(year, plan),
     entryCount: (count!.results[0] as { n: number }).n,
     accounts: accounts!.results as YearExport["accounts"],
+    notes: notesFor(year, (imported!.results[0] as { value: string } | undefined)?.value, (inUse!.results[0] as { value: string } | undefined)?.value),
   };
 }

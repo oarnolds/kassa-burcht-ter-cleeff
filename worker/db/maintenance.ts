@@ -38,7 +38,7 @@ const LEDGER_TABLES: [table: string, order: string, columns?: string][] = [
   ["budget_lines", "year, account_code"],
 ];
 
-const IN_USE_KEY = "in_use_since";
+export const IN_USE_KEY = "in_use_since";
 const NOT_IN_USE = `NOT EXISTS (SELECT 1 FROM settings WHERE key = '${IN_USE_KEY}')`;
 
 /** The moment the kassa went into real use, or null while it is still on trial. */

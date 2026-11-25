@@ -91,6 +91,9 @@ function heading(data: YearExport): Cell[][] {
   return [[bold(`Jaaroverzicht ${data.year}`)], closed ? [`Afgesloten op ${dayOf(closed)}`] : [], []];
 }
 
+/** Where the year's first months come from (spec §13): each note on its own row above the first sheet, then a blank row. */
+const notesAtTop = (data: YearExport): Cell[][] => (data.notes.length === 0 ? [] : [...data.notes.map((note): Cell[] => [note]), []]);
+
 const KIND_TITLES: [title: string, kind: AccountKind][] = [
   ["Bezittingen", "asset"],
   ["Schulden", "liability"],
@@ -100,7 +103,7 @@ const KIND_TITLES: [title: string, kind: AccountKind][] = [
 function balanceSheet(data: YearExport): Sheet {
   const begin = new Map(data.opening.rows.map((row) => [row.code, row.cents]));
   const end = new Map(data.closing.rows.map((row) => [row.code, row.cents]));
-  const rows: Cell[][] = [...heading(data), [bold("Rekening"), bold("Naam"), bold(formatDateNl(data.opening.date)), bold(formatDateNl(data.closing.date))]];
+  const rows: Cell[][] = [...notesAtTop(data), ...heading(data), [bold("Rekening"), bold("Naam"), bold(formatDateNl(data.opening.date)), bold(formatDateNl(data.closing.date))]];
   for (const [title, kind] of KIND_TITLES) {
     rows.push([bold(title)]);
     for (const account of data.accounts) {

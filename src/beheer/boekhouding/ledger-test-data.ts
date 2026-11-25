@@ -177,6 +177,7 @@ export const yearData = (extra: Partial<YearExport> = {}): YearExport => ({
   depreciation: { year: 2027, rows: [{ assetId: "a1", name: "Straaljager", cents: 20000 }], totalCents: 20000, booked: true, upToDate: true, laterBooked: null },
   entryCount: 5,
   accounts: yearAccounts,
+  notes: [],
   ...extra,
 });
 
