@@ -320,19 +320,21 @@ export async function overview(db: D1Database, now: Date): Promise<LedgerOvervie
   }
   const report = parseNightly(lastNightly);
   const since = report?.at ?? inUse;
+  const eboekhoudenDone = gateOpen(gate!);
   return {
     openLines: count("open"),
     waitingLines: count("waiting"),
     moneyAccounts: accounts.accounts,
     resultYearCents,
-    cashDifferenceCents,
+    // Before the import the kassa days are not booked yet: a difference then means nothing.
+    cashDifferenceCents: eboekhoudenDone ? cashDifferenceCents : 0,
     consent: consent.status === "active" || consent.status === "expired" ? { validUntil: consent.validUntil!, daysLeft: consent.daysLeft! } : null,
     mollieDifferenceCents: accounts.accounts.find((account) => account.accountCode === "1030")?.differenceCents ?? null,
     mollieInTransitCents: accounts.inTransitCents,
     lastNightly: report,
     notUpdatedSince: since !== null && now.getTime() - Date.parse(since) > STALE_MS ? since : null,
     toBookByAccount,
-    eboekhoudenDone: gateOpen(gate!),
+    eboekhoudenDone,
   };
 }
 

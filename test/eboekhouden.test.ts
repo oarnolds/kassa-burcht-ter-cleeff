@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, expect, it } from "vitest";
 import type { EbStatus, EbSummary } from "../shared/ledger-types";
+import { shiftDate } from "../shared/time";
 import type { ImportedEntry } from "../shared/xaf-map";
 import { app } from "../worker/app";
 import { addPastedAssets } from "../worker/db/assets";
@@ -298,19 +299,29 @@ it("empties a typed opening of 2027", async () => {
   expect(await entryHistory(env.DB, "o27")).toHaveLength(1);
 });
 
-it("opens the gate and sums up kas, open items and money accounts", async () => {
-  // The kassa went into use on 21-11 with € 50 in the kluisje, and sold € 11 in cash on 22-11 (booked by the app later).
+/** The kassa in use since 21-11 with `floatCents` in the kluisje at its first count, and a cash sale per `sales` (date, cents). */
+async function kassaSince21(floatCents: number, sales: { date: string; cents: number; lineCents?: number }[]) {
   await env.DB.batch([
     env.DB.prepare("INSERT INTO settings (key, value) VALUES ('in_use_since', '2026-11-21T09:00:00.000Z')"),
     env.DB.prepare(
-      "INSERT INTO handovers (id, kind, counted_at, expected_cents, received_cents, left_cents, difference_cents, note, created_at) VALUES ('h0', 'opening', '2026-11-21T08:00:00.000Z', 0, 0, 5000, 0, NULL, '2026-11-21T08:00:00.000Z')",
-    ),
-    env.DB.prepare(
-      "INSERT INTO sales (id, method, status, total_cents, sold_at, received_at, business_date) VALUES ('s1', 'cash', 'paid', 1100, '2026-11-22T10:00:00.000Z', '2026-11-22T10:00:00.000Z', '2026-11-22')",
-    ),
-    // ING gave a balance on 20-11, and one after the overstap that is not looked at.
-    env.DB.prepare("INSERT INTO bank_balances (account_code, date, balance_cents, origin) VALUES ('1010', '2026-11-20', 2174000, 'file'), ('1010', '2026-11-26', 1, 'file')"),
+      "INSERT INTO handovers (id, kind, counted_at, expected_cents, received_cents, left_cents, difference_cents, note, created_at) VALUES ('h0', 'opening', '2026-11-21T08:00:00.000Z', 0, 0, ?1, 0, NULL, '2026-11-21T08:00:00.000Z')",
+    ).bind(floatCents),
+    ...sales.flatMap((sale, i) => [
+      env.DB.prepare(
+        "INSERT INTO sales (id, method, status, total_cents, sold_at, received_at, business_date) VALUES (?1, 'cash', 'paid', ?2, ?3, ?3, ?4)",
+      ).bind(`s${i + 1}`, sale.cents, `${sale.date}T10:00:00.000Z`, sale.date),
+      env.DB.prepare(
+        "INSERT INTO sale_lines (sale_id, product_id, name, category_id, category_name, unit_price_cents, qty) VALUES (?1, 'aardbeitje', 'Aardbeitje', 'ijs', 'IJs', ?2, 1)",
+      ).bind(`s${i + 1}`, sale.lineCents ?? sale.cents),
+    ]),
   ]);
+}
+
+it("opens the gate and sums up kas, open items and money accounts", async () => {
+  // The kassa went into use on 21-11 with € 50 from the old kas in the kluisje, and sold € 11 in cash on 22-11.
+  await kassaSince21(5000, [{ date: "2026-11-22", cents: 1100 }]);
+  // ING gave a balance on 20-11, and one after the overstap that is not looked at.
+  await env.DB.prepare("INSERT INTO bank_balances (account_code, date, balance_cents, origin) VALUES ('1010', '2026-11-20', 2174000, 'file'), ('1010', '2026-11-26', 1, 'file')").run();
   const before = await api(`${base}/status`, { cookie });
   expect(await before.json<EbStatus>()).toEqual({ done: false, createdOn: null, imported: 0, inUseSince: "2026-11-21", yearClosed: false });
 
@@ -323,13 +334,14 @@ it("opens the gate and sums up kas, open items and money accounts", async () => 
   expect((await post("/entries", { entries })).status).toBe(200);
   const answer = await post("/finish", { createdOn: "2026-11-25", refs: entries.map((entry) => entry.ref) });
   expect(answer.status).toBe(200);
+  // Overnemen books the kassa days at once (they waited for the file): 1000 holds the sale of 22-11, as the kluisje does.
   expect(await answer.json<EbSummary>()).toEqual({
     imported: 3,
     emptied: 0,
-    cash: { ledgerCents: 5_000, kluisjeCents: 6_100 },
+    cash: { ledgerCents: 6_100, kluisjeCents: 6_100 },
     open: [{ accountCode: "1300", cents: 12_100 }],
     money: [
-      { accountCode: "1000", ledgerCents: 5_000, bankCents: null, bankDate: null },
+      { accountCode: "1000", ledgerCents: 6_100, bankCents: null, bankDate: null },
       { accountCode: "1010", ledgerCents: 2_174_000, bankCents: 2_174_000, bankDate: "2026-11-20" },
       { accountCode: "1011", ledgerCents: 0, bankCents: null, bankDate: null },
       { accountCode: "1020", ledgerCents: 0, bankCents: null, bankDate: null },
@@ -340,8 +352,56 @@ it("opens the gate and sums up kas, open items and money accounts", async () => 
 
   expect(await eboekhoudenDone(env.DB)).toBe(true);
   expect(await setting(IMPORTED_KEY)).toBe("2026-11-25");
+  expect(await count("ledger_entries WHERE source = 'kassa_day' AND source_ref = '2026-11-22'")).toBe(1);
   const after = await api(`${base}/status`, { cookie });
   expect(await after.json<EbStatus>()).toEqual({ done: true, createdOn: "2026-11-25", imported: 3, inUseSince: "2026-11-21", yearClosed: false });
+});
+
+it("shows the float as the kas difference when it did not come from the old kas", async () => {
+  // e-Boekhouden has nothing on 1000; the € 50 of the first count came from elsewhere.
+  await kassaSince21(5000, [{ date: "2026-11-22", cents: 1100 }, { date: "2026-11-24", cents: 300 }]);
+  await importEntries(env.DB, [contributie], NOW);
+  const summary = await finishImport(env.DB, { createdOn: "2026-11-25", refs: [contributie.ref] }, NOW);
+  // Only the float is left over: the cash takings of 22-11 and 24-11 are in both.
+  expect(summary.cash).toEqual({ ledgerCents: 1_400, kluisjeCents: 6_400 });
+  expect(summary.cash.ledgerCents - summary.cash.kluisjeCents).toBe(-5_000);
+});
+
+it("still answers when the kassa cannot be booked at the finish", async () => {
+  // A sale whose lines do not add up to its total: its day does not balance, and the ledger refuses it.
+  await kassaSince21(5000, [{ date: "2026-11-22", cents: 1100, lineCents: 1000 }]);
+  await importEntries(env.DB, [contributie], NOW);
+  const answer = await post("/finish", { createdOn: "2026-11-25", refs: [contributie.ref] });
+  expect(answer.status).toBe(200);
+  expect((await answer.json<EbSummary>()).cash).toEqual({ ledgerCents: 0, kluisjeCents: 6_100 });
+  // The gate is open all the same; the nightly run tries the kassa again.
+  expect(await eboekhoudenDone(env.DB)).toBe(true);
+  expect(await count("ledger_entries WHERE source = 'kassa_day'")).toBe(0);
+});
+
+it("stays within 50 database calls for the finish, the kassa days included", async () => {
+  // More kassa days than one run of the kassa takes: in use since 1-10, a sale every day up to 24-11.
+  const days = Array.from({ length: 55 }, (_, i) => shiftDate("2026-10-01", i));
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO settings (key, value) VALUES ('in_use_since', '2026-10-01T08:00:00.000Z')"),
+    ...days.flatMap((date, i) => [
+      env.DB.prepare("INSERT INTO sales (id, method, status, total_cents, sold_at, received_at, business_date) VALUES (?1, 'cash', 'paid', 110, ?2, ?2, ?3)").bind(
+        `d${i}`,
+        `${date}T10:00:00.000Z`,
+        date,
+      ),
+      env.DB.prepare(
+        "INSERT INTO sale_lines (sale_id, product_id, name, category_id, category_name, unit_price_cents, qty) VALUES (?1, 'aardbeitje', 'Aardbeitje', 'ijs', 'IJs', 110, 1)",
+      ).bind(`d${i}`),
+    ]),
+  ]);
+  await importEntries(env.DB, [contributie, huur], NOW);
+  const metered = meteredDb(env.DB);
+  const answer = await api(`${base}/finish`, { method: "POST", cookie, json: { createdOn: "2026-11-25", refs: [contributie.ref, huur.ref] }, env: { DB: metered.db } });
+  expect(answer.status).toBe(200);
+  expect(metered.calls()).toBeLessThanOrEqual(50);
+  // One run of the kassa: the oldest 40 days now, the rest tonight.
+  expect(await count("ledger_entries WHERE source = 'kassa_day'")).toBe(40);
 });
 
 it("refuses typing the opening by hand", async () => {

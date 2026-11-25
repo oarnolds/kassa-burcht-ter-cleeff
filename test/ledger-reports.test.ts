@@ -5,7 +5,7 @@ import { app } from "../worker/app";
 import { createEntry, upsertSourced } from "../worker/db/ledger";
 import { accountLines, balanceReport, overview, resultReport, setComparison } from "../worker/db/ledger-reports";
 import { setOpening } from "../worker/db/opening";
-import { api, asAdmin, meteredDb, resetData } from "./helpers";
+import { api, asAdmin, meteredDb, openGate, resetData } from "./helpers";
 
 let cookie: string;
 beforeEach(async () => {
@@ -139,6 +139,8 @@ it("reads no more rows for a report as the years go by", async () => {
 });
 
 it("works out the overview", async () => {
+  // The books run: e-Boekhouden's file is read in (before it, the kas difference is 0; test/eboekhouden-gate.test.ts).
+  await openGate();
   const day = new Date("2026-06-10T10:00:00.000Z");
   await env.DB.prepare("INSERT INTO bank_lines (id, account_code, booking_date, amount_cents, description, content_key, origin, status, imported_at) VALUES ('b0','1010','2026-06-01',100,'x','k0','typed','open','t'), ('b1','1010','2026-06-01',100,'x','k1','typed','open','t'), ('b2','1010','2026-06-01',100,'x','k2','typed','waiting','t'), ('b3','1010','2026-06-01',100,'x','k3','typed','booked','t')").run();
   await book("2026-02-01", move("1010", "8010", 5000));

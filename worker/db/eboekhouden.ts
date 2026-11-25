@@ -8,6 +8,7 @@
 import { type EbStatus, type EbSummary, type EntryLine, LEDGER_START, MAX_ENTRIES, OVERSTAP } from "../../shared/ledger-types";
 import { businessDate, shiftDate } from "../../shared/time";
 import type { ImportedEntry } from "../../shared/xaf-map";
+import { syncKassa } from "./kassa-ledger";
 import { balancesOn, entriesFrom, entryReads, historyStatement, LedgerError, sameContent, upsertSourcedStatements } from "./ledger";
 import { getLedgerSetting, setLedgerSettingStatement } from "./ledger-settings";
 import { inUseSince } from "./maintenance";
@@ -127,8 +128,9 @@ export async function importEntries(db: D1Database, entries: ImportedEntry[], no
 
 /**
  * Ends a read: empties each booking from e-Boekhouden the file no longer has (`refs` are all of the file's) and a
- * typed opening of 2027, which now follows from closing 2026, each with a history row; then opens the gate. What
- * the books hold at the end of 24-11 comes back, for the penningmeester to check against the kassa and the banks.
+ * typed opening of 2027, which now follows from closing 2026, each with a history row; then opens the gate and
+ * books the kassa days that waited for it (one run of `syncKassa`). What the books hold at the end of 24-11 comes
+ * back, for the penningmeester to check against the kassa and the banks.
  * Refused (`entries_missing`) while one of `refs` is not in the books with lines: a chunk did not arrive, and the
  * finish would open the gate on books without it.
  */
@@ -168,6 +170,14 @@ export async function finishImport(db: D1Database, input: { createdOn: string; r
       .bind(openingEquityKey(nextYear), nextYear),
     setLedgerSettingStatement(db, IMPORTED_KEY, input.createdOn, now),
   ]);
+
+  // The kassa days waited for the gate. Booked now, 1000 at the end of 24-11 holds them, as the kluisje does (spec
+  // §10); only the float of the first count, which is no booking, can differ. A failure is left to the nightly run.
+  try {
+    await syncKassa(db, now);
+  } catch (error) {
+    console.error("kassa after the import failed", error instanceof LedgerError ? error.code : error instanceof Error ? error.name : "unknown");
+  }
 
   const [balances, [kluisje, money, imported]] = await Promise.all([
     balancesOn(db, LAST_DAY),

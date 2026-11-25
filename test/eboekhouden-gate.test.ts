@@ -129,6 +129,21 @@ it("tells the overview the books wait for e-Boekhouden", async () => {
   expect((await overview(env.DB, new Date("2026-11-26T08:00:00.000Z"))).eboekhoudenDone).toBe(true);
 });
 
+it("shows no kas difference while it waits", async () => {
+  // € 50 in the kluisje at the first count and a cash sale: neither is in the books before the import.
+  await env.DB.prepare(
+    "INSERT INTO handovers (id, kind, counted_at, expected_cents, received_cents, left_cents, difference_cents, note, created_at) VALUES ('h0', 'opening', '2026-11-21T08:00:00.000Z', 0, 0, 5000, 0, NULL, '2026-11-21T08:00:00.000Z')",
+  ).run();
+  await cashSale("2026-11-22");
+  const now = new Date("2026-11-26T08:00:00.000Z");
+  expect((await overview(env.DB, now)).cashDifferenceCents).toBe(0);
+
+  await openGate();
+  await syncKassa(env.DB, now);
+  // Once it is read in, the float that is no booking shows.
+  expect((await overview(env.DB, now)).cashDifferenceCents).toBe(-5000);
+});
+
 it("adds no database call of its own", async () => {
   await importLines(env.DB, "1010", [kasstorting], "file", new Date("2026-11-27T08:00:00.000Z"));
   await openGate();
