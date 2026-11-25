@@ -136,10 +136,10 @@ it("says a year that is already there will be replaced, and asks once before it 
   confirm.mockRestore();
 });
 
-it("refuses a year from 2026 on", async () => {
+it("does not read in a year the books hold", async () => {
   open();
   await choose(xlsx({ title: "Winst & verlies 01-01-2026 t/m 31-12-2026 (12)" }));
-  expect(await screen.findByText("Vanaf 2026 staan de cijfers in de boekhouding zelf.")).toBeInTheDocument();
+  expect(await screen.findByText("2026 staat in de boekhouding zelf; dat jaar hoeft u hier niet in te lezen.")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Overnemen" })).not.toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "Niet geplaatst" })).not.toBeInTheDocument();
 });

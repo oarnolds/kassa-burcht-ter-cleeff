@@ -71,7 +71,7 @@ it("shows what it read from a paste and what it skipped, and takes it over", asy
 
   const read = screen.getByRole("region", { name: "Plakken uit e-Boekhouden" });
   expect(within(read).getByText("2 toestellen gelezen")).toBeInTheDocument();
-  expect(rowIn("Plakken uit e-Boekhouden", "Dome - Kopan").getByText("€ 30.729,28")).toBeInTheDocument();
+  expect(rowIn("Plakken uit e-Boekhouden", "Dome - Kopan").getByText("€ 28.606,42")).toBeInTheDocument();
   expect(within(read).getByText("3 regels overgeslagen")).toBeInTheDocument();
   expect(within(read).getByText("Speeltoestellen")).toBeInTheDocument();
   expect(calls("POST")).toHaveLength(0);
@@ -83,13 +83,27 @@ it("shows what it read from a paste and what it skipped, and takes it over", asy
     url: `${base}/assets/paste`,
     body: {
       assets: [
-        { name: "Straaljager", purchaseDate: "2008-01-01", costCents: 949600, writtenOffCents: 902120, lifeYears: 20 },
-        { name: "Dome - Kopan", purchaseDate: "2012-07-10", costCents: 4445721, writtenOffCents: 3072928, lifeYears: 20 },
+        { name: "Straaljager", purchaseDate: "2008-01-01", costCents: 949600, writtenOffCents: 854640, lifeYears: 20 },
+        { name: "Dome - Kopan", purchaseDate: "2012-07-10", costCents: 4445721, writtenOffCents: 2860642, lifeYears: 20 },
       ],
     },
   });
   expect(await screen.findByText("Overgenomen.")).toBeInTheDocument();
   expect(screen.getByLabelText("Overzicht uit e-Boekhouden")).toHaveValue("");
+});
+
+it("asks for Vaste activa 2026 at its state of 1 January", async () => {
+  inDecember2027();
+  open([]);
+  renderAt(page);
+  const box = await screen.findByLabelText("Overzicht uit e-Boekhouden");
+  expect(
+    screen.getByText(
+      "Kopieer in e-Boekhouden het overzicht Vaste activa 2026 en plak het hier. De app neemt de stand van 1 januari 2026 over en boekt de afschrijving van 2026 zelf. Overnemen vervangt wat eerder is overgenomen; gekochte toestellen blijven staan. De restwaarde staat er niet in: vul die daarna per toestel in.",
+    ),
+  ).toBeInTheDocument();
+  fireEvent.change(box, { target: { value: VASTE_ACTIVA_2026 } });
+  expect(within(screen.getByRole("region", { name: "Plakken uit e-Boekhouden" })).getByText("Afgeschreven t/m 2025")).toBeInTheDocument();
 });
 
 it("says why a paste is refused", async () => {

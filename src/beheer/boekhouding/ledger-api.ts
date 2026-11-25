@@ -213,8 +213,6 @@ export function useLedgerWrites() {
       saveMollieRule: (body: { id?: string; keyword: string; accountCode: string }): Promise<ApiResult<MollieRule>> =>
         write(`${LEDGER}/mollie/rules`, "POST", body),
       deleteMollieRule: (id: string): Promise<ApiResult<{ ok: true }>> => write(`${LEDGER}/mollie/rules/${encodeURIComponent(id)}`, "DELETE"),
-      putOpening: (year: number, body: { lines: Figure[]; eBoekhoudenEquityCents: number | null }): Promise<ApiResult<Opening>> =>
-        write(ledgerPath.opening(year), "PUT", body),
       putComparison: (year: number, figures: Figure[]): Promise<ApiResult<Comparison>> =>
         write(ledgerPath.comparison(year), "PUT", { figures }),
       patchMoneyAccount: (code: string, body: { identifier?: string | null; source?: MoneySource }): Promise<ApiResult<MoneyAccount>> =>

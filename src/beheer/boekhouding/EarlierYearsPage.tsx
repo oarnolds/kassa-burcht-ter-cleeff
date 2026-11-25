@@ -8,7 +8,7 @@ import { useToast } from "../../ui/Toast";
 import { Loaded, PageTitle, Problem, Section, amount, amountHead, cell, field, head, pillLink, table, tableScroll, textLink } from "../parts";
 import { useAdminData } from "../useAdmin";
 import { wasNote } from "./ComparisonPage";
-import { FIRST_LEDGER_YEAR, FROM_LEDGER, comparisonRoute, explainWrite, ledgerPath, useLedgerWrites, type Figure } from "./ledger-api";
+import { FIRST_LEDGER_YEAR, comparisonRoute, explainWrite, ledgerPath, useLedgerWrites, type Figure } from "./ledger-api";
 import { useBusy } from "./useBusy";
 
 const NOT_EBOEKHOUDEN = "Dit is geen winst-en-verliesrekening uit e-Boekhouden.";
@@ -229,7 +229,7 @@ function Reader({ accounts, years, onSaved }: { accounts: LedgerAccount[]; years
         const { readEBoekhoudenFile } = await import("./eboekhouden-file");
         const answer = await readEBoekhoudenFile(file, accounts);
         if (!answer.ok) return setProblem(answer.error === "not_whole_year" ? NOT_WHOLE_YEAR : NOT_EBOEKHOUDEN);
-        if (answer.result.year >= FIRST_LEDGER_YEAR) return setProblem(FROM_LEDGER);
+        if (answer.result.year >= FIRST_LEDGER_YEAR) return setProblem(`${answer.result.year} staat in de boekhouding zelf; dat jaar hoeft u hier niet in te lezen.`);
         setRound((n) => n + 1);
         setRead(answer);
       } catch {

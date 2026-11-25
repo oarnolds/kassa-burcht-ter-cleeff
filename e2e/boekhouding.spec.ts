@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { buildXaf } from "../shared/fixtures/xaf-2026";
 import { openBeheer, prepare } from "./setup";
 
 /**
@@ -31,11 +32,22 @@ test("books a bank file and shows it in the result", async ({ page, request }) =
   await kwartaal.getByLabel("Kenmerk (IBAN of spaarnummer)").fill("V00000000");
   await save(page, kwartaal.getByRole("button", { name: "Opslaan", exact: true }));
 
-  // Beginbalans: what e-Boekhouden has on 31 December 2026.
+  // 2026 uit e-Boekhouden inlezen: a made-up auditfile that leaves the kwartaalrekening at € 10.883,45 on 1 January.
+  await page.getByRole("region", { name: "Eenmalig" }).getByRole("link", { name: "2026 uit e-Boekhouden inlezen" }).click();
+  await page.getByLabel("Kies het auditbestand (.xaf)").setInputFiles({
+    name: "auditfile-2026.xaf",
+    mimeType: "application/xml",
+    buffer: Buffer.from(buildXaf({ opening: { "1011": "10883.45" } })),
+  });
+  await save(page, page.getByRole("button", { name: "Overnemen", exact: true }));
+  await expect(page.getByRole("heading", { name: "Overgenomen" })).toBeVisible();
+
+  // Beginbalans: read only, as the file gave it.
+  await tab(page, "Instellingen").click();
   await page.getByRole("link", { name: "Beginbalans", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Beginbalans 1 januari 2027" })).toBeVisible();
-  await page.getByLabel("ING kwartaalrekening", { exact: true }).fill("10.883,45");
-  await save(page, page.getByRole("button", { name: "Opslaan", exact: true }));
+  await expect(page.getByRole("heading", { name: "Beginbalans 1 januari 2026" })).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "1011 ING kwartaalrekening" })).toContainText(/€\s10\.883,45/);
+  await expect(page.getByRole("button", { name: "Opslaan", exact: true })).toHaveCount(0);
 
   // Te boeken: the file is read in the browser, and its one line waits to be booked.
   await tab(page, "Te boeken").click();

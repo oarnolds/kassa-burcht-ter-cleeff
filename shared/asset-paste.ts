@@ -5,11 +5,11 @@ import { parseEuro } from "./money";
 
 export type PastedAsset = { name: string; purchaseDate: string; costCents: number; writtenOffCents: number; lifeYears: number };
 
-/** The columns read, counted from 0: name, purchase date, cost per 31-12, written off up to and including 31-12, years. */
+/** The columns read, counted from 0: name, purchase date, cost on 1 January, written off up to 1 January, years. The columns of 31-12 are not read: the app books the year itself. */
 const NAME = 0;
 const PURCHASED = 1;
-const COST = 4;
-const WRITTEN_OFF = 9;
+const COST = 2;
+const WRITTEN_OFF = 5;
 const YEARS = 11;
 
 /** The life in years the app accepts, as for a toestel made in beheer. */

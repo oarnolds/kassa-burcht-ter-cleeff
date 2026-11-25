@@ -14,6 +14,12 @@ function codeOf(fn: () => unknown): string {
 }
 
 describe("parseXaf", () => {
+  it("takes the opening amount of an account from the option of the fixture", () => {
+    const file = parseXaf(buildXaf({ opening: { "1011": "10883.45" } }));
+    expect(file.opening).toContainEqual({ accountId: "1011", amountCents: 1088345 });
+    expect(file.opening).toContainEqual({ accountId: "1010", amountCents: 1234560 });
+  });
+
   it("reads the opening and every booking with signed cents", () => {
     const file = parseXaf(XAF_2026);
     expect(file.year).toBe(2026);

@@ -179,6 +179,8 @@ export type XafOptions = {
   bookings?: XafBooking[];
   /** Added to the bookings, e.g. one on an unknown account or on 0130. */
   extraBookings?: XafBooking[];
+  /** The opening amount of these accounts instead of the default one (same side), e.g. `{ "1011": "10883.45" }`. */
+  opening?: Record<string, string>;
   /** Added to the general ledger, e.g. `{ id: "4999", name: "Onbekende kosten" }`. */
   extraAccounts?: { id: string; name: string }[];
 };
@@ -193,7 +195,8 @@ export function buildXaf(options: XafOptions = {}): string {
   const ledger = [...LEDGER, ...(options.extraAccounts ?? [])]
     .map((a) => `<ledgerAccount>${el("accID", a.id)}${el("accDesc", a.name)}${el("accTp", /^[0-3]/.test(a.id) ? "B" : "P")}</ledgerAccount>`)
     .join("");
-  const opening = OPENING.map(
+  const openingLines = OPENING.map((l) => ({ ...l, amount: options.opening?.[l.account] ?? l.amount }));
+  const opening = openingLines.map(
     (l, i) => `<obLine>${el("nr", String(i + 1).padStart(3, "0"))}${el("accID", l.account)}${el("amnt", l.amount)}${el("amntTp", l.type)}</obLine>`,
   ).join("");
   const journals = [...new Set(bookings.map((b) => b.journal))]
@@ -215,7 +218,7 @@ export function buildXaf(options: XafOptions = {}): string {
     `<generalLedger>${ledger}</generalLedger>` +
     `<vatCodes><vatCode>${el("vatID", "0")}${el("vatDesc", "Geen btw")}</vatCode><vatCode>${el("vatID", "1")}${el("vatDesc", "Btw laag")}</vatCode></vatCodes>` +
     `<periods>${PERIODS}</periods>` +
-    `<openingBalance>${totals(OPENING)}${opening}</openingBalance>` +
+    `<openingBalance>${totals(openingLines)}${opening}</openingBalance>` +
     `<transactions>${totals(bookings.flatMap((b) => b.lines))}${journals}</transactions>` +
     `</company></auditfile>`
   );

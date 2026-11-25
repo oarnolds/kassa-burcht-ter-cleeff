@@ -7,7 +7,7 @@ import { Button } from "../../ui/Button";
 import { useToast } from "../../ui/Toast";
 import { Loaded, PageTitle, Problem, Section, field, textLink } from "../parts";
 import { useAdminData } from "../useAdmin";
-import { EARLIER_YEARS_ROUTE, EBOEKHOUDEN_ROUTE, explainWrite, ledgerPath, useLedgerWrites, type CategoryAccount } from "./ledger-api";
+import { EARLIER_YEARS_ROUTE, EBOEKHOUDEN_ROUTE, FIRST_LEDGER_YEAR, explainWrite, ledgerPath, useLedgerWrites, type CategoryAccount } from "./ledger-api";
 
 const label = "flex flex-col gap-1 font-semibold";
 const kindName: Record<AccountKind, string> = { asset: "bezit", liability: "schuld", equity: "vermogen", expense: "kosten", income: "opbrengst" };
@@ -413,7 +413,7 @@ export function SettingsLedgerPage() {
           </li>
           <li>
             <Link to="/beheer/boekhouding/vergelijking" className={textLink}>
-              Vergelijkingscijfers 2026
+              {`Vergelijkingscijfers ${FIRST_LEDGER_YEAR - 1}`}
             </Link>
           </li>
         </ul>

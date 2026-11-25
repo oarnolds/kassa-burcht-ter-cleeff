@@ -8,7 +8,7 @@ import { useToast } from "../../ui/Toast";
 import { Loaded, PageTitle, Problem, Section, amount, amountHead, cell, count, field, head, table, tableScroll, today } from "../parts";
 import { type AdminData, useAdminData } from "../useAdmin";
 import { AmountField } from "./AmountField";
-import { explainWrite, ledgerPath, useLedgerWrites } from "./ledger-api";
+import { FIRST_LEDGER_YEAR, explainWrite, ledgerPath, useLedgerWrites } from "./ledger-api";
 import { useBusy } from "./useBusy";
 
 const firstYear = Number(LEDGER_START.slice(0, 4));
@@ -312,7 +312,7 @@ function Paste({ onDone }: { onDone(): void }) {
   return (
     <Section
       title="Plakken uit e-Boekhouden"
-      note="Kopieer in e-Boekhouden het overzicht Vaste activa 2026, nadat de afschrijving van 2026 daar is geboekt, en plak het hier. Overnemen vervangt wat eerder is overgenomen; gekochte toestellen blijven staan. De restwaarde staat er niet in: vul die daarna per toestel in."
+      note="Kopieer in e-Boekhouden het overzicht Vaste activa 2026 en plak het hier. De app neemt de stand van 1 januari 2026 over en boekt de afschrijving van 2026 zelf. Overnemen vervangt wat eerder is overgenomen; gekochte toestellen blijven staan. De restwaarde staat er niet in: vul die daarna per toestel in."
     >
       <div className="flex flex-col gap-3 px-2 sm:px-3">
         <label className={label}>
@@ -330,7 +330,7 @@ function Paste({ onDone }: { onDone(): void }) {
                       <th className={head}>Naam</th>
                       <th className={head}>Aankoopdatum</th>
                       <th className={amountHead}>Aanschafwaarde</th>
-                      <th className={amountHead}>Afgeschreven t/m 2026</th>
+                      <th className={amountHead}>{`Afgeschreven t/m ${FIRST_LEDGER_YEAR - 1}`}</th>
                       <th className={amountHead}>Boekwaarde</th>
                       <th className={head}>Levensduur</th>
                     </tr>

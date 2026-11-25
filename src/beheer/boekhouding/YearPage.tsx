@@ -5,7 +5,7 @@ import { Button } from "../../ui/Button";
 import { useToast } from "../../ui/Toast";
 import { Loaded, PageTitle, Problem, Section, field, pillLink, textLink, today } from "../parts";
 import { useAdminData } from "../useAdmin";
-import { EARLIER_YEARS_ROUTE, explainWrite, ledgerPath, useLedgerWrites } from "./ledger-api";
+import { EARLIER_YEARS_ROUTE, FIRST_LEDGER_YEAR, explainWrite, ledgerPath, useLedgerWrites } from "./ledger-api";
 import { useBusy } from "./useBusy";
 import { CHECK_NAMES, dayOf } from "./year-labels";
 import { YearExportButtons } from "./YearExportButtons";
@@ -174,7 +174,7 @@ export function YearPage() {
           Eerdere jaren
         </Link>
         <Link to="/beheer/boekhouding/vergelijking" className={pillLink}>
-          Vergelijkingscijfers 2026
+          {`Vergelijkingscijfers ${FIRST_LEDGER_YEAR - 1}`}
         </Link>
         <Link to="/beheer/boekhouding/toestellen" className={pillLink}>
           Toestellen (afschrijving)
