@@ -129,19 +129,29 @@ export async function importEntries(db: D1Database, entries: ImportedEntry[], no
  * Ends a read: empties each booking from e-Boekhouden the file no longer has (`refs` are all of the file's) and a
  * typed opening of 2027, which now follows from closing 2026, each with a history row; then opens the gate. What
  * the books hold at the end of 24-11 comes back, for the penningmeester to check against the kassa and the banks.
+ * Refused (`entries_missing`) while one of `refs` is not in the books with lines: a chunk did not arrive, and the
+ * finish would open the gate on books without it.
  */
 export async function finishImport(db: D1Database, input: { createdOn: string; refs: string[] }, now: Date): Promise<EbSummary> {
   const nextYear = YEAR + 1;
-  const [year, ...reads] = await db.batch([
+  const refs = JSON.stringify(input.refs);
+  const [year, missing, ...reads] = await db.batch([
     yearStatement(db),
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM json_each(?1) j WHERE NOT EXISTS (SELECT 1 FROM ledger_entries e
+           WHERE e.source = 'eboekhouden' AND e.source_ref = j.value AND EXISTS (SELECT 1 FROM ledger_lines l WHERE l.entry_id = e.id))`,
+      )
+      .bind(refs),
     ...entryReads(
       db,
       `EXISTS (SELECT 1 FROM ledger_lines x WHERE x.entry_id = e.id)
        AND ((e.source = 'eboekhouden' AND e.source_ref NOT IN (SELECT value FROM json_each(?))) OR (e.source = 'opening' AND e.source_ref = ?))`,
-      [JSON.stringify(input.refs), String(nextYear)],
+      [refs, String(nextYear)],
     ),
   ]);
   if (isClosed(year!)) throw new LedgerError("year_closed", 409);
+  if (countOf(missing!) > 0) throw new LedgerError("entries_missing", 409);
 
   const toEmpty = entriesFrom(reads);
   await db.batch([

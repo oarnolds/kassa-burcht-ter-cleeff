@@ -194,6 +194,33 @@ it("empties a booking that is no longer in the file", async () => {
   expect(await count("ledger_entries")).toBe(2);
 });
 
+it("finishes only when every booking of the file is there", async () => {
+  // The chunk with verhuur never arrived: the finish may neither empty nor open the gate.
+  await importEntries(env.DB, [contributie, huur], NOW);
+  const all = [contributie, huur, verhuur].map((entry) => entry.ref);
+  await expect(finishImport(env.DB, { createdOn: "2026-11-25", refs: all }, NOW)).rejects.toMatchObject({ code: "entries_missing", status: 409 });
+  const missing = await post("/finish", { createdOn: "2026-11-25", refs: all });
+  expect([missing.status, await missing.json()]).toEqual([409, { error: "entries_missing" }]);
+  // Without any ref it would empty every booking.
+  expect((await post("/finish", { createdOn: "2026-11-25", refs: [] })).status).toBe(400);
+  expect(await count("ledger_history")).toBe(0);
+  expect((await byRef("1010:102")).lines).toHaveLength(2);
+  expect(await eboekhoudenDone(env.DB)).toBe(false);
+  expect(await setting(IMPORTED_KEY)).toBeNull();
+
+  // Once it arrived, the finish goes through.
+  await importEntries(env.DB, [verhuur], NOW);
+  expect(await finishImport(env.DB, { createdOn: "2026-11-25", refs: all }, NOW)).toMatchObject({ imported: 3, emptied: 0 });
+  expect(await eboekhoudenDone(env.DB)).toBe(true);
+
+  // A booking emptied earlier and back in the file counts once it is filled again, not before.
+  await finishImport(env.DB, { createdOn: "2026-11-26", refs: all.slice(0, 2) }, LATER);
+  await expect(finishImport(env.DB, { createdOn: "2026-11-27", refs: all }, LATER)).rejects.toMatchObject({ code: "entries_missing" });
+  await importEntries(env.DB, [verhuur], LATER);
+  expect(await finishImport(env.DB, { createdOn: "2026-11-27", refs: all }, LATER)).toMatchObject({ imported: 3, emptied: 0 });
+  expect(await setting(IMPORTED_KEY)).toBe("2026-11-27");
+});
+
 it("refuses a booking from the overstap on or on a toestel account", async () => {
   const fromOverstap = booking("1010:900", "2026-11-25", "Na de overstap", line("1010", 100), line("8040", -100));
   await expect(importEntries(env.DB, [contributie, fromOverstap], NOW)).rejects.toMatchObject({ code: "outside_period", status: 400 });
@@ -225,7 +252,7 @@ it("refuses everything once 2026 is closed", async () => {
   for (const [path, body] of [
     ["/start", { ...start, opening: [{ accountCode: "1010", amountCents: 100 }], payouts: ["05665564.2611.01"] }],
     ["/entries", { entries: [{ ...huur, lines: [line("4301", 1), line("1010", -1)] }] }],
-    ["/finish", { createdOn: "2026-11-25", refs: [] }],
+    ["/finish", { createdOn: "2026-11-25", refs: [contributie.ref] }],
   ] as const) {
     const answer = await post(path, body);
     expect([answer.status, await answer.json()], path).toEqual([409, { error: "year_closed" }]);
@@ -248,8 +275,9 @@ it("empties a typed opening of 2027", async () => {
     env.DB.prepare("INSERT INTO ledger_lines (entry_id, account_code, amount_cents, note, asset_id) VALUES ('o27', '1010', 100000, NULL, NULL), ('o27', '1400', -100000, NULL, NULL)"),
     env.DB.prepare("INSERT INTO ledger_settings (key, value, updated_at) VALUES ('ledger_opening_eb_equity_2027', '123', ?1)").bind(at),
   ]);
+  await importEntries(env.DB, [contributie], NOW);
 
-  await finishImport(env.DB, { createdOn: "2026-11-25", refs: [] }, NOW);
+  await finishImport(env.DB, { createdOn: "2026-11-25", refs: [contributie.ref] }, NOW);
   expect(await getEntry(env.DB, "o27")).toMatchObject({ number: 1, date: "2027-01-01", description: "Beginbalans 2027", lines: [], changed: true });
   const lines = [
     { accountCode: "1010", amountCents: 100000, note: null, assetId: null },
@@ -266,7 +294,7 @@ it("empties a typed opening of 2027", async () => {
   expect(await setting("ledger_opening_eb_equity_2027")).toBeNull();
   expect(await getOpening(env.DB, 2027, NOW)).toMatchObject({ lines: [], equityCents: 0, eBoekhoudenEquityCents: null });
 
-  await finishImport(env.DB, { createdOn: "2026-11-25", refs: [] }, LATER);
+  await finishImport(env.DB, { createdOn: "2026-11-25", refs: [contributie.ref] }, LATER);
   expect(await entryHistory(env.DB, "o27")).toHaveLength(1);
 });
 

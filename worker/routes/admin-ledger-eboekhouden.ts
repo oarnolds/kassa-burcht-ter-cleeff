@@ -28,7 +28,8 @@ const entriesBody = z.object({
     }),
   ),
 });
-const finishBody = z.object({ createdOn: z.iso.date(), refs: z.array(ref).max(5000) });
+// Every ref of the file; none would empty every booking read in before.
+const finishBody = z.object({ createdOn: z.iso.date(), refs: z.array(ref).min(1).max(5000) });
 
 const jsonBody = (c: { req: { json: () => Promise<unknown> } }) => c.req.json().catch(() => null);
 
