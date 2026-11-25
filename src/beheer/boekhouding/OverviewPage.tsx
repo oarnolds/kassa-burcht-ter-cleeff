@@ -7,7 +7,7 @@ import { Button } from "../../ui/Button";
 import { Loaded, PageTitle, Problem, Section, count, textLink, today } from "../parts";
 import { useAdminData } from "../useAdmin";
 import { ConsentWarning } from "./ConsentWarning";
-import { cashText, dayOf, failedSteps, notUpdatedText, ranTonight, waitingText } from "./ledger-alerts";
+import { cashText, dayOf, failedSteps, notUpdatedText, ranTonight, repasteText, waitingText } from "./ledger-alerts";
 import { ledgerPath, useLedgerWrites } from "./ledger-api";
 
 /** "Vannacht bijgewerkt om 02:00" for a run between midnight and six this morning, else the day. */
@@ -71,6 +71,13 @@ export function OverviewPage() {
               <p className="px-2 sm:px-3">
                 <Link className={`${textLink} inline-flex min-h-11 items-center`} to="/beheer/boekhouding/eboekhouden-2026">
                   {waitingText}
+                </Link>
+              </p>
+            )}
+            {o.assetsRepasteNeeded && (
+              <p className="px-2 sm:px-3">
+                <Link className={`${textLink} inline-flex min-h-11 items-center`} to="/beheer/boekhouding/toestellen">
+                  {repasteText}
                 </Link>
               </p>
             )}

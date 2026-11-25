@@ -106,6 +106,34 @@ it("asks for Vaste activa 2026 at its state of 1 January", async () => {
   expect(within(screen.getByRole("region", { name: "Plakken uit e-Boekhouden" })).getByText("Afgeschreven t/m 2025")).toBeInTheDocument();
 });
 
+it("asks above the paste box to paste again a list pasted before, until it is", async () => {
+  inDecember2027();
+  let pasted = false;
+  open([asset(), dome], {
+    [`${base}/overview`]: () => ({ assetsRepasteNeeded: !pasted }),
+    [`POST ${base}/assets/paste`]: () => {
+      pasted = true;
+      return [asset(), dome];
+    },
+  });
+  renderAt(page);
+  const paste = within(await screen.findByRole("region", { name: "Plakken uit e-Boekhouden" }));
+  expect(await paste.findByText("Plak Vaste activa 2026 opnieuw bij Toestellen: de app neemt nu de stand van 1 januari 2026 over.")).toBeInTheDocument();
+  fireEvent.change(paste.getByLabelText("Overzicht uit e-Boekhouden"), { target: { value: VASTE_ACTIVA_2026 } });
+  await tap("Overnemen");
+  expect(await screen.findByText("Overgenomen.")).toBeInTheDocument();
+  await waitFor(() => expect(paste.queryByText("Plak Vaste activa 2026 opnieuw bij Toestellen: de app neemt nu de stand van 1 januari 2026 over.")).not.toBeInTheDocument());
+});
+
+it("does not ask to paste again when the list is of 1 January", async () => {
+  inDecember2027();
+  open([asset(), dome], { [`${base}/overview`]: { assetsRepasteNeeded: false } });
+  renderAt(page);
+  await screen.findByLabelText("Overzicht uit e-Boekhouden");
+  await waitFor(() => expect(calls("GET").some((call) => call.url === `${base}/overview`)).toBe(true));
+  expect(screen.queryByText(/Plak Vaste activa 2026 opnieuw/)).not.toBeInTheDocument();
+});
+
 it("says why a paste is refused", async () => {
   inDecember2027();
   open([asset()], { [`POST ${base}/assets/paste`]: [409, { error: "depreciation_booked" }] });

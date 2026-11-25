@@ -10,6 +10,7 @@ import {
   type ResultReport,
 } from "../../shared/ledger-types";
 import { businessDate, shiftDate } from "../../shared/time";
+import { REPASTE_KEY } from "./assets";
 import { eboekhoudenDoneStatement, gateOpen } from "./eboekhouden";
 import { LedgerError } from "./ledger";
 import { getLedgerSetting } from "./ledger-settings";
@@ -295,8 +296,9 @@ export async function overview(db: D1Database, now: Date): Promise<LedgerOvervie
   const today = businessDate(now.toISOString());
   const yesterday = shiftDate(today, -1);
   const year = Number(today.slice(0, 4));
-  const [[counts, gate], accounts, resultYearCents, cashDifferenceCents, lastNightly, consent, inUse] = await Promise.all([
-    // Per account and status; `in_difference`: dated up to the bank's newest balance of that account. With the gate of e-Boekhouden's import.
+  const [[counts, gate, repaste], accounts, resultYearCents, cashDifferenceCents, lastNightly, consent, inUse] = await Promise.all([
+    // Per account and status; `in_difference`: dated up to the bank's newest balance of that account. With the gate of
+    // e-Boekhouden's import, and whether the toestellen list must be pasted again.
     db.batch([
       db.prepare(
         `SELECT b.account_code, b.status, COUNT(*) AS n,
@@ -304,6 +306,7 @@ export async function overview(db: D1Database, now: Date): Promise<LedgerOvervie
          FROM bank_lines b WHERE b.status IN ('open','waiting') GROUP BY b.account_code, b.status`,
       ),
       eboekhoudenDoneStatement(db),
+      db.prepare("SELECT EXISTS (SELECT 1 FROM ledger_settings WHERE key = ?1) AS needed").bind(REPASTE_KEY),
     ]),
     moneyAccountsWithTransit(db, now),
     year < firstYear ? Promise.resolve(0) : resultOf(db, `${year}-01-01`, today),
@@ -335,6 +338,7 @@ export async function overview(db: D1Database, now: Date): Promise<LedgerOvervie
     notUpdatedSince: since !== null && now.getTime() - Date.parse(since) > STALE_MS ? since : null,
     toBookByAccount,
     eboekhoudenDone,
+    assetsRepasteNeeded: (repaste!.results[0] as { needed: number }).needed === 1,
   };
 }
 

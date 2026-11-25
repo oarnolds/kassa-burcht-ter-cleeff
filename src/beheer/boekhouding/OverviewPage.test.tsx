@@ -18,6 +18,7 @@ const overview = (extra = {}) => ({
   notUpdatedSince: null,
   toBookByAccount: {},
   eboekhoudenDone: true,
+  assetsRepasteNeeded: false,
   ...extra,
 });
 
@@ -239,4 +240,12 @@ it("does not ask for the import once it is done", async () => {
   renderAt("/beheer/boekhouding");
   await screen.findByRole("link", { name: "Te boeken: 3" });
   expect(screen.queryByText(/Lees eerst 2026 in/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Plak Vaste activa 2026 opnieuw/)).not.toBeInTheDocument();
+});
+
+it("asks to paste the toestellen list again, with a link to Toestellen", async () => {
+  mockLoggedIn();
+  mockApi({ [`${base}/overview`]: overview({ assetsRepasteNeeded: true }) });
+  renderAt("/beheer/boekhouding");
+  expect(await screen.findByRole("link", { name: "Plak Vaste activa 2026 opnieuw bij Toestellen: de app neemt nu de stand van 1 januari 2026 over." })).toHaveAttribute("href", "/beheer/boekhouding/toestellen");
 });

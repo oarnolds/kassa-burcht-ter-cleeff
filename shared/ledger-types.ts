@@ -209,6 +209,8 @@ export type LedgerOverview = {
   toBookByAccount: Record<string, number>;
   /** The auditfile of e-Boekhouden has been read in; until then the app books nothing by itself. */
   eboekhoudenDone: boolean;
+  /** A toestellen list pasted before the books moved to 2026 holds the state of 31 December 2026: paste it again. */
+  assetsRepasteNeeded: boolean;
 };
 
 /**

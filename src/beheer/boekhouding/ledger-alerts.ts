@@ -36,10 +36,20 @@ export const cashText = (cents: number): string => `Kas wijkt ${formatEuro(Math.
 /** The auditfile of e-Boekhouden is not read in yet, so the app books nothing by itself. */
 export const waitingText = "Lees eerst 2026 in uit e-Boekhouden (Instellingen → Eenmalig). Tot dan boekt de app niets zelf.";
 
+/** A toestellen list pasted before the books moved to 2026 holds the state of 31 December 2026. */
+export const repasteText = "Plak Vaste activa 2026 opnieuw bij Toestellen: de app neemt nu de stand van 1 januari 2026 over.";
+
 /** Every warning of the overview beyond the lines to book, the balances and ING's consent, in that order. */
-export function ledgerAlerts(o: { eboekhoudenDone: boolean; lastNightly: NightlyReport | null; notUpdatedSince: string | null; cashDifferenceCents: number }): string[] {
+export function ledgerAlerts(o: {
+  eboekhoudenDone: boolean;
+  assetsRepasteNeeded: boolean;
+  lastNightly: NightlyReport | null;
+  notUpdatedSince: string | null;
+  cashDifferenceCents: number;
+}): string[] {
   return [
     ...(o.eboekhoudenDone ? [] : [waitingText]),
+    ...(o.assetsRepasteNeeded ? [repasteText] : []),
     ...failedSteps(o.lastNightly),
     ...(o.notUpdatedSince ? [notUpdatedText(o.notUpdatedSince)] : []),
     ...(o.cashDifferenceCents !== 0 ? [cashText(o.cashDifferenceCents)] : []),

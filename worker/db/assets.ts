@@ -4,6 +4,7 @@ import { depreciationFor } from "../../shared/depreciation";
 import { type Asset, type DepreciationPlan, type Entry, type EntryLine, LEDGER_START } from "../../shared/ledger-types";
 import { businessDate } from "../../shared/time";
 import { getEntry, LedgerError, upsertSourced, upsertSourcedStatements } from "./ledger";
+import { deleteLedgerSettingStatement } from "./ledger-settings";
 import { getOpening, setOpening } from "./opening";
 
 // The speeltoestellen and inventaris (spec §12): the list behind 0130 and 0135, the yearly depreciation (debit 4601,
@@ -18,6 +19,11 @@ const DEPRECIATION = "4601";
 
 /** Every line, whatever its date: the list as it stands with everything booked so far. */
 export const ALL_DATES = "9999-12-31";
+/**
+ * In `ledger_settings`, set by migration 0013 when a list was pasted before the books moved to 2026: that list holds
+ * the state of 31 December 2026, so it must be pasted again. The next paste deletes it.
+ */
+export const REPASTE_KEY = "assets_repaste_needed";
 
 const FIRST_YEAR = Number(LEDGER_START.slice(0, 4));
 const MONTHS = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"];
@@ -106,7 +112,8 @@ const validCents = (cents: unknown): cents is number => Number.isSafeInteger(cen
 /**
  * Takes the list pasted from e-Boekhouden as the opening toestellen (R31): it replaces the toestellen pasted before
  * (a residual value already typed is kept by name), not the ones bought later, and saves the opening entry of the
- * first year again so 0130, 0135 and equity follow the list. Refused once something is booked on a pasted toestel.
+ * first year again so 0130, 0135 and equity follow the list; the request to paste again (`REPASTE_KEY`) goes. Refused
+ * once something is booked on a pasted toestel.
  */
 export async function addPastedAssets(db: D1Database, assets: PastedAsset[], now: Date): Promise<Asset[]> {
   const fine = (asset: PastedAsset) =>
@@ -134,6 +141,8 @@ export async function addPastedAssets(db: D1Database, assets: PastedAsset[], now
   const nowIso = now.toISOString();
   await db.batch([
     db.prepare("DELETE FROM assets WHERE cost_cents IS NOT NULL"),
+    // This list holds the state of 1 January 2026: a list pasted under the old rule is replaced.
+    deleteLedgerSettingStatement(db, REPASTE_KEY),
     ...assets.map((asset) =>
       db
         .prepare(

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { MAX_LIFE_YEARS, parseAssetPaste, readLifeYears } from "../../../shared/asset-paste";
-import { type Asset, type DepreciationPlan, LEDGER_START } from "../../../shared/ledger-types";
+import { type Asset, type DepreciationPlan, LEDGER_START, type LedgerOverview } from "../../../shared/ledger-types";
 import { formatEuro } from "../../../shared/money";
 import { formatDateNl } from "../../../shared/time";
 import { Button } from "../../ui/Button";
@@ -9,6 +9,7 @@ import { Loaded, PageTitle, Problem, Section, amount, amountHead, cell, count, f
 import { type AdminData, useAdminData } from "../useAdmin";
 import { AmountField } from "./AmountField";
 import { FIRST_LEDGER_YEAR, explainWrite, ledgerPath, useLedgerWrites } from "./ledger-api";
+import { repasteText } from "./ledger-alerts";
 import { useBusy } from "./useBusy";
 
 const firstYear = Number(LEDGER_START.slice(0, 4));
@@ -289,8 +290,11 @@ function explainPaste(status: number, error: string): string {
   return explainWrite(status, error);
 }
 
-/** The overview "Vaste activa" from e-Boekhouden, read in the browser: what was read and what was skipped, before "Overnemen". */
-function Paste({ onDone }: { onDone(): void }) {
+/**
+ * The overview "Vaste activa" from e-Boekhouden, read in the browser: what was read and what was skipped, before
+ * "Overnemen". `repaste`: the list in the books was pasted before the books moved to 2026, so it is asked for again.
+ */
+function Paste({ repaste, onDone }: { repaste: boolean; onDone(): void }) {
   const api = useLedgerWrites();
   const toast = useToast();
   const [busy, run] = useBusy();
@@ -315,6 +319,7 @@ function Paste({ onDone }: { onDone(): void }) {
       note="Kopieer in e-Boekhouden het overzicht Vaste activa 2026 en plak het hier. De app neemt de stand van 1 januari 2026 over en boekt de afschrijving van 2026 zelf. Overnemen vervangt wat eerder is overgenomen; gekochte toestellen blijven staan. De restwaarde staat er niet in: vul die daarna per toestel in."
     >
       <div className="flex flex-col gap-3 px-2 sm:px-3">
+        {repaste && <p className="font-semibold text-redbrown">{repasteText}</p>}
         <label className={label}>
           Overzicht uit e-Boekhouden
           <textarea className={`${field} min-h-32 py-2 font-normal`} value={text} onChange={(event) => setText(event.target.value)} />
@@ -389,6 +394,8 @@ function Paste({ onDone }: { onDone(): void }) {
 /** Toestellen: the list behind 0130 and 0135, its depreciation per year, disposal, and the list taken over from e-Boekhouden. */
 export function AssetsPage() {
   const assets = useAdminData<Asset[]>(ledgerPath.assets);
+  // Only for whether a list pasted before the books moved to 2026 must be pasted again.
+  const overview = useAdminData<LedgerOverview>(ledgerPath.overview);
   // The year chosen; until then the Worker's: the earliest open year still to book. Booking a year stays on it.
   const [year, setYear] = useState<number | null>(null);
   const plan = useAdminData<DepreciationPlan>(ledgerPath.depreciation(year));
@@ -450,7 +457,13 @@ export function AssetsPage() {
           reload();
         }}
       />
-      <Paste onDone={reload} />
+      <Paste
+        repaste={overview.data?.assetsRepasteNeeded === true}
+        onDone={() => {
+          reload();
+          overview.reload();
+        }}
+      />
     </div>
   );
 }

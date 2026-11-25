@@ -24,6 +24,7 @@ const overview = (extra = {}) => ({
   notUpdatedSince: null,
   toBookByAccount: {},
   eboekhoudenDone: true,
+  assetsRepasteNeeded: false,
   ...extra,
 });
 const open = (answer: unknown) => {
@@ -110,4 +111,9 @@ it("says nothing of the nightly run or the kas when all is well", async () => {
 it("tells on the first page that the books wait for e-Boekhouden", async () => {
   open(overview({ eboekhoudenDone: false }));
   expect(await screen.findByRole("link", { name: /Lees eerst 2026 in uit e-Boekhouden/ })).toHaveAttribute("href", "/beheer/boekhouding");
+});
+
+it("asks on the first page to paste the toestellen list again", async () => {
+  open(overview({ assetsRepasteNeeded: true }));
+  expect(await screen.findByRole("link", { name: "Plak Vaste activa 2026 opnieuw bij Toestellen: de app neemt nu de stand van 1 januari 2026 over." })).toHaveAttribute("href", "/beheer/boekhouding");
 });

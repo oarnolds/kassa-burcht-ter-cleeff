@@ -5,6 +5,7 @@ import type { Asset, DepreciationPlan, Entry } from "../shared/ledger-types";
 import { importLines, openLines } from "../worker/db/bank";
 import { addPastedAssets, bookDepreciation, defaultDepreciationYear, depreciationPlan, disposeAsset, listAssets, saveAsset } from "../worker/db/assets";
 import { balancesOn, createEntry, getEntry, upsertSourced } from "../worker/db/ledger";
+import { overview } from "../worker/db/ledger-reports";
 import { exportAll } from "../worker/db/maintenance";
 import { getOpening, setOpening } from "../worker/db/opening";
 import { api, asAdmin, resetData } from "./helpers";
@@ -126,6 +127,40 @@ it("replaces the pasted list when pasted again, keeps a bought toestel and the r
   ]);
   expect(opening.equityCents).toBe(1_000_000 + 4445721 + 584430 - 3072928 - 38962);
   expect(opening.eBoekhoudenEquityCents).toBe(5);
+});
+
+const repasteSetting = async () =>
+  (await env.DB.prepare("SELECT value FROM ledger_settings WHERE key = 'assets_repaste_needed'").first<{ value: string }>())?.value ?? null;
+/** Migration 0013 once more, as the live database will run it. */
+async function runSeed2026() {
+  const migration = env.TEST_MIGRATIONS.find((m) => m.name === "0013_ledger_2026_seed.sql");
+  if (!migration) throw new Error("migration 0013_ledger_2026_seed.sql not found");
+  await env.DB.batch(migration.queries.map((query) => env.DB.prepare(query)));
+}
+
+it("asks to paste the list again when it was pasted before the books moved to 2026", async () => {
+  // resetData ran 0013 on an empty list: nothing to ask.
+  expect(await repasteSetting()).toBeNull();
+  expect((await overview(env.DB, NOW)).assetsRepasteNeeded).toBe(false);
+  // A toestel bought later is no pasted list.
+  await saveAsset(env.DB, { name: "Schommel", lifeYears: 10, residualCents: 0 }, NOW);
+  await runSeed2026();
+  expect(await repasteSetting()).toBeNull();
+
+  // A list pasted under the old rule holds the state of 31 December 2026, as live may have it.
+  await env.DB.prepare(
+    `INSERT INTO assets (id, name, purchase_date, cost_cents, residual_cents, life_years, opening_written_off_cents, disposed_on, created_at)
+     VALUES ('old', 'Straaljager', '2008-01-01', 949600, 0, 20, 949600, NULL, '2026-11-24T10:00:00.000Z')`,
+  ).run();
+  await runSeed2026();
+  expect(await repasteSetting()).not.toBeNull();
+  expect((await overview(env.DB, NOW)).assetsRepasteNeeded).toBe(true);
+
+  // Pasting again takes the state of 1 January 2026, and the question goes.
+  await runSeed2026();
+  await addPastedAssets(env.DB, [STRAALJAGER, DOME], NOW);
+  expect(await repasteSetting()).toBeNull();
+  expect((await overview(env.DB, NOW)).assetsRepasteNeeded).toBe(false);
 });
 
 it("refuses to paste again once depreciation is booked or a pasted toestel is disposed of", async () => {
