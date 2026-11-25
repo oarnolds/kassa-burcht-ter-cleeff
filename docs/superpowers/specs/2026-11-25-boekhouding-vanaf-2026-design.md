@@ -236,7 +236,7 @@ Pas na zijn ja, per stap, zoals bij het ontwerp van 23-11:
 2. de migratie, als die er is, op de live database, na het noteren van een herstelpunt;
 3. deployen.
 
-Vanaf de deploy boekt de nachtelijke taak de kassa vanaf 21-11 en ING vanaf 25-11. Dat kan geen kwaad: e-Boekhouden heeft die niet. Mollie van vóór de overstap wacht op het auditbestand (§12).
+Tot het auditbestand is ingelezen, boekt de app in 2026 niets zelf; bankregels en betalingen van Mollie worden wel al opgehaald. Zo krijgen de beginbalans en de boekingen uit e-Boekhouden de eerste nummers van 2026, en weet Mollie welke uitbetalingen al in e-Boekhouden staan (§12). Daarna haalt de app de kassa vanaf 21-11, ING vanaf 25-11 en Mollie vanaf november in. (Aangescherpt in het bouwplan van 25-11.)
 
 Daarna doet de penningmeester zelf, in beheer: de toestellenlijst plakken (§8), het auditbestand inlezen en overnemen (§7), en de controles nalopen (§10, §11, §12). Het inlezen doet hij zelf; niemand anders zet gegevens in de live database.
 
