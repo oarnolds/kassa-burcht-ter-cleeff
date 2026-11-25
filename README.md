@@ -9,7 +9,7 @@ De eigen kassa van Speeltuin Burcht ter Cleeff. Hij draait als app op de iPad in
 
 De kassa kan aanslaan, contant en pin afrekenen, statiegeld innemen, en houdt de overzichten, het kluisje en de voorraad van de ijsjes bij. Pinnen gaat via Mollie. Zolang de kassa op de testsleutel van Mollie draait, staat er bovenaan een gele balk **TEST**: pinbetalingen zijn dan nagespeeld en er wordt geen geld afgeschreven. Tot de ingebruikname blijft iZettle de echte kassa; in deze kassa staan dan alleen proefverkopen.
 
-Vanaf 1 januari 2027 houdt de app ook de boekhouding van de vereniging bij, in plaats van e-Boekhouden. Zie het hoofdstuk **Boekhouding**.
+De app houdt ook de boekhouding van de vereniging bij, in plaats van e-Boekhouden. De boeken beginnen op 1 januari 2026; wat er tot en met 24 november 2026 is geboekt, komt één keer uit e-Boekhouden. Zie het hoofdstuk **Boekhouding**.
 
 ## Eerste keer instellen
 
@@ -169,46 +169,81 @@ Vanaf dat moment staat bij Instellingen sinds wanneer de kassa in gebruik is en 
 
 ## Boekhouding
 
-Vanaf 1 januari 2027 doet de app de boekhouding van de vereniging. Alles staat in beheer onder **Boekhouding**. De boeken beginnen op 1 januari 2027: wat daarvoor gebeurde, ook de omzet van de kassa tot en met 31 december 2026, boek je nog in e-Boekhouden.
+De app doet de boekhouding van de vereniging. Alles staat in beheer onder **Boekhouding**. De boeken beginnen op 1 januari 2026. Wat er tot en met 24 november 2026 is geboekt, staat in e-Boekhouden en lees je één keer in de app in (zie "De overstap van e-Boekhouden"). Daarna boekt de app zelf, en sluit je 2026 af in de app.
 
 Het meeste boekt de app zelf, elke nacht: de omzet van de kassa, de afdrachten van het kluisje, de betalingen bij Mollie, en de regels van ING betaal die hij herkent. Jij boekt wat overblijft, zet de bonnetjes erbij, leest elk kwartaal de bankbestanden in en sluit het jaar af.
 
 ### Wat staat waar
 
 - **Overzicht.** Hoeveel regels er te boeken zijn. Per geldrekening het saldo in de boekhouding naast het saldo bij de bank; een verschil staat er in rood, met hoeveel regels daarvan nog te boeken zijn. Tot wanneer ING gekoppeld is, en het resultaat van dit jaar tot nu toe. Met **Nu bijwerken** doet de app meteen wat hij anders 's nachts doet.
-- **Te boeken.** De bankregels die op jou wachten. Per bankrekening staat er de knop **Bankbestand inlezen**, en met **Regel intypen** zet je er zelf een regel bij (met een datum tot en met vandaag).
+- **Te boeken.** De bankregels die op jou wachten. Per bankrekening staat er de knop **Bankbestand inlezen**, en met **Regel intypen** zet je er zelf een regel bij (met een datum vanaf 25 november 2026 tot en met vandaag).
 - **Boekingen.** Alle boekingen van een jaar. Zoeken kan op datum, rekening, bedrag of tekst. Hier maak je een **Nieuwe boeking**, bijvoorbeeld voor kosten die aan het eind van het jaar nog betaald moeten worden.
 - **Rapporten.** De **Balans** op een datum en **Winst en verlies** over een periode, naast hetzelfde jaar ervoor. Tik op een rekening om de regels ervan te zien. Het **Meerjarenoverzicht** zet de winst-en-verliesrekening van alle jaren naast elkaar, ook de jaren uit e-Boekhouden.
 - **Begroting.** Per jaar een begroting per maand, met een voorstel uit de mutaties van e-Boekhouden of uit de boekingen van het jaar ervoor, en de begroting naast wat er geboekt is. Zie "Begroting" hieronder.
-- **Mollie.** Per maand de pin van de kassa naast die van Mollie, de betalingen via de website en de QR-code, de kosten en het saldo.
+- **Mollie.** Per maand, vanaf november 2026, de pin van de kassa naast die van Mollie, de betalingen via de website en de QR-code, de kosten en het saldo.
 - **Toestellen.** De speeltoestellen en de inventaris, de afschrijving per jaar, en afvoeren.
-- **Jaar.** Per jaar de controles, **Jaar afsluiten**, heropenen, en het jaaroverzicht. Bovenaan ook **Eerdere jaren**: de jaren uit e-Boekhouden.
-- **Instellingen.** De rekeningen, per geldrekening het kenmerk en de bron, ING automatisch, de omzet van de kassa, de regels voor Mollie, en onder **Eenmalig** de schermen voor de eerste keer: **Beginbalans**, **Eerdere jaren** en **Vergelijkingscijfers 2026**.
+- **Jaar.** Per jaar de controles, **Jaar afsluiten**, heropenen, en het jaaroverzicht. Bovenaan ook **Eerdere jaren**: de jaren vóór 2026 uit e-Boekhouden.
+- **Instellingen.** De rekeningen, per geldrekening het kenmerk en de bron, ING automatisch, de omzet van de kassa, de regels voor Mollie, en onder **Eenmalig** de schermen voor de eerste keer: **2026 uit e-Boekhouden inlezen**, **Beginbalans** (alleen om te bekijken), **Eerdere jaren** en **Vergelijkingscijfers 2025**.
 
-Op het gewone **Overzicht** van beheer staat een regel zodra er iets te boeken is, een saldo afwijkt, de toestemming van ING bijna afloopt, een deel van de nachtelijke taak niet lukte, de boekhouding langer dan anderhalve dag niet is bijgewerkt, of de kas afwijkt van wat er volgens de kassa in het kluisje hoort.
+Op het gewone **Overzicht** van beheer staat een regel zodra er iets te boeken is, een saldo afwijkt, de toestemming van ING bijna afloopt, een deel van de nachtelijke taak niet lukte, de boekhouding langer dan anderhalve dag niet is bijgewerkt, of de kas afwijkt van wat er volgens de kassa in het kluisje hoort. Zolang 2026 nog niet uit e-Boekhouden is ingelezen, staat daar bovenaan: "Lees eerst 2026 in uit e-Boekhouden (Instellingen → Eenmalig). Tot dan boekt de app niets zelf."
+
+### De overstap van e-Boekhouden
+
+Op 25 november 2026 is de boekhouding overgestapt van e-Boekhouden naar de app. Wie boekt wat:
+
+- **Tot en met 24 november 2026: e-Boekhouden.** Al die boekingen, en de beginbalans van 1 januari 2026, lees je met het auditbestand in de app in (hieronder). Daarna staat elke boeking als losse boeking in de app, met datum, omschrijving en bedragen.
+- **De kassa: de app, vanaf de eerste dag (21 november 2026).** In e-Boekhouden staat geen omzet van de nieuwe kassa.
+- **De bank: de app, vanaf 25 november 2026.** Een bankbestand met eerdere regels mag: die regels slaat de app over, want ze staan al in e-Boekhouden.
+- **Mollie: de app, vanaf november 2026.** e-Boekhouden boekte elke uitbetaling van Mollie als omzet op ING, de laatste op 2 november 2026 (met de betalingen van oktober). De betalingen daarna en elke latere uitbetaling boekt de app.
+
+**Wat in e-Boekhouden blijft:** de bijlagen van de boekingen tot en met 24 november 2026, de ledenlijst en de incasso. Boek in e-Boekhouden niets meer voor 2026. Alleen als je een fout vindt van vóór 25 november, verbeter je die daar en lees je het auditbestand opnieuw in.
+
+**Tot het auditbestand is ingelezen, boekt de app in 2026 niets zelf.** Bankregels en betalingen van Mollie haalt hij wel al op. Zo krijgen de beginbalans en de boekingen uit e-Boekhouden de eerste nummers van 2026.
+
+**Het auditbestand inlezen**
+
+1. **ASN.** e-Boekhouden heeft ASN tot en met 15 november 2026. Is er van 16 tot en met 24 november iets op ASN gebeurd, boek dat dan eerst in e-Boekhouden en download het auditbestand daarna opnieuw.
+2. Het auditbestand van 2026 (een bestand dat op .xaf eindigt) download je in e-Boekhouden. Er staan namen en e-mailadressen van leden en leveranciers in: zet het niet op een gedeelde plek en stuur het niet rond.
+3. Ga naar **Boekhouding → Instellingen → Eenmalig → 2026 uit e-Boekhouden inlezen** en tik op **Kies het auditbestand (.xaf)**.
+4. De app leest het bestand en laat eerst zien wat erin staat, zonder iets op te slaan: het boekjaar en de datum van het bestand, hoeveel boekingen er van 1 januari tot en met 24 november zijn, de beginbalans van 1 januari 2026, welke rekening van e-Boekhouden naar welke rekening van de app gaat, wat er wegvalt, en de saldo's aan het eind van 24 november.
+5. Kijk na wat de app meldt:
+   - **Nog geen plek.** Een rekening uit e-Boekhouden die de app niet kent. Kies er een rekening voor; die keuze geldt alleen voor dit inlezen.
+   - **Op een toestel-rekening.** Een boeking op 0130, 0135 of 4601. Dan kan **Overnemen** niet: de toestellen lopen in de app via de lijst bij **Toestellen**. Haal de boeking weg in e-Boekhouden, lees opnieuw in en leg het toestel vast bij Toestellen.
+   - **Kassa-omzet.** Een boeking op 8011 of 8012 vanaf de eerste dag van de kassa. Die omzet boekt de app al zelf. Haal de boeking weg in e-Boekhouden en lees opnieuw in.
+   - **Open op 24 november.** Zie "Facturen van vóór de overstap" hieronder.
+6. Tik op **Overnemen**. De app zet de beginbalans en de boekingen erin en laat zien hoe ver hij is ("40 van 310").
+7. Daarna zie je hoe de boeken er op 24 november voor staan:
+   - **Kas**: 1000 Kas in de boeken naast wat er volgens de kassa in het kluisje hoort. Zie "Het kasverschil bij de start".
+   - **Geldrekeningen**: per bankrekening het saldo in de boekhouding naast het saldo bij de bank. Een verschil betekent meestal dat er in e-Boekhouden een regel ontbreekt. Boek die dan in e-Boekhouden en lees opnieuw in, of boek hem met een **Nieuwe boeking** in de app.
+8. Tik op **Nu bijwerken** op het Overzicht, of wacht tot de nacht. Dan boekt de app de kassa vanaf 21 november, ING vanaf 25 november en Mollie vanaf november.
+
+**Opnieuw inlezen.** Zolang 2026 open is, kun je het auditbestand opnieuw inlezen, bijvoorbeeld na een correctie in e-Boekhouden. De app vraagt eerst "Er staan al boekingen uit e-Boekhouden. Vervangen door dit bestand?". Er komt niets dubbel: een gewijzigde boeking wordt bijgewerkt en de app bewaart wat er eerst stond, en een boeking die niet meer in het bestand staat, wordt leeggemaakt. Een boeking uit e-Boekhouden kun je in de app niet wijzigen; een bijlage erbij zetten kan wel. Een kleine correctie kan ook met een gewone boeking in de app.
+
+**Revolut** komt niet in de app. In e-Boekhouden was dat rekening 1012. De zeven boekingen van 2026 lopen via 1080 Kruisposten: de opbrengst en de kosten blijven staan, de overboeking van ING naar Revolut valt weg, en 1080 staat op 24 november op nul. Bij het inlezen staat er "Revolut: niet in de app, via 1080".
+
+**Het kasverschil bij de start.** Het wisselgeld dat bij de ingebruikname in het kluisje ging (de eerste telling), is geen boeking. Daardoor kan 1000 Kas na het inlezen afwijken van wat er in het kluisje hoort. Boek het verschil één keer, met een **Nieuwe boeking** onder **Boekingen**, met als datum 21 november 2026. Aan de ene kant staat 1000 Kas. Aan de andere kant: kwam het wisselgeld uit de oude kas, dan de rekening waar het vandaan kwam; anders 4515 Kasverschillen. Zit er in het kluisje meer dan op 1000 Kas, dan zet je het bedrag bij 1000 Kas onder **Debet**. Het Overzicht laat daarna zien of de kas klopt.
+
+**Facturen van vóór de overstap.** Een factuur die vóór 25 november in e-Boekhouden is geboekt en pas daarna wordt betaald, staat op 1300 Nog te ontvangen of 1700 Nog te betalen. Bij het inlezen staat dat onder **Open op 24 november**. Komt de betaling binnen, boek de regel in **Te boeken** dan op 1300 (of 1700), niet op een opbrengst of kosten: anders telt hij twee keer. Volgens het bestand van 25 november stond er niets open. Een factuur die e-Boekhouden vanaf 25 november maakt (bijvoorbeeld voor een zakelijk lid), komt niet in de app: boek de betaling gewoon op de opbrengst.
 
 ### De eerste keer
 
-Doe dit in januari 2027, nadat je 2026 in e-Boekhouden hebt afgesloten, met de afschrijving van 2026.
+Doe dit zodra de app met de boeken vanaf 2026 online staat. Heb je een stap al gedaan, dan hoeft hij niet opnieuw.
 
 1. **Instellingen → Geldrekeningen.** Vul bij elke bankrekening het **Kenmerk** in en tik op **Opslaan**: het IBAN, of bij de ING-kwartaalrekening het spaarnummer dat met een V begint. Daaraan herkent de app een bankbestand. Een bestand van een andere rekening weigert hij.
 2. Kies bij ING betaal waar de regels vandaan komen: **Automatisch via Enable Banking** (zie "ING automatisch") of **Bankbestand uploaden of met de hand**. De andere bankrekeningen werken altijd met een bankbestand of met de hand. De kas volgt de kassa en Mollie volgt Mollie; daar valt niets te kiezen.
-   Rekeningen die je niet gebruikt (bijvoorbeeld 1300 Nog te ontvangen of 1700 Nog te betalen), verberg je onder **Instellingen → Rekeningen** met **Verbergen**; **Tonen** haalt ze terug. Een bankrekening die er niet meer is, zoals 1021 ASN deposito, kan ook weg, zolang er niets op is geboekt en er geen bankregel op staat; ze verdwijnt dan ook uit het overzicht en uit Te boeken. Kas en Mollie blijven altijd zichtbaar.
+   Rekeningen die je niet gebruikt, verberg je onder **Instellingen → Rekeningen** met **Verbergen**; **Tonen** haalt ze terug. Verberg 1300 Nog te ontvangen en 1700 Nog te betalen pas als er na het inlezen van 2026 niets meer op open staat. Een bankrekening die er niet meer is, zoals 1021 ASN deposito, kan ook weg, zolang er niets op is geboekt en er geen bankregel op staat; ze verdwijnt dan ook uit het overzicht en uit Te boeken. Kas en Mollie blijven altijd zichtbaar.
 3. **Instellingen → Omzet van de kassa.** Kijk na op welke rekening de omzet van elke categorie van de kassa komt (de entree op 8012, de kiosk op 8011) en tik op **Opslaan**.
 4. **Instellingen → Regels voor Mollie.** Deze regels zijn voor de betalingen via de website en de QR-code. De app begint met: "dagkaart" en "dagticket" naar 8012 Entree; "lidm", "lidmaatschap" en "verl" naar 8000 Contributie particulier; "reserver" en "verhuur" naar 8010 Verhuur. Een regel erbij: vul **Omschrijving bevat** in, kies de **Rekening** en tik op **Regel toevoegen**. De eerste regel die past, telt. Hoofdletters tellen niet.
-5. **Instellingen → Beginbalans.** Typ per rekening het saldo op 31 december 2026 uit de eindbalans van e-Boekhouden en tik op **Opslaan**. Drie rekeningen gaan anders:
-   - **1000 Kas (kluisje).** Onder de lijst staat "Volgens de kassa hoort er op 31 december € … in het kluisje". Neem dat bedrag over.
-   - **1030 Mollie.** Het saldo bij Mollie op 31 december 2026 (in het Mollie-dashboard): wat Mollie toen nog niet had uitbetaald. Heeft de app dat saldo zelf gelezen, dan staat naast 1030 "Mollie gaf op 31-12-2026: € … (beschikbaar plus nog uit te betalen)"; zo vergelijkt de app later ook met Mollie.
-   - **1080 Kruisposten.** Een uitbetaling van Mollie uit december 2026 die pas in januari op ING binnenkomt, is op 31 december geld onderweg. Zet dat bedrag op 1080. Als hij in januari binnenkomt, staat hij in **Te boeken** met de melding "Uitbetaling … is van … (2026): boek hem tegen 1080 Kruisposten …". Boek hem dan op **1080 Kruisposten**.
-
-   Het eigen vermogen (1400) rekent de app zelf uit. Typ ter vergelijking het eigen vermogen uit e-Boekhouden in; de app laat het verschil zien. 0130 en 0135 vult de app zelf zodra de toestellen erin staan (stap 7).
-6. **Instellingen → Vergelijkingscijfers 2026.** Typ per rekening het totaal van 2026 uit e-Boekhouden en tik op **Opslaan**. Laat leeg wat nul is. Bij een rekening staat welke oude rekeningen erin zijn opgegaan. Zo staat 2026 in de rapporten naast 2027. Sneller: lees de winst-en-verliesrekening van 2026 in onder **Eerdere jaren** (zie hieronder) en kijk hier daarna na.
-7. **Toestellen.** Boek eerst de afschrijving van 2026 in e-Boekhouden. Kopieer daarna in e-Boekhouden het overzicht **Vaste activa 2026**, plak het bij **Plakken uit e-Boekhouden** en tik op **Overnemen**. Kijk na wat er is gelezen en wat er is overgeslagen. De restwaarde staat niet in dat overzicht: vul hem met **Wijzigen** in bij Dome - Kopan (€ 2.000), Pizza (€ 1.000) en Banken van mei 2024 (€ 2.922,15, de helft), zoals in e-Boekhouden. Kijk de Stadsbanken van 11 juni 2018 na: uit e-Boekhouden volgt een restwaarde van € 3.908,80 (er wordt maar € 3 per jaar afgeschreven), wat op een invoerfout lijkt.
-8. **ING koppelen**: zie "ING automatisch" hieronder.
+5. **Toestellen.** Kopieer in e-Boekhouden het overzicht **Vaste activa 2026**, plak het bij **Plakken uit e-Boekhouden** en tik op **Overnemen**. De app neemt per toestel de stand van 1 januari 2026 over en boekt de afschrijving van 2026 zelf; boek die dus niet in e-Boekhouden. Stond er al een lijst, dan vervangt de nieuwe hem; een restwaarde die je al had ingevuld, blijft staan bij een toestel met dezelfde naam. Kijk na wat er is gelezen en wat er is overgeslagen. De restwaarde staat niet in dat overzicht: vul hem met **Wijzigen** in bij Dome - Kopan (€ 2.000), Pizza (€ 1.000) en Banken van mei 2024 (€ 2.922,15, de helft), zoals in e-Boekhouden. Kijk de Stadsbanken van 11 juni 2018 na: uit e-Boekhouden volgt een restwaarde van € 3.908,80 (er wordt maar € 3 per jaar afgeschreven), wat op een invoerfout lijkt.
+   Of je dit vóór of na stap 6 doet, maakt niet uit: 0130 en 0135 in de beginbalans komen altijd uit deze lijst.
+6. **2026 uit e-Boekhouden inlezen**: zie "De overstap van e-Boekhouden" hierboven.
+7. **Instellingen → Beginbalans.** Hier staat de beginbalans van 1 januari 2026, alleen om te bekijken. Hij komt uit het auditbestand; 0130 en 0135 komen uit de lijst bij Toestellen, en 1030 Mollie begint op nul (e-Boekhouden boekte een uitbetaling pas als omzet toen die op ING binnenkwam). Het eigen vermogen (1400) rekent de app zelf uit. Daarnaast staan het eigen vermogen uit e-Boekhouden en het verschil, ter informatie. Typen hoeft niet: de beginbalans van 2027 volgt vanzelf uit het afsluiten van 2026.
+8. **Instellingen → Vergelijkingscijfers 2025.** Typ per rekening het totaal van 2025 uit e-Boekhouden en tik op **Opslaan**. Laat leeg wat nul is. Bij een rekening staat welke oude rekeningen erin zijn opgegaan. Zo staat 2025 in de rapporten naast 2026. Sneller: lees de winst-en-verliesrekening van 2025 in onder **Eerdere jaren** (zie hieronder) en kijk hier daarna na.
+9. **ING koppelen**: zie "ING automatisch" hieronder.
 
 ### Eerdere jaren
 
-De winst-en-verliesrekening van jaren vóór 2027 (bijvoorbeeld 2020 tot en met 2026) kan naast de jaren van de app staan. Die cijfers zijn alleen om te vergelijken: ze worden niet geboekt en staan niet in de balans of in de jaarafsluiting.
+De winst-en-verliesrekening van jaren vóór 2026 (bijvoorbeeld 2020 tot en met 2025) kan naast de jaren van de app staan. Die cijfers zijn alleen om te vergelijken: ze worden niet geboekt en staan niet in de balans of in de jaarafsluiting.
 
 1. Maak in e-Boekhouden bij **Rapportages → Winst & verlies** het overzicht van een heel jaar (1 januari tot en met 31 december) en exporteer het naar Excel. Elk jaar is een eigen bestand.
 2. Ga naar **Jaar → Eerdere jaren** (of **Instellingen → Eenmalig → Eerdere jaren**), tik op **W&V uit e-Boekhouden inlezen** en kies het bestand.
@@ -216,7 +251,7 @@ De winst-en-verliesrekening van jaren vóór 2027 (bijvoorbeeld 2020 tot en met 
 4. Onder **Niet geplaatst** staan de regels die bij geen rekening van de app horen, zoals **9999 Eindresultaat** of een vervallen rekening als 4311. Laat 9999 Eindresultaat meestal op **Niet meenemen**: in e-Boekhouden maakt die regel het Saldo winst hoger dan het echte resultaat. Hoort een andere regel wel ergens bij, kies dan de rekening. De totalen rekenen meteen mee.
 5. Tik op **Overnemen**. Staat het jaar er al, dan zegt de app dat eerst: overnemen vervangt die cijfers.
 
-Onder **Ingelezen jaren** staan per jaar de opbrengsten, de kosten en het resultaat. Met **Bekijken of wijzigen** zie je de cijfers per rekening en kun je er een verbeteren. Alle jaren naast elkaar staan onder **Rapporten → Meerjarenoverzicht**, met "uit e-Boekhouden" boven de eerdere jaren. Een bestand van 2027 of later leest de app niet in: die jaren staan in de boekhouding zelf.
+Onder **Ingelezen jaren** staan per jaar de opbrengsten, de kosten en het resultaat. Met **Bekijken of wijzigen** zie je de cijfers per rekening en kun je er een verbeteren. Alle jaren naast elkaar staan onder **Rapporten → Meerjarenoverzicht**, met "uit e-Boekhouden" boven de eerdere jaren. Een bestand van 2026 of later leest de app niet in: die jaren staan in de boekhouding zelf. Had je 2026 hier al ingelezen, dan blijven die cijfers bewaard, maar de app gebruikt ze niet meer: 2026 komt uit de boeken.
 
 ### Elke week of elke maand
 
@@ -225,7 +260,7 @@ Onder **Ingelezen jaren** staan per jaar de opbrengsten, de kosten en het result
 - **Kasstorting.** Een afdracht die je onder **Kluisje** vastlegt, boekt de app zelf: het geld gaat van 1000 Kas naar 1080 Kruisposten (geld onderweg), een kasverschil naar 4515 Kasverschillen. Maak het bedrag daarna over van je eigen rekening naar ING betaal, met het woord **kasstorting** in de omschrijving. Die regel boekt de app zelf tegen 1080; dan staat 1080 weer op nul. Zonder dat woord komt de regel in Te boeken en boek je hem zelf op 1080 Kruisposten.
 - **Bijlagen.** Zet bij een uitgave de factuur of een foto van het bonnetje. In Te boeken: tik bij de regel op **Bijlage**, kies een PDF of maak met de telefoon een foto, en tik op **Boeken**. Later kan ook: open de boeking onder **Boekingen** en tik op **Bijlage toevoegen**. Een PDF, JPEG of PNG, hoogstens 10 MB. Een bijlage gaat nooit weg: **Verbergen** haalt hem uit beeld, het bestand blijft bewaard.
 - **Eigen overboekingen.** Geld tussen twee rekeningen van de vereniging boekt de app zelf, aan beide kanten tegen 1080 Kruisposten. Als beide kanten binnen zijn, staat 1080 weer op nul.
-- **Een fout verbeteren.** Open de boeking onder **Boekingen** en tik op **Wijzigen** of **Leegmaken**. De app bewaart wat er eerst stond; de kascommissie ziet dat in het jaaroverzicht. Een boeking die de app zelf maakt (een kassadag, een afdracht, Mollie, de afschrijving) kun je niet wijzigen: die volgt de kassa en Mollie. Bij de boeking van een bankregel blijven de regel van de bank en de datum zoals de bank ze gaf; de andere kant en de omschrijving kun je wijzigen. Maak je zo'n boeking leeg, dan komt de bankregel terug bij **Te boeken** (een eigen overboeking of kasstorting boekt de app dan zelf opnieuw). Een verkeerd aangeslagen verkoop draai je terug onder **Verkopen**, zoals altijd. Is bij een afdracht een bedrag verkeerd getypt, maak dan een **Nieuwe boeking** tussen 1080 Kruisposten en 4515 Kasverschillen, met de afdracht in de omschrijving.
+- **Een fout verbeteren.** Open de boeking onder **Boekingen** en tik op **Wijzigen** of **Leegmaken**. De app bewaart wat er eerst stond; de kascommissie ziet dat in het jaaroverzicht. Een boeking die de app zelf maakt (een kassadag, een afdracht, Mollie, de afschrijving) kun je niet wijzigen: die volgt de kassa en Mollie. Een boeking uit e-Boekhouden (tot en met 24 november 2026) ook niet: verbeter hem in e-Boekhouden en lees het auditbestand opnieuw in, of maak een gewone boeking. Bij de boeking van een bankregel blijven de regel van de bank en de datum zoals de bank ze gaf; de andere kant en de omschrijving kun je wijzigen. Maak je zo'n boeking leeg, dan komt de bankregel terug bij **Te boeken** (een eigen overboeking of kasstorting boekt de app dan zelf opnieuw). Een verkeerd aangeslagen verkoop draai je terug onder **Verkopen**, zoals altijd. Is bij een afdracht een bedrag verkeerd getypt, maak dan een **Nieuwe boeking** tussen 1080 Kruisposten en 4515 Kasverschillen, met de afdracht in de omschrijving.
 
 ### Elk kwartaal: de bankbestanden
 
@@ -233,7 +268,7 @@ De ING-kwartaalrekening en de rekeningen bij ASN haalt de app niet zelf op. Lees
 
 1. Download in ING Zakelijk de af- en bijschrijvingen van de kwartaalrekening, en bij ASN die van ASN MeerSparen en het deposito. Kies als bestandsvorm **CAMT.053** (een bestand dat op .xml eindigt). Laat de periode aansluiten op het vorige bestand; overlappen mag.
 2. Ga naar **Te boeken** en tik bij de juiste rekening op **Bankbestand inlezen**. Kies het bestand.
-3. De app zegt wat hij heeft gedaan, bijvoorbeeld "3 nieuw, 12 al bekend, 0 vanzelf geboekt.". Een regel die al bekend is, telt niet nog eens mee.
+3. De app zegt wat hij heeft gedaan, bijvoorbeeld "3 nieuw, 12 al bekend, 0 vanzelf geboekt.". Een regel die al bekend is, telt niet nog eens mee. Regels van vóór 25 november 2026 slaat de app over: die staan al in e-Boekhouden.
 4. Boek de nieuwe regels, bijvoorbeeld de rente op **8030 Rente**.
 5. Kijk op het **Overzicht** of het saldo in de boekhouding gelijk is aan het saldo bij de bank.
 
@@ -247,13 +282,15 @@ ING betaal haalt zijn regels zelf op via Enable Banking, met jouw toestemming bi
 2. Tik bij **Instellingen → ING automatisch** op **ING koppelen**. Je gaat naar ING. Log in en geef toestemming voor de betaalrekening.
 3. Je komt terug in beheer met "ING betaal is gekoppeld tot …". ING betaal staat dan op **Automatisch via Enable Banking**.
 
-Daarna haalt de app elke nacht de nieuwe regels en het saldo van ING betaal op.
+Daarna haalt de app elke nacht de nieuwe regels en het saldo van ING betaal op. De eerste keer haalt hij de regels vanaf 25 november 2026.
 
 - **Twee weken voor het einde** staat er op het Overzicht, ook op het gewone Overzicht van beheer, "De toestemming van ING verloopt over … dagen." Tik op **Vernieuwen** en doe stap 2 opnieuw. Reken op twee keer per jaar.
 - **Verlopen.** Staat er "ING haalt geen regels meer op: toestemming verlopen.", dan gaat er niets mis, maar komen er geen nieuwe regels bij. Vernieuw de toestemming, of lees een bankbestand van ING betaal in bij **Te boeken**. Dat kan altijd, ook om een gat te vullen: een regel die er al was, telt één keer.
 - **Terug naar bestanden.** Stopt Enable Banking, of wil je het niet meer, zet ING betaal dan bij **Instellingen** op **Bankbestand uploaden of met de hand** en lees elke maand een bestand in. Verder verandert er niets.
 
 ### Mollie
+
+Mollie begint in de app in november 2026. e-Boekhouden boekte elke uitbetaling van Mollie als omzet op ING, de laatste op 2 november 2026; de betalingen daarin staan dus al in de boeken. De app boekt de betalingen die in geen van die uitbetalingen zitten (in de praktijk die vanaf 1 november 2026), en elke uitbetaling die vanaf 25 november op ING binnenkomt. De pagina **Mollie** begint bij november 2026.
 
 Wat de app elke nacht zelf boekt:
 
@@ -273,7 +310,7 @@ De pagina **Mollie** laat per maand zien (met **Vorige maand** en **Volgende maa
 ### Toestellen en afschrijving
 
 - **Kopen.** Boek de bankregel van een nieuw toestel in **Te boeken** op **0130 Speeltoestellen en inventaris**. Er komt een keuze voor het toestel bij: kies het toestel, of **Nieuw toestel** en vul de naam, de levensduur in jaren en de restwaarde in. Tik dan op **Boeken**. Het toestel staat daarna onder **Toestellen**, met wat ervoor is betaald als aanschafwaarde.
-- **Afschrijving.** Eén keer per jaar, aan het eind: **Toestellen → Afschrijving … boeken**. Je ziet eerst per toestel het bedrag. De app boekt het totaal op 31 december, lineair zoals e-Boekhouden het deed. Koop je daarna in dat jaar nog een toestel, boek dan opnieuw: dat vervangt de vorige boeking. De jaren gaan op volgorde: eerst 2027, dan 2028. Moet een eerder jaar opnieuw, maak dan eerst de latere jaren leeg met **Afschrijving … leegmaken**.
+- **Afschrijving.** Eén keer per jaar, aan het eind: **Toestellen → Afschrijving … boeken**. Je ziet eerst per toestel het bedrag. De app boekt het totaal op 31 december, lineair zoals e-Boekhouden het deed. Koop je daarna in dat jaar nog een toestel, boek dan opnieuw: dat vervangt de vorige boeking. De jaren gaan op volgorde: eerst 2026, dan 2027. Moet een eerder jaar opnieuw, maak dan eerst de latere jaren leeg met **Afschrijving … leegmaken**.
 - **Afvoeren.** Gaat een toestel weg, tik dan bij dat toestel op **Afvoeren**, kies de datum, tik nog eens op **Afvoeren** en bevestig. De app boekt de afschrijving tot en met die maand en zet de rest van de boekwaarde op 4601. De afschrijving van het jaar ervoor moet dan al geboekt zijn. Brengt het toestel nog iets op, boek dat apart op **8040 Overige opbrengsten**.
 
 ### Het jaar afsluiten
@@ -285,7 +322,9 @@ Een jaar sluit je af vanaf 1 januari van het jaar erna, onder **Jaar**.
 3. De controle met **verplicht** erbij moet kloppen: zolang er bankregels van dat jaar te boeken zijn, kan het jaar niet dicht. Klopt een andere controle niet, dan kan het jaar toch dicht als je bij **Toelichting** schrijft waarom. Die toelichting komt in het jaaroverzicht.
 4. Tik op **Jaar afsluiten** en bevestig. De app boekt het resultaat naar 1400 Eigen vermogen en zet het jaar op slot. Daarna verandert er niets meer in dat jaar.
 
-De jaren gaan op volgorde: 2028 kan pas dicht als 2027 dicht is. Komt er na het afsluiten nog een kassaverkoop of een Mollie-betaling van dat jaar binnen, dan boekt de app die op 1 januari van het eerste jaar dat nog open is, als "nagekomen".
+**2026 sluit je ook hier af**, in de app en niet in e-Boekhouden, vanaf 1 januari 2027. De controle "alle bankregels geboekt" gaat dan over de regels vanaf 25 november 2026. De beginbalans van 2027 volgt vanzelf uit het afsluiten van 2026: die typ je niet. Na het afsluiten kan het auditbestand niet meer opnieuw worden ingelezen; heropen 2026 daarvoor eerst.
+
+De jaren gaan op volgorde: 2027 kan pas dicht als 2026 dicht is. Komt er na het afsluiten nog een kassaverkoop of een Mollie-betaling van dat jaar binnen, dan boekt de app die op 1 januari van het eerste jaar dat nog open is, als "nagekomen".
 
 **Heropenen.** Vindt de kascommissie een fout, dan kun je het laatst afgesloten jaar heropenen: vul de **Reden** in en tik op **Heropenen**. Heropen alleen om iets te verbeteren, en sluit het jaar daarna meteen weer af. Let op: had de app al iets "nagekomen" van een dag in dat jaar op 1 januari van een later jaar geboekt, en verandert er aan die dag nog iets terwijl het jaar weer open is, dan kan dat bedrag twee keer meetellen.
 
@@ -299,11 +338,13 @@ Onder **Jaar** staat bij elk jaar de link **Jaaroverzicht** en drie knoppen:
 
 Zolang het jaar open is, staat er "Voorlopig" op. Maak het jaaroverzicht als het jaar is afgesloten en geef het aan de kascommissie.
 
+Het jaaroverzicht van 2026 zegt bovenaan, in de Excel en in de PDF, waar de eerste maanden vandaan komen: dat de boekingen tot en met 24-11-2026 uit e-Boekhouden komen (met de datum van het auditbestand) en dat hun bijlagen in e-Boekhouden staan, en dat tot 21-11-2026 op 8011 de contante verkoop en op 8012 de pin- en online-verkoop staat, zoals e-Boekhouden boekte; daarna kiosk en entree.
+
 **Bewaren.** De app wist niets: geen boekingen, geen bankregels, geen bijlagen. Toch is het jaaroverzicht het archief. Bewaar de drie bestanden buiten de app, bijvoorbeeld op de schijf van de vereniging, en houd ze 7 jaar. Ze zijn te lezen zonder de app. De wekelijkse reservekopie neemt de boekhouding mee, maar niet de bijlagen: die staan apart bij Cloudflare en worden nooit opgeruimd.
 
 ### Begroting
 
-Onder **Begroting** maak je per jaar een begroting per maand: per rekening van opbrengsten of kosten wat je in elke maand verwacht. Bedragen zijn hele euro's. De begroting is een plan naast de boekhouding: hij verandert nooit een boeking. Kies bovenaan het **Jaar** (vanaf 2027 tot en met volgend jaar).
+Onder **Begroting** maak je per jaar een begroting per maand: per rekening van opbrengsten of kosten wat je in elke maand verwacht. Bedragen zijn hele euro's. De begroting is een plan naast de boekhouding: hij verandert nooit een boeking. Kies bovenaan het **Jaar** (tot en met volgend jaar). De pagina begint bij 2027; een begroting voor 2026 is niet nodig.
 
 **Een voorstel uit e-Boekhouden (voor 2027).**
 
@@ -315,7 +356,7 @@ Onder **Begroting** maak je per jaar een begroting per maand: per rekening van o
 6. **Niet meegenomen.** Memorialen (en mutaties van een soort die de app niet kent) tellen niet mee; ze staan er ter controle.
 7. Het **Voorstel** geeft per rekening een ritme: **elke maand** hetzelfde bedrag (wat het bestand gemiddeld per maand liet zien, een maand zonder iets meegeteld), **per kwartaal**, **één keer** in een maand, of **zoals 2026** (het jaarbedrag verdeeld zoals het in 2026 viel). Staan er toestellen in de lijst **Toestellen**, dan komt de afschrijving van het jaar erbij op 4601, één keer in december. Tik op **Begroting maken**.
 
-**Vanaf 2028** kan het voorstel ook uit de boekingen van het jaar ervoor in de app komen: tik op **Voorstel uit de boekingen van 2027**.
+**Uit de boekingen van het jaar ervoor.** Het voorstel kan ook komen uit wat er het jaar ervoor in de app is geboekt: tik op **Voorstel uit de boekingen van 2026** (voor 2027, zodra 2026 uit e-Boekhouden is ingelezen) of later **Voorstel uit de boekingen van 2027** (voor 2028). Let op: tot 21 november 2026 staat de omzet op 8011 en 8012 naar betaalwijze, niet naar kiosk en entree.
 
 **Zonder voorstel.** Tik op **Leeg beginnen** voor een lege begroting, en voeg daarna elke rekening zelf toe (zie hieronder). **Rekening toevoegen** staat er pas als de begroting is gemaakt of leeg is begonnen; zo gaat een ingelezen voorstel niet verloren.
 
@@ -351,7 +392,7 @@ npm test
 npm run e2e
 ```
 
-`npm test` draait de tests van de app en van de Worker. `npm run e2e` bouwt de app en loopt de kassa en de boekhouding na in WebKit op iPad-formaat (1180×820), met een eigen lege database in `.wrangler/e2e`. Die run leest `.dev.vars.e2e` (verzonnen waarden, wel in git) in plaats van `.dev.vars`, en praat met een nagebootste Mollie op poort 4174 (`e2e/global-setup.ts`, `test/fake-mollie.ts`). `.dev.vars.e2e` heeft bewust geen sleutels voor Enable Banking en de organisatie van Mollie. De echte Mollie en de echte Enable Banking worden door geen enkele test aangeroepen; de tests van de Worker gebruiken nagebootste versies (`test/fake-mollie.ts`, `test/fake-enable-banking.ts`) en een sleutel die pas tijdens de test wordt gemaakt. De boekhouding wordt nagelopen met een verzonnen bankbestand uit `e2e/fixtures/`. WebKit bewaart op `http://localhost` geen koekje met Secure, dus daar geeft de test de browser de sessie van de inlog mee (`openBeheer` in `e2e/setup.ts`).
+`npm test` draait de tests van de app en van de Worker. `npm run e2e` bouwt de app en loopt de kassa en de boekhouding na in WebKit op iPad-formaat (1180×820), met een eigen lege database in `.wrangler/e2e`. Die run leest `.dev.vars.e2e` (verzonnen waarden, wel in git) in plaats van `.dev.vars`, en praat met een nagebootste Mollie op poort 4174 (`e2e/global-setup.ts`, `test/fake-mollie.ts`). `.dev.vars.e2e` heeft bewust geen sleutels voor Enable Banking en de organisatie van Mollie. De echte Mollie en de echte Enable Banking worden door geen enkele test aangeroepen; de tests van de Worker gebruiken nagebootste versies (`test/fake-mollie.ts`, `test/fake-enable-banking.ts`) en een sleutel die pas tijdens de test wordt gemaakt. De boekhouding wordt nagelopen met een verzonnen bankbestand uit `e2e/fixtures/` en een verzonnen auditbestand van e-Boekhouden, dat de test maakt met `buildXaf` uit `shared/fixtures/xaf-2026.ts`. WebKit bewaart op `http://localhost` geen koekje met Secure, dus daar geeft de test de browser de sessie van de inlog mee (`openBeheer` in `e2e/setup.ts`).
 
 Online zetten (de penningmeester is ingelogd met `npx wrangler login`):
 
@@ -421,7 +462,7 @@ Afspraken in de code: bedragen zijn hele centen; een dag is een dag in Amsterdam
 
 ### De boekhouding
 
-Een dubbele boekhouding naast de kassa: routes onder `/api/admin/boekhouding/*` achter de inlog, schermen in `src/beheer/boekhouding/`, de code van de Worker in `worker/db/` (`ledger.ts` voor de boekingen, verder `bank.ts`, `kassa-ledger.ts`, `mollie-ledger.ts`, `assets.ts`, `year.ts`) en `worker/nightly.ts`. De begroting staat in `worker/db/budget.ts` en `shared/budget.ts` (de regels), het lezen van de Mutaties van e-Boekhouden in `shared/eboekhouden-mutations.ts` en `shared/mutation-base.ts`. Ontwerp en plan: `docs/superpowers/specs/2026-11-23-boekhouding-design.md` en `docs/superpowers/plans/2026-11-23-boekhouding.md`. De boekhouding leest de tabellen van de kassa en schrijft er nooit in; de kassa-routes en de iPad zijn er niet door veranderd.
+Een dubbele boekhouding naast de kassa: routes onder `/api/admin/boekhouding/*` achter de inlog, schermen in `src/beheer/boekhouding/`, de code van de Worker in `worker/db/` (`ledger.ts` voor de boekingen, verder `bank.ts`, `kassa-ledger.ts`, `mollie-ledger.ts`, `assets.ts`, `year.ts`) en `worker/nightly.ts`. De begroting staat in `worker/db/budget.ts` en `shared/budget.ts` (de regels), het lezen van de Mutaties van e-Boekhouden in `shared/eboekhouden-mutations.ts` en `shared/mutation-base.ts`. Het auditbestand van 2026 wordt in de browser gelezen (`shared/xaf.ts`) en op de rekeningen van de app gelegd (`shared/xaf-map.ts`); de Worker schrijft het weg in `worker/db/eboekhouden.ts`, met de routes in `worker/routes/admin-ledger-eboekhouden.ts`. Ontwerp en plan: `docs/superpowers/specs/2026-11-23-boekhouding-design.md` en `docs/superpowers/plans/2026-11-23-boekhouding.md`; voor de boeken vanaf 2026 `docs/superpowers/specs/2026-11-25-boekhouding-vanaf-2026-design.md` en `docs/superpowers/plans/2026-11-25-boekhouding-vanaf-2026.md`, met de besluiten van de bouwer in `docs/superpowers/plans/2026-11-25-boekhouding-vanaf-2026-besluiten.md`. De boekhouding leest de tabellen van de kassa en schrijft er nooit in; de kassa-routes en de iPad zijn er niet door veranderd.
 
 **Online zetten**, in deze volgorde, en elke stap alleen met een ja van de penningmeester:
 
@@ -439,6 +480,10 @@ npx wrangler d1 migrations apply kassa --remote
 
 3. `npm run deploy`.
 4. De drie geheimen hieronder: die zet de penningmeester zelf.
+
+Dat is op 23 november 2026 gedaan. **De boeken vanaf 2026** vragen twee migraties erbij: `0012_eboekhouden` bouwt `ledger_entries` opnieuw op met de bron `eboekhouden` erbij (alle rijen, nummers en koppelingen blijven), en `0013_ledger_2026_seed` zet het jaar 2026 open. Dezelfde opdracht `npx wrangler d1 migrations apply kassa --remote` zet ze allebei op de echte database. De stappen, elk met een ja van de penningmeester, staan onder "Live zetten" in `docs/superpowers/plans/2026-11-25-boekhouding-vanaf-2026-besluiten.md`.
+
+**Het auditbestand** van e-Boekhouden (`.xaf`) bevat namen en e-mailadressen van leden en leveranciers. Het komt nooit in git (`*.xaf` staat in `.gitignore`), in een test of in een fixture; de tests gebruiken het verzonnen bestand in `shared/fixtures/xaf-2026.ts`.
 
 **De drie geheimen.** Typ of plak ze alleen in het venster van de opdracht; nooit in een bericht, een mail, de code of een chat. Ook de bouwer hoeft ze niet te zien.
 
@@ -465,8 +510,8 @@ Een verkeerde sleutel of een verkeerd id van de applicatie geeft bij ING het ant
 - `0 3 * * MON`: de wekelijkse kopie, elke maandag om 03:00 UTC. Ongewijzigd.
 - `0 2 * * *`: de nachtelijke taak van de boekhouding, elke dag om 02:00 UTC (03:00 of 04:00 in Nederland). Hij werkt de kassadagen en de afdrachten bij, haalt de regels en het saldo van ING betaal op, leest bij Mollie de betalingen, terugbetalingen, terugboekingen, uitbetalingen en het saldo, en herkent de uitbetalingen op ING. Elke stap staat los: mislukt er één, dan gaan de andere door en staat de fout in beheer bij **Nu bijwerken**. Die knop doet hetzelfde.
 
-**Het gratis abonnement.** Eén run blijft binnen 50 databaseaanroepen (een batch telt als één) en 50 externe aanroepen: bij Mollie pagina's van 100 en hoogstens 6 pagina's per lijst, bij ING hoogstens 10 vragen om regels plus het saldo. ING wordt gevraagd in blokken van twee weken (`date_from`/`date_to`), het oudste eerst, vanaf een week voor de nieuwste regel van ING betaal die van ING of uit een bankbestand kwam (nooit voor 1 januari 2027) tot en met vandaag. Zijn de 10 vragen op tussen twee blokken, dan wachten de latere blokken op de volgende run; het saldo wordt pas gevraagd als de regels tot en met vandaag binnen zijn. Geeft de bank in een blok meer pagina's dan er nog gevraagd mogen worden, dan bewaart de app niets van dat blok (een half blok zou er compleet uitzien), stopt hij daar en staat ING in rood op het Overzicht met `ing_cut_short`; de blokken ervoor zijn bewaard. Lees dan een bankbestand van die weken in: daarna begint ING na dat bestand. Wat bij Mollie niet past, blijft liggen voor de volgende run, het oudste eerst. Een achterstand, zoals de eerste keer, kost dus meer nachten (of een paar keer **Nu bijwerken**).
+**Het gratis abonnement.** Eén run blijft binnen 50 databaseaanroepen (een batch telt als één) en 50 externe aanroepen: bij Mollie pagina's van 100 en hoogstens 6 pagina's per lijst, bij ING hoogstens 10 vragen om regels plus het saldo. ING wordt gevraagd in blokken van twee weken (`date_from`/`date_to`), het oudste eerst, vanaf een week voor de nieuwste regel van ING betaal die van ING of uit een bankbestand kwam (nooit vóór de overstap, 25 november 2026) tot en met vandaag. Zijn de 10 vragen op tussen twee blokken, dan wachten de latere blokken op de volgende run; het saldo wordt pas gevraagd als de regels tot en met vandaag binnen zijn. Geeft de bank in een blok meer pagina's dan er nog gevraagd mogen worden, dan bewaart de app niets van dat blok (een half blok zou er compleet uitzien), stopt hij daar en staat ING in rood op het Overzicht met `ing_cut_short`; de blokken ervoor zijn bewaard. Lees dan een bankbestand van die weken in: daarna begint ING na dat bestand. Wat bij Mollie niet past, blijft liggen voor de volgende run, het oudste eerst. Een achterstand, zoals de eerste keer, kost dus meer nachten (of een paar keer **Nu bijwerken**).
 
 **De wekelijkse kopie en "Alles downloaden"** hebben er een deel `ledger` bij met alle tabellen van de boekhouding: `ledger_accounts`, `ledger_years`, `ledger_entries`, `ledger_lines`, `ledger_history`, `ledger_year_events`, `ledger_attachments`, `ledger_settings`, `money_accounts`, `bank_lines`, `bank_balances`, `bank_consents`, `category_accounts`, `comparison_figures`, `mollie_payments`, `mollie_settlements`, `mollie_rules` en `assets`. Van `bank_consents` zit de kolom `session_id` er niet in, want die is een geheim van de koppeling met de bank: na het terugzetten koppelt de penningmeester ING opnieuw. De bijlagen zelf zitten niet in de kopie. Ze staan in hun eigen bucket `boekhouding-bijlagen` (in de kopie staat alleen welke bijlage bij welke boeking hoort) en worden nooit opgeruimd: de app verbergt een bijlage alleen. Buiten Cloudflare staan ze in de zip van het jaaroverzicht.
 
-Afspraken in de boekhouding: elke boeking sluit (debet positief, credit negatief, samen nul), en dat controleert `worker/db/ledger.ts` bij elk schrijven; in een afgesloten jaar verandert niets; niets wordt verwijderd (een boeking wordt leeggemaakt, een bijlage verborgen, een bankregel blijft staan); boekingen die de app zelf maakt, schrijft alleen hun eigen bron (kassa, Mollie, afschrijving, jaarafsluiting); de boeken beginnen op 1 januari 2027.
+Afspraken in de boekhouding: elke boeking sluit (debet positief, credit negatief, samen nul), en dat controleert `worker/db/ledger.ts` bij elk schrijven; in een afgesloten jaar verandert niets; niets wordt verwijderd (een boeking wordt leeggemaakt, een bijlage verborgen, een bankregel blijft staan); boekingen die de app zelf maakt, schrijft alleen hun eigen bron (kassa, Mollie, afschrijving, jaarafsluiting, e-Boekhouden). De data staan in `shared/ledger-types.ts`: de boeken beginnen op 1 januari 2026 (`LEDGER_START`), bankregels op 25 november 2026 (`OVERSTAP`), Mollie op 1 november 2026 (`MOLLIE_START`), en de kassa op de ingebruikname. Tot het auditbestand is ingelezen (`eboekhouden_imported_at` in `ledger_settings`), boekt de app niets zelf: die poort geldt voor de kassa, de bank en Mollie, voor elke datum.
