@@ -151,8 +151,14 @@ function insertLine(db: D1Database, accountCode: string, line: CamtLine, key: st
 }
 
 /**
+ * The first day of the app's own lines: Mollie's (payments without a rule, refunds, chargebacks on 1030) from
+ * MOLLIE_START, a bank's from OVERSTAP. Earlier ones are in e-Boekhouden's auditfile.
+ */
+const firstDayOf = (origin: LineOrigin) => (origin === "mollie" ? MOLLIE_START : OVERSTAP);
+
+/**
  * Stores the new lines in one batch, after one lookup, with `alongside` after them in that batch. Gives the result
- * and each kept line's content key.
+ * and each kept line's content key; a line before its origin's first day (`firstDayOf`) is counted and left out.
  */
 async function storeLines(
   db: D1Database,
@@ -162,7 +168,8 @@ async function storeLines(
   now: Date,
   alongside: D1PreparedStatement[] = [],
 ): Promise<{ result: ImportResult; keys: string[] }> {
-  const kept = lines.filter((line) => line.bookingDate >= OVERSTAP);
+  const first = firstDayOf(origin);
+  const kept = lines.filter((line) => line.bookingDate >= first);
   const beforeStart = lines.length - kept.length;
   if (kept.length === 0) {
     if (alongside.length > 0) await db.batch(alongside);
@@ -180,7 +187,8 @@ async function storeLines(
  * Reads lines into a money account, each once. A line is known when its reference is already stored for the
  * account, or when an equal line (account, booking date, amount, the other party's IBAN) with the same count
  * is: the description does not count, as Enable Banking and a file may word it differently. Lines before
- * OVERSTAP are counted and left out. It does not check where the lines come from; `importStatement` does.
+ * their origin's first day (`firstDayOf`) are counted and left out. It does not check where the lines come from;
+ * `importStatement` does.
  * `alongside` is written in the same batch, after the lines (e.g. what notes that they are in).
  */
 export async function importLines(
@@ -550,8 +558,8 @@ const payoutReference = (row: OpenRow): string | null =>
  * not known yet, it waits for Mollie; in e-Boekhouden already (its reference is in the `PAYOUTS_KEY` list), known with another amount, or booked already from
  * another line, it stays open with the reason, and the app never guesses. A line booked by hand (also one that
  * waited) is left alone. Own transfers and kasstortings, of `open` lines only, against 1080.
- * Lines in years that are not closed; a second run finds nothing more. In batches, not one call per line. Gives how
- * many lines were booked.
+ * Lines in years that are not closed, from their origin's first day (`firstDayOf`); a second run finds nothing more.
+ * In batches, not one call per line. Gives how many lines were booked.
  */
 export async function autoBook(db: D1Database, now: Date): Promise<number> {
   const [lines, accounts, settlements, gate, eb] = await db.batch([
@@ -560,11 +568,11 @@ export async function autoBook(db: D1Database, now: Date): Promise<number> {
         `SELECT b.id, b.account_code, b.booking_date, b.amount_cents, b.counterparty_name, b.counterparty_iban, b.description,
            b.status, b.waiting_for, b.note
          FROM bank_lines b
-         WHERE b.status IN ('open', 'waiting') AND b.booking_date >= ?1
+         WHERE b.status IN ('open', 'waiting') AND b.booking_date >= ?3 AND (b.origin = 'mollie' OR b.booking_date >= ?1)
            AND NOT EXISTS (SELECT 1 FROM ledger_years y WHERE y.year = CAST(substr(b.booking_date, 1, 4) AS INTEGER) AND y.status = 'closed')
          ORDER BY b.booking_date, b.imported_at, b.rowid LIMIT ?2`,
       )
-      .bind(OVERSTAP, AUTO_LINES_PER_RUN),
+      .bind(firstDayOf("file"), AUTO_LINES_PER_RUN, firstDayOf("mollie")),
     db.prepare("SELECT account_code, identifier FROM money_accounts WHERE identifier IS NOT NULL AND trim(identifier) <> ''"),
     db.prepare(
       `SELECT s.id, s.reference, s.settled_at, s.amount_cents, s.costs_cents,

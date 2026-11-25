@@ -156,6 +156,23 @@ it("matches an identifier in a description only as a whole word, and never its o
   expect(await autoBook(env.DB, NOW)).toBe(0);
 });
 
+it("books Mollie's own lines from November 2026 on, a bank's from the overstap", async () => {
+  await setIdentifier("1011", "V00000000");
+  // On 1030, a payment from the vereniging's own savings account through Mollie: an own transfer, against 1080.
+  await importLines(env.DB, "1030", [line({ bookingDate: "2026-11-05", amountCents: 2500, description: "Overboeking van V00000000", counterpartyIban: null, bankRef: "tr_own" })], "mollie", NOW);
+  // A bank line of 24-11 is e-Boekhouden's: a file skips it, and one that is there all the same is not booked.
+  await env.DB.prepare(
+    `INSERT INTO bank_lines (id, account_code, booking_date, amount_cents, description, content_key, origin, status, imported_at)
+     VALUES ('old', '1010', '2026-11-24', 5470, 'kasstorting', 'old', 'file', 'open', '2026-11-25T08:00:00.000Z')`,
+  ).run();
+  expect(await autoBook(env.DB, NOW)).toBe(1);
+  const lines = (await env.DB.prepare("SELECT account_code, booking_date, status FROM bank_lines ORDER BY account_code").all()).results;
+  expect(lines).toEqual([
+    { account_code: "1010", booking_date: "2026-11-24", status: "open" },
+    { account_code: "1030", booking_date: "2026-11-05", status: "booked" },
+  ]);
+});
+
 it("books a kasstorting against 1080 by itself", async () => {
   await importLines(env.DB, "1010", [line({ amountCents: 5470, description: "Kasstorting juli", counterpartyName: "O. Penningmeester", counterpartyIban: null })], "file", NOW);
   await importLines(env.DB, "1010", [line({ amountCents: -5470, description: "kasstorting terug", counterpartyIban: null })], "file", NOW);

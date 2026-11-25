@@ -152,6 +152,19 @@ it("skips bank lines before the overstap and counts them", async () => {
   expect(await count()).toBe(0);
 });
 
+it("keeps Mollie's lines from November 2026 on, the bank's from the overstap", async () => {
+  const at = (bookingDate: string, bankRef: string) => line({ bookingDate, bankRef, counterpartyIban: null });
+  // Mollie's own lines (payments without a rule, refunds, chargebacks) start at MOLLIE_START.
+  expect(await importLines(env.DB, "1030", [at("2026-10-31", "tr_oct"), at("2026-11-01", "tr_nov"), at("2026-11-24", "re_nov")], "mollie", NOW)).toEqual(result(2, 0, 1));
+  // A bank's line of 24-11 is still e-Boekhouden's.
+  expect(await importLines(env.DB, "1010", [at("2026-11-24", "b1"), at("2026-11-25", "b2")], "file", NOW)).toEqual(result(1, 0, 1));
+  expect((await env.DB.prepare("SELECT account_code, booking_date FROM bank_lines ORDER BY account_code, booking_date").all()).results).toEqual([
+    { account_code: "1010", booking_date: "2026-11-25" },
+    { account_code: "1030", booking_date: "2026-11-01" },
+    { account_code: "1030", booking_date: "2026-11-24" },
+  ]);
+});
+
 it("marks a line in a closed year", async () => {
   await env.DB.prepare("UPDATE ledger_years SET status = 'closed', closed_at = '2028-02-01T10:00:00.000Z' WHERE year = 2027").run();
   await env.DB.prepare("INSERT INTO ledger_years (year, status) VALUES (2028, 'open')").run();

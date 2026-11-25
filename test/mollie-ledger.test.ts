@@ -510,6 +510,28 @@ it("skips without the token and names a failure of Mollie without saying more", 
   expect(await entry("mollie_other", "2027-03-06")).not.toBeNull();
 });
 
+it("puts a payment without a rule, a refund and a chargeback of November 2026 in Te boeken", async () => {
+  // Mollie's own lines start at MOLLIE_START, not at the overstap: none of these is in e-Boekhouden.
+  paid("tr_gift", "10.00", "Gift voor de speeltuin", "2026-11-03T11:00:00+00:00");
+  paid("tr_lid", "32.00", "Lidm. Speeltuin ter Cleefte", "2026-11-04T12:00:00+00:00");
+  mollie.current.addRefund({ id: "re_nov", paymentId: "tr_lid", amount: "32.00", createdAt: "2026-11-10T09:00:00+00:00" });
+  mollie.current.addChargeback({ id: "chb_nov", paymentId: "tr_gift", amount: "10.00", createdAt: "2026-11-12T09:00:00+00:00" });
+
+  expect(await sync("2026-11-26T02:00:00.000Z")).toBe("ok");
+  const lines = await openLines(env.DB, { accountCode: "1030" });
+  expect(lines.map((one) => [one.date, one.amountCents, one.description])).toEqual([
+    ["2026-11-03", 1000, "Gift voor de speeltuin"],
+    ["2026-11-10", -3200, "Terugbetaling Mollie: Lidm. Speeltuin ter Cleefte"],
+    ["2026-11-12", -1000, "Terugboeking Mollie: Gift voor de speeltuin"],
+  ]);
+  // The payment is booked onto its line, so its day is not read again each night.
+  expect(await payment("tr_gift")).toEqual({ kind: "line", account_code: null, bank_line_id: (await bankLine("tr_gift"))!.id, paid_date: "2026-11-03" });
+  expect(await env.DB.prepare("SELECT booked FROM mollie_payments WHERE id = 'tr_gift'").first()).toEqual({ booked: 1 });
+  // A second night finds them, and adds nothing.
+  expect(await sync("2026-11-27T02:00:00.000Z")).toBe("ok");
+  expect(await count("bank_lines WHERE account_code = '1030'")).toBe(3);
+});
+
 it("keeps Mollie payments from 1 November 2026 on", async () => {
   paid("tr_oct", "1.20", "Dagkaartje", "2026-10-31T10:00:00+00:00");
   paid("tr_nov", "1.20", "Dagkaartje", "2026-11-01T10:00:00+00:00");
