@@ -252,8 +252,8 @@ it("adds up balances up to a date", async () => {
 });
 
 it("opens the next year by itself when the first entry for it arrives", async () => {
-  // The seed still holds a row for 2027 only: swap it for the first year's, to see the next year open by itself.
-  await env.DB.batch([env.DB.prepare("DELETE FROM ledger_years WHERE year = 2027"), env.DB.prepare("INSERT INTO ledger_years (year, status) VALUES (2026, 'open')")]);
+  // The seed holds rows for 2026 and 2027: take 2027 away, to see the next year open by itself.
+  await env.DB.batch([env.DB.prepare("DELETE FROM ledger_years WHERE year = 2027"), env.DB.prepare("INSERT OR IGNORE INTO ledger_years (year, status) VALUES (2026, 'open')")]);
   expect(await yearStatus(env.DB, 2027)).toBeNull();
   expect(await firstOpenYear(env.DB)).toBe(2026);
   const entry = await manual("2027-01-02");

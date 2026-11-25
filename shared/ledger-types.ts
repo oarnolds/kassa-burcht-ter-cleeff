@@ -17,7 +17,8 @@ export type EntrySource =
   | "mollie_settlement"
   | "depreciation"
   | "disposal"
-  | "closing";
+  | "closing"
+  | "eboekhouden";
 
 export type EntryLine = { accountCode: string; amountCents: number; note: string | null; assetId: string | null };
 

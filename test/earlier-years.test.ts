@@ -8,6 +8,8 @@ import { api, asAdmin, meteredDb, resetData } from "./helpers";
 let cookie: string;
 beforeEach(async () => {
   await resetData();
+  // These tests lay 2027 next to the earlier years, as when it was the first year: the seed also holds an empty 2026.
+  await env.DB.prepare("DELETE FROM ledger_years WHERE year = 2026").run();
   cookie = (await asAdmin()).cookie;
 });
 

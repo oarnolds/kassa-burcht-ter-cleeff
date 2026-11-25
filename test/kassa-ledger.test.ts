@@ -225,7 +225,7 @@ it("books a late sale for a closed year on 1 January of the open year", async ()
     ["1000", 220],
     ["8011", -220],
   ]);
-  await env.DB.prepare("UPDATE ledger_years SET status = 'closed', closed_at = '2028-01-02T10:00:00.000Z' WHERE year = 2027").run();
+  await env.DB.prepare("UPDATE ledger_years SET status = 'closed', closed_at = '2028-01-02T10:00:00.000Z' WHERE year IN (2026, 2027)").run();
 
   // The iPad was offline over New Year: a pin sale of 31 December arrives after 2027 was closed.
   await sale({ date: "2027-12-31", method: "pin", lines: [[ENTREE, 1]], receivedAt: "2028-01-03T10:00:00.000Z" });
@@ -271,7 +271,7 @@ it("leaves a day for the next run when its year is closed while the run writes",
         return async (statements: D1PreparedStatement[]) => {
           if (writing && !closedNow) {
             closedNow = true;
-            await target.prepare("UPDATE ledger_years SET status = 'closed' WHERE year = 2027").run();
+            await target.prepare("UPDATE ledger_years SET status = 'closed' WHERE year IN (2026, 2027)").run();
           }
           return target.batch(statements);
         };
@@ -357,7 +357,7 @@ it("books a handover with its difference", async () => {
 });
 
 it("books a handover dated in a closed year on 1 January of the open year", async () => {
-  await env.DB.prepare("UPDATE ledger_years SET status = 'closed', closed_at = '2028-01-02T10:00:00.000Z' WHERE year = 2027").run();
+  await env.DB.prepare("UPDATE ledger_years SET status = 'closed', closed_at = '2028-01-02T10:00:00.000Z' WHERE year IN (2026, 2027)").run();
   const id = await handover({ countedAt: "2027-12-31T15:00:00.000Z", expected: 2000, received: 1900, left: 0, note: "Laatste dag" });
   expect(await syncKassa(env.DB, new Date("2028-01-05T12:00:00.000Z"))).toEqual({ days: 0, late: 0, handovers: 1, left: 0 });
   const booked = await entry("handover", id);
@@ -548,7 +548,7 @@ it("rebooks an untouched open day under a new account after a mapping change, bu
     ["1000", 220],
     ["8011", -220],
   ]);
-  await env.DB.prepare("UPDATE ledger_years SET status = 'closed', closed_at = '2028-01-02T10:00:00.000Z' WHERE year = 2027").run();
+  await env.DB.prepare("UPDATE ledger_years SET status = 'closed', closed_at = '2028-01-02T10:00:00.000Z' WHERE year IN (2026, 2027)").run();
   await env.DB.prepare("INSERT INTO ledger_years (year, status) VALUES (2028, 'open')").run();
   // An open day in 2028, booked before the change.
   await sale({ date: "2028-02-01", lines: [[AARDBEITJE, 1]], receivedAt: "2028-02-01T10:00:00.000Z" });

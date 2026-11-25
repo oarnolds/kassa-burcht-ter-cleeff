@@ -333,7 +333,7 @@ it("leaves a closed year alone and books late payments on 1 January", async () =
     ["1030", 200],
     ["8012", -200],
   ]);
-  await env.DB.prepare("UPDATE ledger_years SET status = 'closed', closed_at = '2028-01-02T10:00:00.000Z' WHERE year = 2027").run();
+  await env.DB.prepare("UPDATE ledger_years SET status = 'closed', closed_at = '2028-01-02T10:00:00.000Z' WHERE year IN (2026, 2027)").run();
 
   // Paid on New Year's Eve, read only after 2027 was closed.
   paid("tr_b", "32.00", "Lidmaatschap 2028", "2027-12-31T22:30:00+00:00"); // 23:30 in Amsterdam
