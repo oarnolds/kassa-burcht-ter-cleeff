@@ -187,13 +187,17 @@ describe("mapXaf", () => {
   });
 
   it("finds Mollie's payout references on ING", () => {
-    // The one of 25-11 is from the overstap on, so the app reads it from ING itself.
+    // As e-Boekhouden writes ING's text, a letter glued to the reference; the one of 25-11 is from the overstap on,
+    // so the app reads it from ING itself.
+    expect(base.transactions.find((t) => t.nr === "10011")?.description).toContain(" P05665564.2611.01 ");
     expect(plan().payouts).toEqual(["05665564.2611.01"]);
 
     const file = withBookings(
       booking("1010", "10020", "2026-03-02", "Mollie", debit("1010", "50", "Uitbetaling 05665564.2603.01"), credit("8011", "50")),
       booking("MEMO", "10021", "2026-04-01", "Correctie 05665564.2604.01", debit("1080", "5"), credit("8011", "5")),
       booking("1010", "10022", "2026-11-03", "Nog eens 05665564.2611.01", debit("1010", "1"), credit("8011", "1")),
+      // Digits that go on make no reference.
+      booking("1010", "10023", "2026-11-04", "Factuur 105665564.2611.03 en 05665564.2611.041", debit("1010", "2"), credit("8040", "2")),
     );
     expect(plan(file).payouts).toEqual(["05665564.2603.01", "05665564.2611.01"]);
   });

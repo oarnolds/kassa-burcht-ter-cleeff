@@ -95,6 +95,25 @@ it("books a payout on ING with Mollie's costs", async () => {
   expect(await openLines(env.DB, {})).toEqual([]);
 });
 
+it("finds the payout's reference also with a letter glued to it, but not inside a longer number", async () => {
+  const payout = mollie.current.addSettlement({ reference: "05665564.2703.01", amount: "98.12", settledAt: "2027-03-08T06:00:00+00:00", costs: { "2027": { "03": ["1.88"] } } });
+  expect(await settle()).toBe("ok");
+  // As ING writes it: a letter right before the reference.
+  await ingLine("2027-03-09", 9812, "Stichting Mollie Payments T05665564.2703.01  RF1");
+  await ingLine("2027-03-10", 9812, "Factuur 105665564.2703.01 en 05665564.2703.011");
+  expect(await autoBook(env.DB, NOW)).toBe(1);
+
+  const booked = await entry("mollie_settlement", payout.id);
+  expect(amounts(booked)).toEqual([
+    ["1010", 9812],
+    ["4511", 188],
+    ["1030", -10000],
+  ]);
+  expect(await lineOf("Stichting Mollie Payments T05665564.2703.01  RF1")).toMatchObject({ status: "booked", entry_id: booked!.id });
+  // Digits that go on make no reference: left as it was, not "al geboekt".
+  expect(await lineOf("Factuur 105665564.2703.01 en 05665564.2703.011")).toMatchObject({ status: "open", waiting_for: null, note: null, entry_id: null });
+});
+
 it("waits for Mollie when the payout is not known yet, then books it", async () => {
   await ingLine("2027-03-09", 9812, "05665564.2703.01 Stichting Mollie Payments");
   // A debit that carries a payout's reference, and a credit on another account: no payouts, left as they are.

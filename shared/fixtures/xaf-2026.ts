@@ -87,7 +87,7 @@ const OPENING: { account: string; amount: string; type: "D" | "C" }[] = [
  * The bookings of 2026, numbered in date order. The file lists them per journal (1000, 1010, 1012, MEMO), so not in
  * date order. 10001 and 10002 merge two old accounts into one new one; 10005 and 10008 fall away; 10013 corrects with
  * negative amounts, as e-Boekhouden sometimes writes them (-9.99 D is a credit, -9.99 C a debit); 10014 is from the
- * overstap on.
+ * overstap on. The payouts' descriptions have a letter glued to the reference, as e-Boekhouden writes ING's text.
  */
 export const XAF_BOOKINGS: XafBooking[] = [
   booking("1010", "10001", "2026-01-20", "Energie december", credit("1010", "155"), debit("1700", "120"), debit("1890", "35", "Afrekening water")),
@@ -116,10 +116,10 @@ export const XAF_BOOKINGS: XafBooking[] = [
   booking("1012", "10008", "2026-07-02", "Van ING", debit("1012", "110"), credit("1080", "110")),
   booking("1012", "10009", "2026-07-05", "Entree via Revolut", debit("1012", "4.2"), credit("8012", "4.2")),
   booking("1012", "10010", "2026-07-09", "Webhosting", debit("4513", "114.2"), credit("1012", "114.2")),
-  booking("1010", "10011", "2026-11-02", "Mollie uitbetaling 05665564.2611.01", debit("1010", "412.35"), credit("8011", "412.35")),
+  booking("1010", "10011", "2026-11-02", "Mollie uitbetaling P05665564.2611.01  RF1", debit("1010", "412.35"), credit("8011", "412.35")),
   booking("1000", "10012", "2026-11-22", "Entree zaterdag", debit("1000", "37.5"), credit("8012", "37.5")),
   booking("MEMO", "10013", "2026-11-23", "Correctie website", debit("4513", "-9.99"), credit("4514", "-9.99", "Naar diversen")),
-  booking("1010", "10014", "2026-11-25", "Mollie uitbetaling 05665564.2611.02", debit("1010", "98.5"), credit("8011", "98.5")),
+  booking("1010", "10014", "2026-11-25", "Mollie uitbetaling P05665564.2611.02  RF2", debit("1010", "98.5"), credit("8011", "98.5")),
 ];
 
 const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

@@ -55,8 +55,11 @@ export const LEDGER_START = "2026-01-01";
 export const OVERSTAP = "2026-11-25";
 /** The first day of Mollie payments, refunds and chargebacks in the app; earlier ones are in payouts e-Boekhouden booked. */
 export const MOLLIE_START = "2026-11-01";
-/** A Mollie payout's reference as ING writes it in a line's description. */
-export const PAYOUT_REFERENCE = /\b\d{7,8}\.\d{4}\.\d{2}\b/;
+/**
+ * A Mollie payout's reference as ING writes it in a line's description. Bounded by digits, not words: ING may glue a
+ * letter to it ("T05665564.2611.01"), and a longer run of digits is no reference.
+ */
+export const PAYOUT_REFERENCE = /(?<!\d)\d{7,8}\.\d{4}\.\d{2}(?!\d)/;
 
 /** Where a money account's lines come from. 1000 follows the kassa and 1030 Mollie; a bank is a file or Enable Banking. */
 export type MoneySource = "file" | "enable_banking" | "kassa" | "mollie";
