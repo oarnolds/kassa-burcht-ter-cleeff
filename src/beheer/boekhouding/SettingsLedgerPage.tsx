@@ -7,7 +7,7 @@ import { Button } from "../../ui/Button";
 import { useToast } from "../../ui/Toast";
 import { Loaded, PageTitle, Problem, Section, field, textLink } from "../parts";
 import { useAdminData } from "../useAdmin";
-import { EARLIER_YEARS_ROUTE, explainWrite, ledgerPath, useLedgerWrites, type CategoryAccount } from "./ledger-api";
+import { EARLIER_YEARS_ROUTE, EBOEKHOUDEN_ROUTE, explainWrite, ledgerPath, useLedgerWrites, type CategoryAccount } from "./ledger-api";
 
 const label = "flex flex-col gap-1 font-semibold";
 const kindName: Record<AccountKind, string> = { asset: "bezit", liability: "schuld", equity: "vermogen", expense: "kosten", income: "opbrengst" };
@@ -396,6 +396,11 @@ export function SettingsLedgerPage() {
       </Section>
       <Section title="Eenmalig">
         <ul className="flex flex-col gap-2 px-2 text-lg sm:px-3">
+          <li>
+            <Link to={EBOEKHOUDEN_ROUTE} className={textLink}>
+              2026 uit e-Boekhouden inlezen
+            </Link>
+          </li>
           <li>
             <Link to="/beheer/boekhouding/beginbalans" className={textLink}>
               Beginbalans

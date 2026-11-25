@@ -36,6 +36,21 @@ it("offers Wijzigen and Leegmaken only for an editable entry", async () => {
   expect(screen.queryByRole("button", { name: "Leegmaken" })).not.toBeInTheDocument();
 });
 
+it("tells where a booking from e-Boekhouden is corrected", async () => {
+  open(entry({ year: 2026, date: "2026-03-14", source: "eboekhouden", sourceRef: "1010:10003", editable: false }));
+  renderAt(page);
+  expect(await screen.findByText("Deze boeking kan niet worden aangepast.")).toBeInTheDocument();
+  expect(screen.getByText("Hij komt uit e-Boekhouden. Corrigeer hem daar en lees het auditbestand opnieuw in, of maak een gewone boeking.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Wijzigen" })).not.toBeInTheDocument();
+});
+
+it("says nothing about e-Boekhouden for another booking that cannot be changed", async () => {
+  open(entry({ editable: false, source: "kassa_day" }));
+  renderAt(page);
+  expect(await screen.findByText("Deze boeking kan niet worden aangepast.")).toBeInTheDocument();
+  expect(screen.queryByText(/e-Boekhouden/)).not.toBeInTheDocument();
+});
+
 it("empties an entry after asking once", async () => {
   open(entry(), [], { [`POST ${base}/entries/e1/empty`]: entry({ lines: [], editable: true }) });
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);

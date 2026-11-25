@@ -1,6 +1,6 @@
 // The one place that knows the boekhouding's paths and body shapes (they follow the zod schemas in
-// worker/routes/admin-ledger.ts, admin-ledger-bank.ts, admin-ledger-mollie.ts, admin-ledger-assets.ts, admin-ledger-year.ts
-// and admin-ledger-budget.ts). Reads: a path for `useAdminData`. Writes: `useLedgerWrites`.
+// worker/routes/admin-ledger.ts, admin-ledger-bank.ts, admin-ledger-mollie.ts, admin-ledger-assets.ts, admin-ledger-year.ts,
+// admin-ledger-budget.ts and admin-ledger-eboekhouden.ts). Reads: a path for `useAdminData`. Writes: `useLedgerWrites`.
 
 import { useMemo } from "react";
 import type { PastedAsset } from "../../../shared/asset-paste";
@@ -12,6 +12,7 @@ import type {
   Attachment,
   BankLine,
   ConsentState,
+  EbSummary,
   Entry,
   ImportResult,
   LedgerAccount,
@@ -21,6 +22,7 @@ import type {
   NightlyReport,
 } from "../../../shared/ledger-types";
 import { LEDGER_START, YEAR_PAGE } from "../../../shared/ledger-types";
+import type { ImportedEntry } from "../../../shared/xaf-map";
 import type { ApiResult } from "../../lib/api";
 import { useAdminWrite } from "../useAdmin";
 
@@ -60,6 +62,8 @@ export type BudgetBody = { source: BudgetSource; lines: Pick<BudgetLine, "accoun
 
 /** The page "Eerdere jaren": the years read from e-Boekhouden, and reading another. */
 export const EARLIER_YEARS_ROUTE = "/beheer/boekhouding/eerdere-jaren";
+/** The page "2026 uit e-Boekhouden inlezen": the auditfile of 2026 read in once, before the app books by itself. */
+export const EBOEKHOUDEN_ROUTE = "/beheer/boekhouding/eboekhouden-2026";
 /** The page with the comparison figures of one year before the books, to see or change them. */
 export const comparisonRoute = (year: number): string => `/beheer/boekhouding/vergelijking?jaar=${year}`;
 
@@ -94,6 +98,8 @@ export const ledgerPath = {
   mollieMonth: (month: string) => `${LEDGER}/mollie/month?month=${month}`,
   opening: (year: number) => `${LEDGER}/opening?year=${year}`,
   comparison: (year: number) => `${LEDGER}/comparison?year=${year}`,
+  /** Whether the auditfile of 2026 has been read in, and the kassa's ingebruikname. */
+  eboekhoudenStatus: `${LEDGER}/eboekhouden/status`,
   /** Every year with comparison figures, with its income, costs and result. */
   comparisonYears: `${LEDGER}/comparison/years`,
   /** The result per account, a column per year: the earlier years from e-Boekhouden and every year of the books. */
@@ -178,6 +184,18 @@ export function explainWrite(status: number, error: string): string {
   return known[error] ?? "Dat is niet gelukt. Probeer het opnieuw.";
 }
 
+/** A sentence for a refusal of "Overnemen" on the page "2026 uit e-Boekhouden inlezen". */
+export function explainImport(status: number, error: string): string {
+  const known: Record<string, string> = {
+    year_closed: "2026 is afgesloten; heropen het jaar eerst.",
+    entries_missing: "Niet alle boekingen zijn aangekomen. Probeer het opnieuw.",
+    outside_period: "Er staat een boeking in van buiten 1 januari tot en met 24 november.",
+    asset_account: "Er staat een boeking op een toestel-rekening. Haal hem weg in e-Boekhouden en lees opnieuw in.",
+    not_balance_account: "In de beginbalans staat een rekening van opbrengsten of kosten. Kies voor die rekening een andere plek.",
+  };
+  return known[error] ?? explainWrite(status, error);
+}
+
 /** Every change the boekhouding's pages send. A 401 leads back to login, as with `useAdminWrite`. */
 export function useLedgerWrites() {
   const write = useAdminWrite();
@@ -237,6 +255,13 @@ export function useLedgerWrites() {
         write(`${LEDGER}/budget/line?year=${year}&account=${encodeURIComponent(accountCode)}`, "DELETE"),
       /** "Begroting {jaar} leegmaken": every line and the source. */
       deleteBudget: (year: number): Promise<ApiResult<{ ok: true }>> => write(ledgerPath.budget(year), "DELETE"),
+      /** "Overnemen", first: the opening of 2026 (debit +, credit −) and the payouts of Mollie e-Boekhouden booked. */
+      startEboekhouden: (body: { createdOn: string; opening: Figure[]; ebEquityCents: number; payouts: string[] }): Promise<ApiResult<{ ok: true }>> =>
+        write(`${LEDGER}/eboekhouden/start`, "POST", body),
+      /** Then the bookings, at most MAX_ENTRIES in one request. */
+      sendEboekhoudenEntries: (entries: ImportedEntry[]): Promise<ApiResult<{ written: number }>> => write(`${LEDGER}/eboekhouden/entries`, "POST", { entries }),
+      /** Last, with the refs of every booking of the file: empties what the file no longer has, and says what the books hold at 24-11. */
+      finishEboekhouden: (body: { createdOn: string; refs: string[] }): Promise<ApiResult<EbSummary>> => write(`${LEDGER}/eboekhouden/finish`, "POST", body),
       createEntry: (body: EntryBody): Promise<ApiResult<Entry>> => write(`${LEDGER}/entries`, "POST", body),
       saveEntry: (id: string, body: EntryBody): Promise<ApiResult<Entry>> => write(`${LEDGER}/entries/${id}`, "PUT", body),
       emptyEntry: (id: string): Promise<ApiResult<Entry>> => write(`${LEDGER}/entries/${id}/empty`, "POST"),

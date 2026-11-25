@@ -142,8 +142,11 @@ it("shows which kassa category goes to which account", async () => {
   expect(await screen.findByText("Opgeslagen.")).toBeInTheDocument();
 });
 
-it("links to the opening balance, the earlier years and the 2026 figures", async () => {
+it("links to reading 2026 in, the opening balance, the earlier years and the 2026 figures", async () => {
   await open();
+  const once = within(screen.getByRole("region", { name: "Eenmalig" })).getAllByRole("link");
+  expect(once[0]).toHaveAccessibleName("2026 uit e-Boekhouden inlezen");
+  expect(once[0]).toHaveAttribute("href", "/beheer/boekhouding/eboekhouden-2026");
   expect(screen.getByRole("link", { name: "Beginbalans" })).toHaveAttribute("href", "/beheer/boekhouding/beginbalans");
   expect(screen.getByRole("link", { name: "Eerdere jaren" })).toHaveAttribute("href", "/beheer/boekhouding/eerdere-jaren");
   expect(screen.getByRole("link", { name: "Vergelijkingscijfers 2026" })).toHaveAttribute("href", "/beheer/boekhouding/vergelijking");

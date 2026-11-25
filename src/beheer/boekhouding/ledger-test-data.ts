@@ -1,8 +1,36 @@
 // Made-up data for the tests of the boekhouding pages.
 
-import type { BankLine, Entry, LedgerAccount, MoneyAccount, YearChange, YearExport } from "../../../shared/ledger-types";
+import type { BankLine, EbStatus, EbSummary, Entry, LedgerAccount, MoneyAccount, YearChange, YearExport } from "../../../shared/ledger-types";
 
 export const base = "/api/admin/boekhouding";
+
+/** Where reading 2026 in from e-Boekhouden stands: not yet, with the kassa in use since 21-11-2026. */
+export const ebStatus = (extra: Partial<EbStatus> = {}): EbStatus => ({
+  done: false,
+  createdOn: null,
+  imported: 0,
+  inUseSince: "2026-11-21",
+  yearClosed: false,
+  ...extra,
+});
+
+/**
+ * What the books hold at the end of 24-11 after reading in the made-up auditfile: the kas as the kassa says, ING as
+ * its bank says, ASN MeerSparen with a balance from October that differs, the deposito without one.
+ */
+export const ebSummary = (extra: Partial<EbSummary> = {}): EbSummary => ({
+  imported: 11,
+  emptied: 0,
+  cash: { ledgerCents: 3750, kluisjeCents: 3750 },
+  open: [],
+  money: [
+    { accountCode: "1000", ledgerCents: 3750, bankCents: null, bankDate: null },
+    { accountCode: "1010", ledgerCents: 1339405, bankCents: 1339405, bankDate: "2026-11-24" },
+    { accountCode: "1020", ledgerCents: 1088345, bankCents: 1080000, bankDate: "2026-10-31" },
+    { accountCode: "1021", ledgerCents: 0, bankCents: null, bankDate: null },
+  ],
+  ...extra,
+});
 
 const account = (code: string, name: string, kind: LedgerAccount["kind"], extra: Partial<LedgerAccount> = {}): LedgerAccount => ({
   code,

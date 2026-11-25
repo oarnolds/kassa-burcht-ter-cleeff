@@ -6,6 +6,7 @@ export { BankReturnPage } from "./BankReturnPage";
 export { BudgetPage } from "./BudgetPage";
 export { ComparisonPage } from "./ComparisonPage";
 export { EarlierYearsPage } from "./EarlierYearsPage";
+export { EBoekhoudenImportPage } from "./EBoekhoudenImportPage";
 export { EntriesPage } from "./EntriesPage";
 export { EntryPage } from "./EntryPage";
 export { MolliePage } from "./MolliePage";

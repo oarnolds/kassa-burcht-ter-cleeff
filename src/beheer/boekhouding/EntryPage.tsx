@@ -74,6 +74,9 @@ function EntryView({ entry, accounts, history, reload }: { entry: Entry; account
       <PageTitle>{`Boeking ${entry.number}`}</PageTitle>
       <p className="mt-2 text-lg text-ink/70">{`${formatDateNl(entry.date)} · ${entry.description}`}</p>
       {!entry.editable && <p className="mt-2 text-ink/70">Deze boeking kan niet worden aangepast.</p>}
+      {entry.source === "eboekhouden" && (
+        <p className="text-ink/70">Hij komt uit e-Boekhouden. Corrigeer hem daar en lees het auditbestand opnieuw in, of maak een gewone boeking.</p>
+      )}
       {editing ? (
         <Section title="Wijzigen">
           <div className="px-2 sm:px-3">

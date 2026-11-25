@@ -24,6 +24,7 @@ const BankReturnPage = ledgerPage("BankReturnPage");
 const BudgetPage = ledgerPage("BudgetPage");
 const ComparisonPage = ledgerPage("ComparisonPage");
 const EarlierYearsPage = ledgerPage("EarlierYearsPage");
+const EBoekhoudenImportPage = ledgerPage("EBoekhoudenImportPage");
 const EntriesPage = ledgerPage("EntriesPage");
 const EntryPage = ledgerPage("EntryPage");
 const MolliePage = ledgerPage("MolliePage");
@@ -74,6 +75,7 @@ export function AppRoutes() {
           <Route path="beginbalans" element={<OpeningPage />} />
           <Route path="vergelijking" element={<ComparisonPage />} />
           <Route path="eerdere-jaren" element={<EarlierYearsPage />} />
+          <Route path="eboekhouden-2026" element={<EBoekhoudenImportPage />} />
         </Route>
         <Route
           path="bank"
