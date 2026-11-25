@@ -168,13 +168,13 @@ it("reads a long backlog to the end over three nights, each payment once", async
   expect(await sync("2027-02-13T02:00:00.000Z")).toBe("ok");
   expect(await count("mollie_payments")).toBe(600);
   const first = JSON.parse((await resume())!.value);
-  expect(first).toEqual({ from: expect.stringMatching(/^tr_\d+$/), untilIso: "2026-12-31T23:00:00.000Z" });
+  expect(first).toEqual({ from: expect.stringMatching(/^tr_\d+$/), untilIso: "2026-10-31T23:00:00.000Z" });
 
   // The second night goes on where the first stopped, and is cut short again.
   expect(await sync("2027-02-14T02:00:00.000Z")).toBe("ok");
   expect(await count("mollie_payments")).toBe(1200);
   const second = JSON.parse((await resume())!.value);
-  expect(second).toEqual({ from: expect.stringMatching(/^tr_\d+$/), untilIso: "2026-12-31T23:00:00.000Z" });
+  expect(second).toEqual({ from: expect.stringMatching(/^tr_\d+$/), untilIso: "2026-10-31T23:00:00.000Z" });
   expect(second.from).not.toBe(first.from);
 
   // The third night reads the rest first, then the newest with the calls left over; the note goes.
@@ -505,4 +505,13 @@ it("skips without the token and names a failure of Mollie without saying more", 
   paid("tr_1", "2.00", "Dagticket", "2027-03-06T09:00:00+00:00");
   expect((await runNightly(orgEnv(), new Date("2027-03-07T02:00:00.000Z"))).steps.mollie).toBe("ok");
   expect(await entry("mollie_other", "2027-03-06")).not.toBeNull();
+});
+
+it("keeps Mollie payments from 1 November 2026 on", async () => {
+  paid("tr_oct", "1.20", "Dagkaartje", "2026-10-31T10:00:00+00:00");
+  paid("tr_nov", "1.20", "Dagkaartje", "2026-11-01T10:00:00+00:00");
+  expect(await sync("2026-11-03T02:00:00.000Z")).toBe("ok");
+  expect(await payment("tr_oct")).toBeNull();
+  expect((await payment("tr_nov"))?.paid_date).toBe("2026-11-01");
+  expect(await count("mollie_payments")).toBe(1);
 });

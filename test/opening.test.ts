@@ -6,8 +6,8 @@ import { resetData } from "./helpers";
 
 beforeEach(resetData);
 
-const NOW = new Date("2027-01-05T12:00:00.000Z");
-const LATER = new Date("2027-01-06T12:00:00.000Z");
+const NOW = new Date("2026-01-05T12:00:00.000Z");
+const LATER = new Date("2026-01-06T12:00:00.000Z");
 
 const count = async (table: string) => (await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{ n: number }>())!.n;
 
@@ -38,7 +38,7 @@ async function cashSale(id: string, cents: number, soldAt: string, handoverId: s
 it("works out equity so the opening balance always closes", async () => {
   const opening = await setOpening(
     env.DB,
-    2027,
+    2026,
     {
       lines: [
         { accountCode: "1010", amountCents: 2_173_676 },
@@ -59,7 +59,7 @@ it("works out equity so the opening balance always closes", async () => {
   expect(entries).toBe(1);
   expect(sum).toBe(0);
   const entry = await env.DB.prepare("SELECT date, description, source_ref FROM ledger_entries WHERE source = 'opening'").first();
-  expect(entry).toEqual({ date: "2027-01-01", description: "Beginbalans 2027", source_ref: "2027" });
+  expect(entry).toEqual({ date: "2026-01-01", description: "Beginbalans 2026", source_ref: "2026" });
   const equity = await env.DB.prepare("SELECT amount_cents FROM ledger_lines WHERE account_code = '1400'").first<{ amount_cents: number }>();
   expect(equity!.amount_cents).toBe(-(2_173_676 + 9_344_653 - 50_000));
 });
@@ -67,7 +67,7 @@ it("works out equity so the opening balance always closes", async () => {
 it("turns accumulated depreciation (0135) into a credit", async () => {
   const opening = await setOpening(
     env.DB,
-    2027,
+    2026,
     {
       lines: [
         { accountCode: "0130", amountCents: 100_000 },
@@ -87,8 +87,8 @@ it("turns accumulated depreciation (0135) into a credit", async () => {
 });
 
 it("shows the difference with equity in e-Boekhouden", async () => {
-  await setOpening(env.DB, 2027, { lines: [{ accountCode: "1010", amountCents: 1_000_000 }], eBoekhoudenEquityCents: 24_662_912 }, NOW);
-  const opening = await getOpening(env.DB, 2027, NOW);
+  await setOpening(env.DB, 2026, { lines: [{ accountCode: "1010", amountCents: 1_000_000 }], eBoekhoudenEquityCents: 24_662_912 }, NOW);
+  const opening = await getOpening(env.DB, 2026, NOW);
   expect(opening.eBoekhoudenEquityCents).toBe(24_662_912);
   expect(opening.equityCents).toBe(1_000_000);
   expect(opening.equityCents).not.toBe(opening.eBoekhoudenEquityCents);
@@ -97,10 +97,10 @@ it("shows the difference with equity in e-Boekhouden", async () => {
 });
 
 it("replaces the opening balance when typed again", async () => {
-  await setOpening(env.DB, 2027, { lines: [{ accountCode: "1010", amountCents: 500 }], eBoekhoudenEquityCents: 1 }, NOW);
+  await setOpening(env.DB, 2026, { lines: [{ accountCode: "1010", amountCents: 500 }], eBoekhoudenEquityCents: 1 }, NOW);
   const second = await setOpening(
     env.DB,
-    2027,
+    2026,
     { lines: [{ accountCode: "1020", amountCents: 700 }, { accountCode: "1010", amountCents: 0 }], eBoekhoudenEquityCents: null },
     LATER,
   );
@@ -112,80 +112,80 @@ it("replaces the opening balance when typed again", async () => {
 });
 
 it("gives an empty opening when none was typed", async () => {
-  const opening = await getOpening(env.DB, 2028, NOW);
-  expect(opening).toMatchObject({ year: 2028, lines: [], equityCents: 0, eBoekhoudenEquityCents: null });
+  const opening = await getOpening(env.DB, 2027, NOW);
+  expect(opening).toMatchObject({ year: 2027, lines: [], equityCents: 0, eBoekhoudenEquityCents: null });
 });
 
 it("refuses an income or expense account in the opening balance", async () => {
   await expect(
-    setOpening(env.DB, 2027, { lines: [{ accountCode: "8011", amountCents: 100 }], eBoekhoudenEquityCents: null }, NOW),
+    setOpening(env.DB, 2026, { lines: [{ accountCode: "8011", amountCents: 100 }], eBoekhoudenEquityCents: null }, NOW),
   ).rejects.toMatchObject({ code: "not_balance_account", status: 400 });
   expect(await count("ledger_entries")).toBe(0);
 });
 
 it("does not take equity (1400) as typed, nor an unknown account", async () => {
   await expect(
-    setOpening(env.DB, 2027, { lines: [{ accountCode: "1400", amountCents: 100 }], eBoekhoudenEquityCents: null }, NOW),
+    setOpening(env.DB, 2026, { lines: [{ accountCode: "1400", amountCents: 100 }], eBoekhoudenEquityCents: null }, NOW),
   ).rejects.toMatchObject({ code: "equity_computed", status: 400 });
   await expect(
-    setOpening(env.DB, 2027, { lines: [{ accountCode: "9999", amountCents: 100 }], eBoekhoudenEquityCents: null }, NOW),
+    setOpening(env.DB, 2026, { lines: [{ accountCode: "9999", amountCents: 100 }], eBoekhoudenEquityCents: null }, NOW),
   ).rejects.toBeInstanceOf(LedgerError);
 });
 
 it("only opens the first year of the ledger", async () => {
-  await expect(setOpening(env.DB, 2028, { lines: [], eBoekhoudenEquityCents: null }, NOW)).rejects.toMatchObject({
+  await expect(setOpening(env.DB, 2027, { lines: [], eBoekhoudenEquityCents: null }, NOW)).rejects.toMatchObject({
     code: "not_first_year",
     status: 409,
   });
 });
 
 it("tells what belonged in the kluisje at a moment", async () => {
-  await handover("open", "opening", "2026-12-01T10:00:00.000Z", 5000);
-  await cashSale("a", 220, "2027-01-10T10:00:00.000Z");
-  await cashSale("b", 110, "2027-01-10T12:00:00.000Z");
-  expect(await expectedCashAt(env.DB, "2027-01-10T11:00:00.000Z")).toBe(5220);
-  expect(await expectedCashAt(env.DB, "2027-01-10T13:00:00.000Z")).toBe(5330);
-  expect(await expectedCashAt(env.DB, "2026-11-30T00:00:00.000Z")).toBe(0);
+  await handover("open", "opening", "2025-12-01T10:00:00.000Z", 5000);
+  await cashSale("a", 220, "2026-01-10T10:00:00.000Z");
+  await cashSale("b", 110, "2026-01-10T12:00:00.000Z");
+  expect(await expectedCashAt(env.DB, "2026-01-10T11:00:00.000Z")).toBe(5220);
+  expect(await expectedCashAt(env.DB, "2026-01-10T13:00:00.000Z")).toBe(5330);
+  expect(await expectedCashAt(env.DB, "2025-11-30T00:00:00.000Z")).toBe(0);
 });
 
 it("counts only paid cash sales, with reversals", async () => {
-  await handover("open", "opening", "2026-12-01T10:00:00.000Z", 1000);
-  await cashSale("a", 500, "2027-01-10T10:00:00.000Z");
-  await cashSale("r", -500, "2027-01-10T10:30:00.000Z");
+  await handover("open", "opening", "2025-12-01T10:00:00.000Z", 1000);
+  await cashSale("a", 500, "2026-01-10T10:00:00.000Z");
+  await cashSale("r", -500, "2026-01-10T10:30:00.000Z");
   await env.DB.prepare(
-    "INSERT INTO sales (id, method, status, total_cents, sold_at, received_at, business_date) VALUES ('p','pin','paid',900,'2027-01-10T10:00:00.000Z','2027-01-10T10:00:00.000Z','2027-01-10')",
+    "INSERT INTO sales (id, method, status, total_cents, sold_at, received_at, business_date) VALUES ('p','pin','paid',900,'2026-01-10T10:00:00.000Z','2026-01-10T10:00:00.000Z','2026-01-10')",
   ).run();
   await env.DB.prepare(
-    "INSERT INTO sales (id, method, status, total_cents, sold_at, received_at, business_date) VALUES ('f','cash','failed',700,'2027-01-10T10:00:00.000Z','2027-01-10T10:00:00.000Z','2027-01-10')",
+    "INSERT INTO sales (id, method, status, total_cents, sold_at, received_at, business_date) VALUES ('f','cash','failed',700,'2026-01-10T10:00:00.000Z','2026-01-10T10:00:00.000Z','2026-01-10')",
   ).run();
-  expect(await expectedCashAt(env.DB, "2027-01-11T00:00:00.000Z")).toBe(1000);
+  expect(await expectedCashAt(env.DB, "2026-01-11T00:00:00.000Z")).toBe(1000);
 });
 
 it("counts a sale that arrived after a handover but was sold before it, at a moment after that handover", async () => {
-  await handover("open", "opening", "2026-12-01T10:00:00.000Z", 5000);
-  await handover("h1", "handover", "2027-01-10T12:00:00.000Z", 2000);
-  await cashSale("early", 300, "2027-01-10T11:00:00.000Z", "h1"); // closed by h1
-  await cashSale("late", 400, "2027-01-10T11:30:00.000Z"); // sold before h1, arrived after: not closed
+  await handover("open", "opening", "2025-12-01T10:00:00.000Z", 5000);
+  await handover("h1", "handover", "2026-01-10T12:00:00.000Z", 2000);
+  await cashSale("early", 300, "2026-01-10T11:00:00.000Z", "h1"); // closed by h1
+  await cashSale("late", 400, "2026-01-10T11:30:00.000Z"); // sold before h1, arrived after: not closed
   // before h1 both count on top of the opening; after h1 only the late one counts on top of h1's left_cents
-  expect(await expectedCashAt(env.DB, "2027-01-10T11:45:00.000Z")).toBe(5000 + 300 + 400);
-  expect(await expectedCashAt(env.DB, "2027-01-10T13:00:00.000Z")).toBe(2000 + 400);
+  expect(await expectedCashAt(env.DB, "2026-01-10T11:45:00.000Z")).toBe(5000 + 300 + 400);
+  expect(await expectedCashAt(env.DB, "2026-01-10T13:00:00.000Z")).toBe(2000 + 400);
 });
 
 it("gives the expected cash at the end of the year before", async () => {
-  await handover("open", "opening", "2026-12-01T10:00:00.000Z", 5000);
-  await cashSale("dec", 250, "2026-12-31T22:30:00.000Z"); // 23:30 in Amsterdam on 31 December
-  await cashSale("jan", 100, "2026-12-31T23:30:00.000Z"); // 00:30 on 1 January
-  const opening = await setOpening(env.DB, 2027, { lines: [], eBoekhoudenEquityCents: null }, NOW);
+  await handover("open", "opening", "2025-12-01T10:00:00.000Z", 5000);
+  await cashSale("dec", 250, "2025-12-31T22:30:00.000Z"); // 23:30 in Amsterdam on 31 December
+  await cashSale("jan", 100, "2025-12-31T23:30:00.000Z"); // 00:30 on 1 January
+  const opening = await setOpening(env.DB, 2026, { lines: [], eBoekhoudenEquityCents: null }, NOW);
   expect(opening.expectedCashCents).toBe(5250);
 });
 
-it("gives Mollie's balance of 31 December 2026 next to the opening, when the app read one", async () => {
-  expect((await getOpening(env.DB, 2027, NOW)).mollieBalanceCents).toBeNull();
+it("gives Mollie's balance of 31 December 2025 next to the opening, when the app read one", async () => {
+  expect((await getOpening(env.DB, 2026, NOW)).mollieBalanceCents).toBeNull();
   // Another day of Mollie, or 31 December of another account, is not it.
   await env.DB.prepare(
-    `INSERT INTO bank_balances (account_code, date, balance_cents, origin) VALUES ('1030', '2027-01-01', 999, 'mollie'), ('1010', '2026-12-31', 888, 'file')`,
+    `INSERT INTO bank_balances (account_code, date, balance_cents, origin) VALUES ('1030', '2026-01-01', 999, 'mollie'), ('1010', '2025-12-31', 888, 'file')`,
   ).run();
-  expect((await getOpening(env.DB, 2027, NOW)).mollieBalanceCents).toBeNull();
-  await env.DB.prepare("INSERT INTO bank_balances (account_code, date, balance_cents, origin) VALUES ('1030', '2026-12-31', 12345, 'mollie')").run();
-  expect((await getOpening(env.DB, 2027, NOW)).mollieBalanceCents).toBe(12345);
+  expect((await getOpening(env.DB, 2026, NOW)).mollieBalanceCents).toBeNull();
+  await env.DB.prepare("INSERT INTO bank_balances (account_code, date, balance_cents, origin) VALUES ('1030', '2025-12-31', 12345, 'mollie')").run();
+  expect((await getOpening(env.DB, 2026, NOW)).mollieBalanceCents).toBe(12345);
 });

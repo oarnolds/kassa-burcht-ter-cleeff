@@ -79,7 +79,8 @@ function open({ budgets = {}, actuals = {}, depreciation = 0 }: Server = {}) {
 }
 
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-24T10:00:00.000Z") });
+  // Early 2027: the page opens on 2027, a year after the first year of the books.
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date("2027-01-10T10:00:00.000Z") });
 });
 
 afterEach(() => {
@@ -101,24 +102,26 @@ const cellsOf = (row: ReturnType<typeof within>) => row.getAllByRole("cell").map
 const region = (name: string) => screen.getByRole("region", { name });
 
 it("opens on the first year of the books, offers the years a budget can be made for, and says what is not there yet", async () => {
+  // Still in 2026: the page opens on the first year of the books.
+  vi.setSystemTime(new Date("2026-11-24T10:00:00.000Z"));
   open();
   expect(await screen.findByRole("heading", { name: "Begroting", level: 1 })).toBeInTheDocument();
   const year = screen.getByLabelText("Jaar");
-  expect(year).toHaveDisplayValue("2027");
-  expect(within(year).getAllByRole("option").map((option) => option.textContent)).toEqual(["2027", "2028"]);
-  const make = await screen.findByRole("region", { name: "Begroting 2027 maken" });
+  expect(year).toHaveDisplayValue("2026");
+  expect(within(year).getAllByRole("option").map((option) => option.textContent)).toEqual(["2026", "2027"]);
+  const make = await screen.findByRole("region", { name: "Begroting 2026 maken" });
   expect(within(make).getByText("Exporteer in e-Boekhouden het overzicht Mutaties van een jaar als Excel-bestand.")).toBeInTheDocument();
   expect(within(make).getByLabelText("Mutatieoverzicht inlezen")).toHaveAttribute("accept", ".xlsx");
-  // 2026 is not a year of the books: no proposal from its bookings.
+  // 2025 is not a year of the books: no proposal from its bookings.
   expect(within(make).queryByRole("button", { name: /Voorstel uit de boekingen/ })).not.toBeInTheDocument();
   expect(within(make).getByRole("button", { name: "Leeg beginnen" })).toBeEnabled();
   // Before the year has a start, its section only says it is empty: no account to add, nothing to empty.
-  const grid = region("Begroting 2027");
-  expect(within(grid).getByText("Er staat nog niets in de begroting van 2027.")).toBeInTheDocument();
+  const grid = region("Begroting 2026");
+  expect(within(grid).getByText("Er staat nog niets in de begroting van 2026.")).toBeInTheDocument();
   expect(within(grid).queryByLabelText("Rekening toevoegen")).not.toBeInTheDocument();
   expect(within(grid).queryByRole("button")).not.toBeInTheDocument();
-  expect(await within(region("Begroting en werkelijk 2027")).findByText("Er zijn nog geen boekingen in 2027.")).toBeInTheDocument();
-  expect(calls("GET").map((call) => call.url)).toContain(`${base}/budget/actuals?year=2027`);
+  expect(await within(region("Begroting en werkelijk 2026")).findByText("Er zijn nog geen boekingen in 2026.")).toBeInTheDocument();
+  expect(calls("GET").map((call) => call.url)).toContain(`${base}/budget/actuals?year=2026`);
 });
 
 it("reads the mutations: what was read, the groups, what is not placed or not counted, and a proposal that follows the choices", async () => {

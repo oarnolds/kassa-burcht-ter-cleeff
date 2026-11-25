@@ -2,7 +2,7 @@
 // The state that goes to the bank is used once; the session id is a secret kept only here, never sent to the
 // browser, never logged, never in a copy. A failure is named by a fixed code, never by what the bank said.
 
-import { type ConsentState, LEDGER_START } from "../../shared/ledger-types";
+import { type ConsentState, OVERSTAP } from "../../shared/ledger-types";
 import type { CamtLine } from "../../shared/camt";
 import { businessDate, shiftDate } from "../../shared/time";
 import { enableBankingFor, type EbFailure, MAX_TRANSACTION_CALLS } from "../lib/enable-banking";
@@ -105,7 +105,7 @@ export async function consentState(db: D1Database, now: Date): Promise<ConsentSt
 /**
  * Nightly: new lines and the balance of 1010, when its source is Enable Banking and the consent is active (R36).
  * ING is asked in windows of two weeks (`date_from`/`date_to`), oldest first, from a week before the newest line of
- * 1010 that came from ING or a bank file (a typed line does not count; never before LEDGER_START) up to today, in
+ * 1010 that came from ING or a bank file (a typed line does not count; never before OVERSTAP) up to today, in
  * at most MAX_TRANSACTION_CALLS calls. A window is kept whole or not at all: one the bank cuts short (a page left
  * after the calls ran out) keeps nothing, the run stops there and says `ing_cut_short`; the windows before it are
  * kept. When the calls run out between windows, the later ones wait for the next night, which starts again a week
@@ -135,14 +135,14 @@ export async function fetchIng(env: Env, now: Date): Promise<"ok" | "skipped" | 
     .prepare("SELECT MAX(booking_date) AS date FROM bank_lines WHERE account_code = ? AND origin IN ('enable_banking', 'file')")
     .bind(ACCOUNT)
     .first<{ date: string | null }>();
-  const back = newest?.date ? shiftDate(newest.date, -LOOK_BACK_DAYS) : LEDGER_START;
+  const back = newest?.date ? shiftDate(newest.date, -LOOK_BACK_DAYS) : OVERSTAP;
   const today = businessDate(now.toISOString());
 
   const lines: CamtLine[] = [];
   const seen = new Set<string>();
   let outcome = "ok";
   let calls = 0;
-  let from = back < LEDGER_START ? LEDGER_START : back;
+  let from = back < OVERSTAP ? OVERSTAP : back;
   while (from <= today && calls < MAX_TRANSACTION_CALLS) {
     const last = shiftDate(from, WINDOW_DAYS - 1);
     const to = last < today ? last : today;

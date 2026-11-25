@@ -1,5 +1,5 @@
 import type { CamtLine, CamtStatement } from "../../shared/camt";
-import { type BankLine, type ImportResult, LEDGER_START, type MoneyAccount, type MoneySource } from "../../shared/ledger-types";
+import { type BankLine, type ImportResult, LEDGER_START, type MoneyAccount, type MoneySource, OVERSTAP, PAYOUT_REFERENCE } from "../../shared/ledger-types";
 import { formatEuro } from "../../shared/money";
 import { businessDate, shiftDate } from "../../shared/time";
 import { sha256Hex } from "../lib/crypto";
@@ -162,7 +162,7 @@ async function storeLines(
   now: Date,
   alongside: D1PreparedStatement[] = [],
 ): Promise<{ result: ImportResult; keys: string[] }> {
-  const kept = lines.filter((line) => line.bookingDate >= LEDGER_START);
+  const kept = lines.filter((line) => line.bookingDate >= OVERSTAP);
   const beforeStart = lines.length - kept.length;
   if (kept.length === 0) {
     if (alongside.length > 0) await db.batch(alongside);
@@ -180,7 +180,7 @@ async function storeLines(
  * Reads lines into a money account, each once. A line is known when its reference is already stored for the
  * account, or when an equal line (account, booking date, amount, the other party's IBAN) with the same count
  * is: the description does not count, as Enable Banking and a file may word it differently. Lines before
- * LEDGER_START are counted and left out. It does not check where the lines come from; `importStatement` does.
+ * OVERSTAP are counted and left out. It does not check where the lines come from; `importStatement` does.
  * `alongside` is written in the same batch, after the lines (e.g. what notes that they are in).
  */
 export async function importLines(
@@ -251,7 +251,7 @@ export type TypedLine = { accountCode: string; date: string; amountCents: number
 /** A line the penningmeester types himself, e.g. from a bank's paper statement. A double tap keeps it once. */
 export async function addTypedLine(db: D1Database, input: TypedLine, now: Date): Promise<BankLine> {
   if (!Number.isSafeInteger(input.amountCents) || input.amountCents === 0) throw new LedgerError("amount_invalid", 400);
-  if (input.date < LEDGER_START) throw new LedgerError("before_start", 400);
+  if (input.date < OVERSTAP) throw new LedgerError("before_start", 400);
   // The bank cannot have booked it yet; a line after today would also move where the next fetch of ING begins.
   if (input.date > today(now)) throw new LedgerError("date_in_future", 400);
   await bankAccount(db, input.accountCode);
@@ -517,7 +517,6 @@ const AUTO_BATCH = 100;
 
 /** Mollie pays out to ING betaal; the bank statement carries the payout's reference, e.g. 05665564.2611.01. */
 const PAYOUT_ACCOUNT = "1010";
-const PAYOUT_REFERENCE = /\b\d{7,8}\.\d{4}\.\d{2}\b/;
 const MOLLIE = "1030";
 const MOLLIE_COSTS = "4511";
 
@@ -562,7 +561,7 @@ export async function autoBook(db: D1Database, now: Date): Promise<number> {
            AND NOT EXISTS (SELECT 1 FROM ledger_years y WHERE y.year = CAST(substr(b.booking_date, 1, 4) AS INTEGER) AND y.status = 'closed')
          ORDER BY b.booking_date, b.imported_at, b.rowid LIMIT ?2`,
       )
-      .bind(LEDGER_START, AUTO_LINES_PER_RUN),
+      .bind(OVERSTAP, AUTO_LINES_PER_RUN),
     db.prepare("SELECT account_code, identifier FROM money_accounts WHERE identifier IS NOT NULL AND trim(identifier) <> ''"),
     db.prepare(
       `SELECT s.id, s.reference, s.settled_at, s.amount_cents, s.costs_cents,

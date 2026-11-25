@@ -13,7 +13,7 @@ beforeEach(async () => {
   cookie = (await asAdmin()).cookie;
 });
 
-const NOW = new Date("2027-03-01T12:00:00.000Z");
+const NOW = new Date("2026-03-01T12:00:00.000Z");
 const move = (debit: string, credit: string, cents: number): EntryLine[] => [
   { accountCode: debit, amountCents: cents, note: null, assetId: null },
   { accountCode: credit, amountCents: -cents, note: null, assetId: null },
@@ -22,10 +22,10 @@ const book = (date: string, lines: EntryLine[], description = "Boeking") => crea
 const base = "/api/admin/boekhouding";
 
 it("closes the balance, with the result of the year on it", async () => {
-  await setOpening(env.DB, 2027, { lines: [{ accountCode: "1010", amountCents: 500000 }, { accountCode: "0130", amountCents: 200000 }, { accountCode: "0135", amountCents: 50000 }, { accountCode: "1700", amountCents: 30000 }], eBoekhoudenEquityCents: null }, NOW);
-  await book("2027-02-01", move("1010", "8012", 12000));
-  await book("2027-02-02", move("4514", "1010", 2500));
-  const report = await balanceReport(env.DB, "2027-12-31");
+  await setOpening(env.DB, 2026, { lines: [{ accountCode: "1010", amountCents: 500000 }, { accountCode: "0130", amountCents: 200000 }, { accountCode: "0135", amountCents: 50000 }, { accountCode: "1700", amountCents: 30000 }], eBoekhoudenEquityCents: null }, NOW);
+  await book("2026-02-01", move("1010", "8012", 12000));
+  await book("2026-02-02", move("4514", "1010", 2500));
+  const report = await balanceReport(env.DB, "2026-12-31");
   const by = Object.fromEntries(report.rows.map((row) => [row.code, row.cents]));
   expect(by["0135"]).toBe(-50000);
   expect(by["1010"]).toBe(509500);
@@ -35,15 +35,15 @@ it("closes the balance, with the result of the year on it", async () => {
   expect(report.assetsCents).toBe(659500);
   expect(report.assetsCents).toBe(report.liabilitiesAndEquityCents + report.resultCents);
   expect(report.rows.some((row) => row.kind === "income" || row.kind === "expense")).toBe(false);
-  expect((await balanceReport(env.DB, "2027-01-31")).resultCents).toBe(0);
+  expect((await balanceReport(env.DB, "2026-01-31")).resultCents).toBe(0);
 });
 
-it("shows the result next to 2026 from the typed comparison figures", async () => {
-  await book("2027-05-01", move("1010", "8030", 150000));
-  await book("2027-05-02", move("4308", "1010", 40000));
-  expect((await resultReport(env.DB, "2027-01-01", "2027-12-31")).previousResultCents).toBeNull();
-  await setComparison(env.DB, 2026, [{ accountCode: "8030", amountCents: 118440 }, { accountCode: "4308", amountCents: 30000 }]);
-  const report = await resultReport(env.DB, "2027-01-01", "2027-12-31");
+it("shows the result next to 2025 from the typed comparison figures", async () => {
+  await book("2026-05-01", move("1010", "8030", 150000));
+  await book("2026-05-02", move("4308", "1010", 40000));
+  expect((await resultReport(env.DB, "2026-01-01", "2026-12-31")).previousResultCents).toBeNull();
+  await setComparison(env.DB, 2025, [{ accountCode: "8030", amountCents: 118440 }, { accountCode: "4308", amountCents: 30000 }]);
+  const report = await resultReport(env.DB, "2026-01-01", "2026-12-31");
   expect(report.rows).toEqual([
     { code: "4308", name: "Energie", kind: "expense", cents: 40000, previousCents: 30000 },
     { code: "8030", name: "Rente", kind: "income", cents: 150000, previousCents: 118440 },
@@ -51,17 +51,17 @@ it("shows the result next to 2026 from the typed comparison figures", async () =
   expect(report.resultCents).toBe(110000);
   expect(report.previousResultCents).toBe(88440);
   // Not a whole year: no comparison.
-  const part = await resultReport(env.DB, "2027-01-01", "2027-06-30");
+  const part = await resultReport(env.DB, "2026-01-01", "2026-06-30");
   expect(part.previousResultCents).toBeNull();
   expect(part.rows.every((row) => row.previousCents === null)).toBe(true);
 });
 
 it("shows the result next to the same months a year earlier", async () => {
-  await book("2027-03-10", move("1010", "8010", 10000));
-  await book("2027-03-11", move("4301", "1010", 4000));
-  await book("2028-03-10", move("1010", "8010", 25000));
-  await book("2028-04-10", move("1010", "8010", 99000));
-  const report = await resultReport(env.DB, "2028-03-01", "2028-03-31");
+  await book("2026-03-10", move("1010", "8010", 10000));
+  await book("2026-03-11", move("4301", "1010", 4000));
+  await book("2027-03-10", move("1010", "8010", 25000));
+  await book("2027-04-10", move("1010", "8010", 99000));
+  const report = await resultReport(env.DB, "2027-03-01", "2027-03-31");
   expect(report.rows).toEqual([
     { code: "4301", name: "Huur", kind: "expense", cents: 0, previousCents: 4000 },
     { code: "8010", name: "Verhuur", kind: "income", cents: 25000, previousCents: 10000 },
@@ -71,41 +71,41 @@ it("shows the result next to the same months a year earlier", async () => {
 });
 
 it("leaves the closing entry out of the result", async () => {
-  await book("2027-03-10", move("1010", "8010", 10000));
-  await createEntry(env.DB, { date: "2027-12-31", description: "Afsluiting", source: "closing", lines: move("8010", "1400", 10000) }, NOW);
-  const report = await resultReport(env.DB, "2027-01-01", "2027-12-31");
+  await book("2026-03-10", move("1010", "8010", 10000));
+  await createEntry(env.DB, { date: "2026-12-31", description: "Afsluiting", source: "closing", lines: move("8010", "1400", 10000) }, NOW);
+  const report = await resultReport(env.DB, "2026-01-01", "2026-12-31");
   expect(report.resultCents).toBe(10000);
   expect(report.rows).toEqual([{ code: "8010", name: "Verhuur", kind: "income", cents: 10000, previousCents: null }]);
   // R8: on 31 December the year's result stands apart; from 1 January on it is in 1400.
-  const yearEnd = await balanceReport(env.DB, "2027-12-31");
+  const yearEnd = await balanceReport(env.DB, "2026-12-31");
   expect(yearEnd.resultCents).toBe(10000);
   expect(yearEnd.assetsCents).toBe(yearEnd.liabilitiesAndEquityCents + yearEnd.resultCents);
-  const next = await balanceReport(env.DB, "2028-01-01");
+  const next = await balanceReport(env.DB, "2027-01-01");
   expect(next.resultCents).toBe(0);
   expect(next.assetsCents).toBe(next.liabilitiesAndEquityCents);
 });
 
 it("lists an account's lines with a running balance", async () => {
-  await book("2027-01-05", move("1010", "8010", 1000), "Een");
-  await book("2027-02-05", move("1010", "8010", 2000), "Twee");
-  await book("2027-02-05", move("4301", "1010", 500), "Drie");
-  await book("2027-03-05", move("1010", "8010", 4000), "Vier");
-  const lines = await accountLines(env.DB, "1010", "2027-02-01", "2027-02-28");
+  await book("2026-01-05", move("1010", "8010", 1000), "Een");
+  await book("2026-02-05", move("1010", "8010", 2000), "Twee");
+  await book("2026-02-05", move("4301", "1010", 500), "Drie");
+  await book("2026-03-05", move("1010", "8010", 4000), "Vier");
+  const lines = await accountLines(env.DB, "1010", "2026-02-01", "2026-02-28");
   expect(lines.openingCents).toBe(1000);
   expect(lines.lines.map((line) => [line.description, line.amountCents, line.runningCents])).toEqual([["Twee", 2000, 3000], ["Drie", -500, 2500]]);
   expect(lines.lines[0]!.number).toBe(2);
-  await expect(accountLines(env.DB, "9999", "2027-02-01", "2027-02-28")).rejects.toMatchObject({ code: "not_found" });
+  await expect(accountLines(env.DB, "9999", "2026-02-01", "2026-02-28")).rejects.toMatchObject({ code: "not_found" });
 });
 
 it("answers every boekhouding route only after logging in", async () => {
   const routes: [string, string][] = [
     ["GET", "/accounts"], ["POST", "/accounts"], ["PATCH", "/accounts/4514"], ["GET", "/category-accounts"], ["PUT", "/category-accounts"],
-    ["GET", "/entries?year=2027"], ["POST", "/entries"], ["PUT", "/entries/x"], ["POST", "/entries/x/empty"], ["GET", "/entries/x/history"],
-    ["POST", "/entries/x/attachments"], ["GET", "/attachments/x"], ["POST", "/attachments/x/hide"], ["GET", "/opening?year=2027"], ["PUT", "/opening?year=2027"],
-    ["GET", "/comparison?year=2026"], ["PUT", "/comparison?year=2026"], ["GET", "/comparison/years"], ["GET", "/reports/years"], ["GET", "/reports/balance?date=2027-01-01"],
-    ["GET", "/reports/result?from=2027-01-01&to=2027-01-31"], ["GET", "/reports/account/1010?from=2027-01-01&to=2027-01-31"], ["GET", "/overview"],
-    ["GET", "/budget?year=2027"], ["PUT", "/budget?year=2027"], ["DELETE", "/budget?year=2027"], ["PUT", "/budget/line?year=2027&account=4308"],
-    ["DELETE", "/budget/line?year=2027&account=4308"], ["GET", "/budget/actuals?year=2027"],
+    ["GET", "/entries?year=2026"], ["POST", "/entries"], ["PUT", "/entries/x"], ["POST", "/entries/x/empty"], ["GET", "/entries/x/history"],
+    ["POST", "/entries/x/attachments"], ["GET", "/attachments/x"], ["POST", "/attachments/x/hide"], ["GET", "/opening?year=2026"], ["PUT", "/opening?year=2026"],
+    ["GET", "/comparison?year=2025"], ["PUT", "/comparison?year=2025"], ["GET", "/comparison/years"], ["GET", "/reports/years"], ["GET", "/reports/balance?date=2026-01-01"],
+    ["GET", "/reports/result?from=2026-01-01&to=2026-01-31"], ["GET", "/reports/account/1010?from=2026-01-01&to=2026-01-31"], ["GET", "/overview"],
+    ["GET", "/budget?year=2026"], ["PUT", "/budget?year=2026"], ["DELETE", "/budget?year=2026"], ["PUT", "/budget/line?year=2026&account=4308"],
+    ["DELETE", "/budget/line?year=2026&account=4308"], ["GET", "/budget/actuals?year=2026"],
   ];
   for (const [method, path] of routes) {
     const bare = await app.request(`${base}${path}`, { method }, env);
@@ -119,8 +119,8 @@ it("answers every boekhouding route only after logging in", async () => {
 
 it("reads no more rows for a report as the years go by", async () => {
   const statements: D1PreparedStatement[] = [];
-  const years = [2027, 2028];
-  await env.DB.prepare("INSERT OR IGNORE INTO ledger_years (year, status) VALUES (2028, 'open')").run();
+  const years = [2026, 2027];
+  await env.DB.prepare("INSERT OR IGNORE INTO ledger_years (year, status) VALUES (2026, 'open')").run();
   for (let i = 0; i < 2000; i++) {
     const year = years[i % 2]!;
     const id = `e${i}`;
@@ -131,26 +131,26 @@ it("reads no more rows for a report as the years go by", async () => {
     );
   }
   for (let i = 0; i < statements.length; i += 100) await env.DB.batch(statements.slice(i, i + 100));
-  await book("2027-04-10", move("1010", "8010", 700));
+  await book("2026-04-10", move("1010", "8010", 700));
   const metered = meteredDb(env.DB);
-  const report = await resultReport(metered.db, "2027-04-01", "2027-04-30");
+  const report = await resultReport(metered.db, "2026-04-01", "2026-04-30");
   expect(report.resultCents).toBe(700);
   expect(metered.rowsRead()).toBeLessThan(100);
 });
 
 it("works out the overview", async () => {
-  const day = new Date("2027-06-10T10:00:00.000Z");
-  await env.DB.prepare("INSERT INTO bank_lines (id, account_code, booking_date, amount_cents, description, content_key, origin, status, imported_at) VALUES ('b0','1010','2027-06-01',100,'x','k0','typed','open','t'), ('b1','1010','2027-06-01',100,'x','k1','typed','open','t'), ('b2','1010','2027-06-01',100,'x','k2','typed','waiting','t'), ('b3','1010','2027-06-01',100,'x','k3','typed','booked','t')").run();
-  await book("2027-02-01", move("1010", "8010", 5000));
-  await book("2027-01-01", move("1010", "8010", 700)); // the first day of the year counts
-  await book("2027-06-02", move("4301", "1010", 1200));
-  await book("2027-06-09", move("1000", "8012", 3000)); // cash booked, the kassa knows nothing of it
-  await book("2027-06-10", move("1000", "8012", 999)); // today: not in yesterday's figure
-  await upsertSourced(env.DB, { date: "2027-06-09", description: "d", source: "kassa_day", sourceRef: "2027-06-09", lines: move("1000", "8012", 100) }, NOW);
+  const day = new Date("2026-06-10T10:00:00.000Z");
+  await env.DB.prepare("INSERT INTO bank_lines (id, account_code, booking_date, amount_cents, description, content_key, origin, status, imported_at) VALUES ('b0','1010','2026-06-01',100,'x','k0','typed','open','t'), ('b1','1010','2026-06-01',100,'x','k1','typed','open','t'), ('b2','1010','2026-06-01',100,'x','k2','typed','waiting','t'), ('b3','1010','2026-06-01',100,'x','k3','typed','booked','t')").run();
+  await book("2026-02-01", move("1010", "8010", 5000));
+  await book("2026-01-01", move("1010", "8010", 700)); // the first day of the year counts
+  await book("2026-06-02", move("4301", "1010", 1200));
+  await book("2026-06-09", move("1000", "8012", 3000)); // cash booked, the kassa knows nothing of it
+  await book("2026-06-10", move("1000", "8012", 999)); // today: not in yesterday's figure
+  await upsertSourced(env.DB, { date: "2026-06-09", description: "d", source: "kassa_day", sourceRef: "2026-06-09", lines: move("1000", "8012", 100) }, NOW);
   const result = await overview(env.DB, day);
   expect(result).toMatchObject({ openLines: 2, waitingLines: 1, resultYearCents: 700 + 5000 - 1200 + 3000 + 999 + 100, cashDifferenceCents: 3100, consent: null, mollieDifferenceCents: null, lastNightly: null });
   expect(result.moneyAccounts.map((account) => account.accountCode)).toContain("1030");
-  const before = await overview(env.DB, new Date("2026-11-23T10:00:00.000Z"));
+  const before = await overview(env.DB, new Date("2025-11-23T10:00:00.000Z"));
   expect(before).toMatchObject({ resultYearCents: 0, cashDifferenceCents: 0 });
 });
 
@@ -168,21 +168,21 @@ it("hides a bank account only while nothing is on it, and never Kas or Mollie", 
   expect(asn.status).toBe(200);
   expect(await asn.json()).toMatchObject({ code: "1021", hidden: true, money: true });
   expect(await listed()).not.toContain("1021");
-  expect((await overview(env.DB, new Date("2027-03-01T10:00:00.000Z"))).moneyAccounts.map((m) => m.accountCode)).not.toContain("1021");
+  expect((await overview(env.DB, new Date("2026-03-01T10:00:00.000Z"))).moneyAccounts.map((m) => m.accountCode)).not.toContain("1021");
   expect((await hide("1021", false)).status).toBe(200);
   expect(await listed()).toContain("1021");
 
   // A bank line on it: stays visible.
   await env.DB.prepare(
     `INSERT INTO bank_lines (id, account_code, booking_date, amount_cents, description, content_key, origin, status, imported_at)
-     VALUES ('l1', '1011', '2027-01-02', 14402, 'Rente', 'k-1011-1', 'typed', 'open', '2027-01-02T10:00:00.000Z')`,
+     VALUES ('l1', '1011', '2026-01-02', 14402, 'Rente', 'k-1011-1', 'typed', 'open', '2026-01-02T10:00:00.000Z')`,
   ).run();
   const withLine = await hide("1011");
   expect(withLine.status).toBe(409);
   expect(await withLine.json()).toEqual({ error: "money_account_in_use" });
 
   // Booked on: stays visible too.
-  await setOpening(env.DB, 2027, { lines: [{ accountCode: "1020", amountCents: 100 }], eBoekhoudenEquityCents: null }, new Date("2026-12-31T12:00:00.000Z"));
+  await setOpening(env.DB, 2026, { lines: [{ accountCode: "1020", amountCents: 100 }], eBoekhoudenEquityCents: null }, new Date("2025-12-31T12:00:00.000Z"));
   const booked = await hide("1020");
   expect(booked.status).toBe(409);
   expect(await booked.json()).toEqual({ error: "money_account_in_use" });
@@ -219,7 +219,7 @@ it("keeps the account of each kassa category, income accounts only", async () =>
 });
 
 it("books, edits, empties and reads entries through the routes", async () => {
-  const body = { date: "2027-03-05", description: "Bonnetje", lines: [{ accountCode: "4514", amountCents: 1250 }, { accountCode: "1010", amountCents: -1250, note: "pin" }] };
+  const body = { date: "2026-03-05", description: "Bonnetje", lines: [{ accountCode: "4514", amountCents: 1250 }, { accountCode: "1010", amountCents: -1250, note: "pin" }] };
   const created = await api(`${base}/entries`, { method: "POST", cookie, json: body });
   expect(created.status).toBe(201);
   const entry = await created.json<{ id: string; source: string; editable: boolean }>();
@@ -231,7 +231,7 @@ it("books, edits, empties and reads entries through the routes", async () => {
   expect(await edited.json()).toMatchObject({ description: "Anders", changed: true });
   expect(await (await api(`${base}/entries/${entry.id}/history`, { cookie })).json()).toHaveLength(1);
   expect((await api(`${base}/entries/nope/history`, { cookie })).status).toBe(404);
-  const found = await (await api(`${base}/entries?year=2027&account=4514&amount=1250&text=anders`, { cookie })).json<unknown[]>();
+  const found = await (await api(`${base}/entries?year=2026&account=4514&amount=1250&text=anders`, { cookie })).json<unknown[]>();
   expect(found).toHaveLength(1);
   expect((await api(`${base}/entries`, { cookie })).status).toBe(400);
   const emptied = await api(`${base}/entries/${entry.id}/empty`, { method: "POST", cookie });
@@ -240,7 +240,7 @@ it("books, edits, empties and reads entries through the routes", async () => {
 });
 
 it("takes, serves and hides an attachment through the routes", async () => {
-  const entry = await book("2027-03-05", move("4514", "1010", 100));
+  const entry = await book("2026-03-05", move("4514", "1010", 100));
   const bytes = new TextEncoder().encode("%PDF-1.4 bon");
   const send = (headers: Record<string, string>, payload: BodyInit = bytes) =>
     app.request(`${base}/entries/${entry.id}/attachments`, { method: "POST", headers: { "X-Requested-With": "kassa", Cookie: cookie, ...headers }, body: payload }, env);
@@ -264,34 +264,34 @@ it("takes, serves and hides an attachment through the routes", async () => {
 });
 
 it("types the opening and the comparison figures through the routes", async () => {
-  const put = await api(`${base}/opening?year=2027`, { method: "PUT", cookie, json: { lines: [{ accountCode: "1010", amountCents: 100000 }], eBoekhoudenEquityCents: 100000 } });
+  const put = await api(`${base}/opening?year=2026`, { method: "PUT", cookie, json: { lines: [{ accountCode: "1010", amountCents: 100000 }], eBoekhoudenEquityCents: 100000 } });
   expect(put.status).toBe(200);
-  expect(await (await api(`${base}/opening?year=2027`, { cookie })).json()).toMatchObject({ year: 2027, equityCents: 100000, eBoekhoudenEquityCents: 100000 });
-  expect(await (await api(`${base}/opening?year=2028`, { cookie })).json()).toMatchObject({ year: 2028, lines: [] });
-  expect((await api(`${base}/opening?year=2028`, { method: "PUT", cookie, json: { lines: [] } })).status).toBe(409);
-  const figures = await api(`${base}/comparison?year=2026`, { method: "PUT", cookie, json: { figures: [{ accountCode: "8030", amountCents: 118440 }] } });
-  expect(await figures.json()).toEqual({ year: 2026, figures: [{ accountCode: "8030", amountCents: 118440 }] });
-  const replaced = await api(`${base}/comparison?year=2026`, { method: "PUT", cookie, json: { figures: [{ accountCode: "4308", amountCents: 5 }] } });
+  expect(await (await api(`${base}/opening?year=2026`, { cookie })).json()).toMatchObject({ year: 2026, equityCents: 100000, eBoekhoudenEquityCents: 100000 });
+  expect(await (await api(`${base}/opening?year=2027`, { cookie })).json()).toMatchObject({ year: 2027, lines: [] });
+  expect((await api(`${base}/opening?year=2027`, { method: "PUT", cookie, json: { lines: [] } })).status).toBe(409);
+  const figures = await api(`${base}/comparison?year=2025`, { method: "PUT", cookie, json: { figures: [{ accountCode: "8030", amountCents: 118440 }] } });
+  expect(await figures.json()).toEqual({ year: 2025, figures: [{ accountCode: "8030", amountCents: 118440 }] });
+  const replaced = await api(`${base}/comparison?year=2025`, { method: "PUT", cookie, json: { figures: [{ accountCode: "4308", amountCents: 5 }] } });
   expect((await replaced.json<{ figures: unknown[] }>()).figures).toEqual([{ accountCode: "4308", amountCents: 5 }]);
-  const asset = await api(`${base}/comparison?year=2026`, { method: "PUT", cookie, json: { figures: [{ accountCode: "1010", amountCents: 5 }] } });
+  const asset = await api(`${base}/comparison?year=2025`, { method: "PUT", cookie, json: { figures: [{ accountCode: "1010", amountCents: 5 }] } });
   expect([asset.status, await asset.json()]).toEqual([400, { error: "not_result_account" }]);
-  const year = await api(`${base}/comparison?year=2027`, { method: "PUT", cookie, json: { figures: [] } });
+  const year = await api(`${base}/comparison?year=2026`, { method: "PUT", cookie, json: { figures: [] } });
   expect([year.status, await year.json()]).toEqual([400, { error: "not_comparison_year" }]);
 });
 
 it("serves the reports and the overview", async () => {
-  await book("2027-03-05", move("1010", "8010", 700));
-  expect(((await (await api(`${base}/reports/balance?date=2027-12-31`, { cookie })).json()) as { resultCents: number }).resultCents).toBe(700);
-  expect(((await (await api(`${base}/reports/result?from=2027-01-01&to=2027-12-31`, { cookie })).json()) as { resultCents: number }).resultCents).toBe(700);
-  expect(((await (await api(`${base}/reports/account/1010?from=2027-01-01&to=2027-12-31`, { cookie })).json()) as { lines: unknown[] }).lines).toHaveLength(1);
-  expect((await api(`${base}/reports/result?from=2027-02-01&to=2027-01-01`, { cookie })).status).toBe(400);
+  await book("2026-03-05", move("1010", "8010", 700));
+  expect(((await (await api(`${base}/reports/balance?date=2026-12-31`, { cookie })).json()) as { resultCents: number }).resultCents).toBe(700);
+  expect(((await (await api(`${base}/reports/result?from=2026-01-01&to=2026-12-31`, { cookie })).json()) as { resultCents: number }).resultCents).toBe(700);
+  expect(((await (await api(`${base}/reports/account/1010?from=2026-01-01&to=2026-12-31`, { cookie })).json()) as { lines: unknown[] }).lines).toHaveLength(1);
+  expect((await api(`${base}/reports/result?from=2026-02-01&to=2026-01-01`, { cookie })).status).toBe(400);
   expect((await api(`${base}/reports/balance?date=nope`, { cookie })).status).toBe(400);
-  expect((await api(`${base}/reports/account/9999?from=2027-01-01&to=2027-12-31`, { cookie })).status).toBe(404);
+  expect((await api(`${base}/reports/account/9999?from=2026-01-01&to=2026-12-31`, { cookie })).status).toBe(404);
   expect((await api(`${base}/overview`, { cookie })).status).toBe(200);
 });
 
 it("hands back one entry by its id, and says when there is none", async () => {
-  const entry = await book("2027-02-01", move("4501", "1010", 1250), "Inkoop");
+  const entry = await book("2026-02-01", move("4501", "1010", 1250), "Inkoop");
   const found = await api(`${base}/entries/${entry.id}`, { cookie });
   expect(found.status).toBe(200);
   expect(await found.json()).toMatchObject({ id: entry.id, number: entry.number, description: "Inkoop", editable: true });
@@ -302,14 +302,14 @@ it("counts per money account the lines still to book up to the bank's balance", 
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO bank_lines (id, account_code, booking_date, amount_cents, description, content_key, origin, status, imported_at) VALUES
-         ('a','1010','2027-03-01',100,'x','ka','file','open','t'), ('b','1010','2027-03-02',100,'x','kb','file','waiting','t'),
-         ('c','1010','2027-03-05',100,'x','kc','file','open','t'), ('d','1010','2027-03-01',100,'x','kd','file','booked','t'),
-         ('e','1011','2027-03-01',100,'x','ke','file','open','t')`,
+         ('a','1010','2026-03-01',100,'x','ka','file','open','t'), ('b','1010','2026-03-02',100,'x','kb','file','waiting','t'),
+         ('c','1010','2026-03-05',100,'x','kc','file','open','t'), ('d','1010','2026-03-01',100,'x','kd','file','booked','t'),
+         ('e','1011','2026-03-01',100,'x','ke','file','open','t')`,
     ),
     // ING gave its balance on 2 March: the line of 5 March is not in that difference. 1011 has no balance from the bank.
-    env.DB.prepare("INSERT INTO bank_balances (account_code, date, balance_cents, origin) VALUES ('1010', '2027-03-02', 500, 'file')"),
+    env.DB.prepare("INSERT INTO bank_balances (account_code, date, balance_cents, origin) VALUES ('1010', '2026-03-02', 500, 'file')"),
   ]);
-  const result = await overview(env.DB, new Date("2027-03-10T10:00:00.000Z"));
+  const result = await overview(env.DB, new Date("2026-03-10T10:00:00.000Z"));
   expect(result.toBookByAccount).toEqual({ "1010": 2 });
   expect([result.openLines, result.waitingLines]).toEqual([3, 1]);
 });
@@ -317,14 +317,14 @@ it("counts per money account the lines still to book up to the bank's balance", 
 it("says since when the books were not brought up to date: 36 hours after the last run, or after the kassa went into use", async () => {
   const at = (iso: string) => overview(env.DB, new Date(iso));
   // On trial and never run: nothing to say.
-  expect((await at("2027-03-10T10:00:00.000Z")).notUpdatedSince).toBeNull();
-  await env.DB.prepare("INSERT INTO settings (key, value) VALUES ('in_use_since', '2027-03-01T09:00:00.000Z')").run();
-  expect((await at("2027-03-02T20:00:00.000Z")).notUpdatedSince).toBeNull();
-  expect((await at("2027-03-02T21:00:01.000Z")).notUpdatedSince).toBe("2027-03-01T09:00:00.000Z");
+  expect((await at("2026-03-10T10:00:00.000Z")).notUpdatedSince).toBeNull();
+  await env.DB.prepare("INSERT INTO settings (key, value) VALUES ('in_use_since', '2026-03-01T09:00:00.000Z')").run();
+  expect((await at("2026-03-02T20:00:00.000Z")).notUpdatedSince).toBeNull();
+  expect((await at("2026-03-02T21:00:01.000Z")).notUpdatedSince).toBe("2026-03-01T09:00:00.000Z");
   // A run: from then on it counts from that run.
   await env.DB.prepare("INSERT INTO ledger_settings (key, value, updated_at) VALUES ('ledger_nightly_last', ?1, ?2)")
-    .bind(JSON.stringify({ at: "2027-03-05T02:00:00.000Z", steps: { kassa: "ok", ing: "skipped", mollie: "skipped" } }), "2027-03-05T02:00:00.000Z")
+    .bind(JSON.stringify({ at: "2026-03-05T02:00:00.000Z", steps: { kassa: "ok", ing: "skipped", mollie: "skipped" } }), "2026-03-05T02:00:00.000Z")
     .run();
-  expect((await at("2027-03-06T14:00:00.000Z")).notUpdatedSince).toBeNull();
-  expect((await at("2027-03-06T14:00:01.000Z")).notUpdatedSince).toBe("2027-03-05T02:00:00.000Z");
+  expect((await at("2026-03-06T14:00:00.000Z")).notUpdatedSince).toBeNull();
+  expect((await at("2026-03-06T14:00:01.000Z")).notUpdatedSince).toBe("2026-03-05T02:00:00.000Z");
 });

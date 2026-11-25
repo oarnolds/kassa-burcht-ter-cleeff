@@ -143,12 +143,12 @@ it("stores each line once when the same file arrives twice at the same moment", 
   expect(await count()).toBe(4);
 });
 
-it("skips lines before the ledger starts", async () => {
+it("skips bank lines before the overstap and counts them", async () => {
   await setIdentifier("1010", BETAAL);
-  expect(await imported("1010", statement([line({ bookingDate: "2026-12-30" }), line({ bookingDate: "2027-01-01" })]))).toEqual(result(1, 0, 1));
-  expect(await env.DB.prepare("SELECT booking_date FROM bank_lines").all().then((r) => r.results)).toEqual([{ booking_date: "2027-01-01" }]);
+  expect(await imported("1010", statement([line({ bookingDate: "2026-11-24" }), line({ bookingDate: "2026-11-25" })]))).toEqual(result(1, 0, 1));
+  expect(await env.DB.prepare("SELECT booking_date FROM bank_lines").all().then((r) => r.results)).toEqual([{ booking_date: "2026-11-25" }]);
   await env.DB.prepare("DELETE FROM bank_lines").run();
-  expect(await imported("1010", statement([line({ bookingDate: "2026-12-30" })]))).toEqual(result(0, 0, 1));
+  expect(await imported("1010", statement([line({ bookingDate: "2026-11-24" })]))).toEqual(result(0, 0, 1));
   expect(await count()).toBe(0);
 });
 
@@ -195,19 +195,19 @@ it("reads files only into a bank account", async () => {
 });
 
 it("compares the ledger with the bank's balance on the same date", async () => {
-  await setOpening(env.DB, 2027, { lines: [{ accountCode: "1011", amountCents: 1_088_345 }], eBoekhoudenEquityCents: null }, NOW);
+  await setOpening(env.DB, 2026, { lines: [{ accountCode: "1011", amountCents: 1_088_345 }], eBoekhoudenEquityCents: null }, NOW);
   await setIdentifier("1011", SPAAR);
-  const rente = line({ bookingDate: "2027-01-01", amountCents: 14_402, description: "Rente", counterpartyName: null, counterpartyIban: null });
-  const file = statement([rente], { account: SPAAR, opening: { date: "2027-01-01", cents: 1_088_345 }, closing: { date: "2027-11-22", cents: 1_102_747 } });
+  const rente = line({ bookingDate: "2026-11-25", amountCents: 14_402, description: "Rente", counterpartyName: null, counterpartyIban: null });
+  const file = statement([rente], { account: SPAAR, opening: { date: "2026-11-25", cents: 1_088_345 }, closing: { date: "2026-12-22", cents: 1_102_747 } });
   expect(await imported("1011", file)).toEqual(result(1, 0));
   // The bank's opening balance is its balance at the end of the day before.
   const { results: balances } = await env.DB.prepare("SELECT account_code, date, balance_cents, origin FROM bank_balances ORDER BY date").all();
   expect(balances).toEqual([
-    { account_code: "1011", date: "2026-12-31", balance_cents: 1_088_345, origin: "file" },
-    { account_code: "1011", date: "2027-11-22", balance_cents: 1_102_747, origin: "file" },
+    { account_code: "1011", date: "2026-11-24", balance_cents: 1_088_345, origin: "file" },
+    { account_code: "1011", date: "2026-12-22", balance_cents: 1_102_747, origin: "file" },
   ]);
   // Something booked after the bank's date does not count.
-  await createEntry(env.DB, { date: "2027-11-23", description: "Later", source: "manual", lines: move("1011", "8030", 500) }, NOW);
+  await createEntry(env.DB, { date: "2026-12-23", description: "Later", source: "manual", lines: move("1011", "8030", 500) }, NOW);
 
   const unbooked = (await accountsByCode()).get("1011");
   expect(unbooked).toEqual({
@@ -216,55 +216,55 @@ it("compares the ledger with the bank's balance on the same date", async () => {
     identifier: SPAAR,
     source: "file",
     ledgerCents: 1_088_345,
-    bank: { date: "2027-11-22", balanceCents: 1_102_747 },
+    bank: { date: "2026-12-22", balanceCents: 1_102_747 },
     differenceCents: -14_402,
   });
 
   const { id } = (await env.DB.prepare("SELECT id FROM bank_lines").first<{ id: string }>())!;
-  await createEntry(env.DB, { date: "2027-01-01", description: "Rente", source: "bank", sourceRef: id, lines: move("1011", "8030", 14_402) }, NOW);
+  await createEntry(env.DB, { date: "2026-11-25", description: "Rente", source: "bank", sourceRef: id, lines: move("1011", "8030", 14_402) }, NOW);
   expect((await accountsByCode()).get("1011")).toMatchObject({ ledgerCents: 1_102_747, differenceCents: 0 });
 
   // A newer file moves the comparison to its own date.
-  expect(await imported("1011", statement([], { account: SPAAR, closing: { date: "2027-11-23", cents: 1_103_247 } }))).toEqual(result(0, 0));
-  expect((await accountsByCode()).get("1011")).toMatchObject({ ledgerCents: 1_103_247, bank: { date: "2027-11-23", balanceCents: 1_103_247 }, differenceCents: 0 });
+  expect(await imported("1011", statement([], { account: SPAAR, closing: { date: "2026-12-23", cents: 1_103_247 } }))).toEqual(result(0, 0));
+  expect((await accountsByCode()).get("1011")).toMatchObject({ ledgerCents: 1_103_247, bank: { date: "2026-12-23", balanceCents: 1_103_247 }, differenceCents: 0 });
 });
 
-it("keeps no bank balance from before 31 December 2026", async () => {
+it("keeps no bank balance from before 31 December 2025", async () => {
   await setIdentifier("1011", SPAAR);
-  // The savings file of 2026: its lines and both its balances lie before the ledger.
-  const rente2026 = line({ bookingDate: "2026-01-01", amountCents: 14_402, description: "Rente", counterpartyName: null, counterpartyIban: null });
-  const file2026 = statement([rente2026], { account: SPAAR, opening: { date: "2026-01-01", cents: 1_088_345 }, closing: { date: "2026-11-22", cents: 1_102_747 } });
-  expect(await imported("1011", file2026)).toEqual(result(0, 0, 1));
-  await recordBalance(env.DB, "1030", { date: "2026-11-22", cents: 5 }, "mollie");
+  // The savings file of 2025: its lines and both its balances lie before the ledger.
+  const rente2025 = line({ bookingDate: "2025-01-01", amountCents: 14_402, description: "Rente", counterpartyName: null, counterpartyIban: null });
+  const file2025 = statement([rente2025], { account: SPAAR, opening: { date: "2025-01-01", cents: 1_088_345 }, closing: { date: "2025-11-22", cents: 1_102_747 } });
+  expect(await imported("1011", file2025)).toEqual(result(0, 0, 1));
+  await recordBalance(env.DB, "1030", { date: "2025-11-22", cents: 5 }, "mollie");
   expect(await count()).toBe(0);
   expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM bank_balances").first()).toEqual({ n: 0 });
   expect((await accountsByCode()).get("1011")).toMatchObject({ bank: null, differenceCents: null });
 
-  await imported("1011", statement([], { account: SPAAR, opening: { date: "2026-12-31", cents: 1 }, closing: { date: "2027-01-31", cents: 2 } }));
-  await imported("1011", statement([], { account: SPAAR, opening: { date: "2027-01-01", cents: 3 }, closing: null }));
+  await imported("1011", statement([], { account: SPAAR, opening: { date: "2025-12-31", cents: 1 }, closing: { date: "2026-01-31", cents: 2 } }));
+  await imported("1011", statement([], { account: SPAAR, opening: { date: "2026-01-01", cents: 3 }, closing: null }));
   const { results } = await env.DB.prepare("SELECT date, balance_cents FROM bank_balances ORDER BY date").all();
   expect(results).toEqual([
-    { date: "2026-12-31", balance_cents: 3 },
-    { date: "2027-01-31", balance_cents: 2 },
+    { date: "2025-12-31", balance_cents: 3 },
+    { date: "2026-01-31", balance_cents: 2 },
   ]);
 });
 
-it("compares a balance of 31 December 2026 with the opening balance", async () => {
-  await setOpening(env.DB, 2027, { lines: [{ accountCode: "1011", amountCents: 1_088_345 }], eBoekhoudenEquityCents: null }, NOW);
+it("compares a balance of 31 December 2025 with the opening balance", async () => {
+  await setOpening(env.DB, 2026, { lines: [{ accountCode: "1011", amountCents: 1_088_345 }], eBoekhoudenEquityCents: null }, NOW);
   // Booked on 1 January, after the bank's year-end balance: it does not count.
-  await createEntry(env.DB, { date: "2027-01-01", description: "Rente", source: "manual", lines: move("1011", "8030", 14_402) }, NOW);
+  await createEntry(env.DB, { date: "2026-01-01", description: "Rente", source: "manual", lines: move("1011", "8030", 14_402) }, NOW);
   await setIdentifier("1011", SPAAR);
-  await imported("1011", statement([], { account: SPAAR, closing: { date: "2026-12-31", cents: 1_088_345 } }));
+  await imported("1011", statement([], { account: SPAAR, closing: { date: "2025-12-31", cents: 1_088_345 } }));
   expect((await accountsByCode()).get("1011")).toMatchObject({
     ledgerCents: 1_088_345,
-    bank: { date: "2026-12-31", balanceCents: 1_088_345 },
+    bank: { date: "2025-12-31", balanceCents: 1_088_345 },
     differenceCents: 0,
   });
-  await imported("1011", statement([], { account: SPAAR, closing: { date: "2026-12-31", cents: 1_088_000 } }));
+  await imported("1011", statement([], { account: SPAAR, closing: { date: "2025-12-31", cents: 1_088_000 } }));
   expect((await accountsByCode()).get("1011")).toMatchObject({ ledgerCents: 1_088_345, differenceCents: 345 });
   // 1010 has no opening line: its year-end balance is compared with nothing booked.
   await setIdentifier("1010", BETAAL);
-  await imported("1010", statement([], { closing: { date: "2026-12-31", cents: 500 } }));
+  await imported("1010", statement([], { closing: { date: "2025-12-31", cents: 500 } }));
   expect((await accountsByCode()).get("1010")).toMatchObject({ ledgerCents: 0, differenceCents: -500 });
 });
 
@@ -353,7 +353,6 @@ it("refuses a typed line it cannot keep", async () => {
     expect(res.status).toBe(status);
     expect(await res.json()).toEqual({ error });
   };
-  await refused({ ...typed, date: "2026-12-31" }, 400, "before_start");
   await refused({ ...typed, accountCode: "1000" }, 400, "not_a_bank_account");
   await refused({ ...typed, accountCode: "1030" }, 400, "not_a_bank_account");
   await refused({ ...typed, amountCents: 0 }, 400, "invalid");
@@ -383,4 +382,12 @@ it("reads a year of lines in a handful of database calls", async () => {
   expect(await importStatement(again.db, "1010", file, NOW)).toEqual(result(0, 1000));
   expect(again.calls()).toBeLessThanOrEqual(4);
   expect(await count()).toBe(1000);
+});
+
+it("refuses a typed bank line before the overstap", async () => {
+  await onNow();
+  const res = await typeLine({ accountCode: "1011", date: "2026-11-24", amountCents: 500, description: "Rente" });
+  expect(res.status).toBe(400);
+  expect(await res.json()).toEqual({ error: "before_start" });
+  expect(await count()).toBe(0);
 });

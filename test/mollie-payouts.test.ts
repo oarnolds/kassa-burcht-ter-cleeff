@@ -230,36 +230,43 @@ it("lets him book a waiting payout line by hand, and the payout that follows boo
   expect(await payoutsInTransit(env.DB, "2027-03-09")).toBe(0);
 });
 
-it("leaves a payout of 2026 to the penningmeester", async () => {
-  // Settled before the books begin, it lands on ING in January: the line comes in first and waits.
-  await ingLine("2027-01-04", 9812, "05665564.2612.03 Mollie");
+it("leaves a payout settled before the books begin to the penningmeester", async () => {
+  // Settled before the books begin, it lands on ING after the overstap: the line comes in first and waits.
+  await ingLine("2026-11-26", 9812, "05665564.2512.03 Mollie");
   expect(await autoBook(env.DB, NOW)).toBe(0);
-  expect(await lineOf("05665564.2612.03 Mollie")).toMatchObject({ status: "waiting", waiting_for: "mollie" });
+  expect(await lineOf("05665564.2512.03 Mollie")).toMatchObject({ status: "waiting", waiting_for: "mollie" });
 
-  // The first read of the payouts reaches back to 1 December 2026, so late December is known (November is not).
-  mollie.current.addSettlement({ reference: "05665564.2611.04", amount: "50.00", settledAt: "2026-11-20T06:00:00+00:00", costs: { "2026": { "11": ["1.00"] } } });
-  const december = mollie.current.addSettlement({ reference: "05665564.2612.03", amount: "98.12", settledAt: "2026-12-30T06:00:00+00:00", costs: { "2026": { "12": ["1.88"] } } });
-  expect(await settle(new Date("2027-01-05T02:00:00.000Z"))).toBe("ok");
-  expect((await env.DB.prepare("SELECT id FROM mollie_settlements").all()).results).toEqual([{ id: december.id }]);
+  // Mollie is read from 1 October 2026 on, so a payout of 2025 is put in by hand.
+  await env.DB.prepare(
+    "INSERT INTO mollie_settlements (id, reference, status, settled_at, amount_cents, costs_cents) VALUES ('stl_2025', '05665564.2512.03', 'paidout', '2025-12-30T06:00:00.000Z', 9812, 188)",
+  ).run();
 
-  // Its costs are 2026's, booked in e-Boekhouden: the app does not book it, and says what to do.
-  expect(await lineOf("05665564.2612.03 Mollie")).toMatchObject({
+  // Its costs are 2025's, booked in e-Boekhouden: the app does not book it, and says what to do.
+  expect(await autoBook(env.DB, NOW)).toBe(0);
+  expect(await lineOf("05665564.2512.03 Mollie")).toMatchObject({
     status: "open",
     waiting_for: null,
-    note: "Uitbetaling 05665564.2612.03 is van 30-12-2026 (2026): boek hem tegen 1080 Kruisposten als hij in de beginbalans onderweg stond.",
+    note: "Uitbetaling 05665564.2512.03 is van 30-12-2025 (2025): boek hem tegen 1080 Kruisposten als hij in de beginbalans onderweg stond.",
     entry_id: null,
   });
   expect(await autoBook(env.DB, NOW)).toBe(0);
   expect(await count("ledger_entries")).toBe(0);
 
   // He books it against 1080, and that is that.
-  const line = (await lineOf("05665564.2612.03 Mollie"))!;
+  const line = (await lineOf("05665564.2512.03 Mollie"))!;
   await bookLine(env.DB, line.id, { split: [{ accountCode: "1080", amountCents: -9812 }] }, NOW);
   expect(await autoBook(env.DB, NOW)).toBe(0);
-  expect(await lineOf("05665564.2612.03 Mollie")).toMatchObject({ status: "booked" });
+  expect(await lineOf("05665564.2512.03 Mollie")).toMatchObject({ status: "booked" });
   expect(await count("ledger_entries WHERE source = 'mollie_settlement'")).toBe(0);
   // It left Mollie before the books began, so 1030 never held it: it is never "onderweg" in the comparison.
-  expect(await payoutsInTransit(env.DB, "2027-01-03")).toBe(0);
+  expect(await payoutsInTransit(env.DB, "2026-11-30")).toBe(0);
+});
+
+it("reads Mollie's payouts from 1 October 2026 on, so the payout of 2 November is known", async () => {
+  mollie.current.addSettlement({ reference: "05665564.2609.04", amount: "50.00", settledAt: "2026-09-30T06:00:00+00:00", costs: { "2026": { "9": ["1.00"] } } });
+  const november = mollie.current.addSettlement({ reference: "05665564.2611.01", amount: "98.12", settledAt: "2026-11-02T06:00:00+00:00", costs: { "2026": { "11": ["1.88"] } } });
+  expect(await settle(new Date("2026-11-26T02:00:00.000Z"))).toBe("ok");
+  expect((await env.DB.prepare("SELECT id FROM mollie_settlements").all()).results).toEqual([{ id: november.id }]);
 });
 
 it("compares the kassa's pin with Mollie's, payment by payment", async () => {

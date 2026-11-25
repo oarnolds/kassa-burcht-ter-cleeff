@@ -2,7 +2,7 @@
 
 export type AccountKind = "asset" | "liability" | "equity" | "expense" | "income";
 
-/** `formerly`: the e-Boekhouden numbers this account takes over, so 2027 can be laid next to earlier years. */
+/** `formerly`: the e-Boekhouden numbers this account takes over, so 2026 can be laid next to earlier years. */
 export type LedgerAccount = { code: string; name: string; kind: AccountKind; money: boolean; hidden: boolean; formerly: string[] };
 
 /** Who wrote an entry. Only `manual` and `bank` are the penningmeester's; the rest follow their own source. */
@@ -49,7 +49,13 @@ export type EntryChange = {
 };
 
 /** The first day the app keeps the books. Everything before it stays in e-Boekhouden. */
-export const LEDGER_START = "2027-01-01";
+export const LEDGER_START = "2026-01-01";
+/** The first day of bank lines in the app; before it the bank is in e-Boekhouden's auditfile. */
+export const OVERSTAP = "2026-11-25";
+/** The first day of Mollie payments, refunds and chargebacks in the app; earlier ones are in payouts e-Boekhouden booked. */
+export const MOLLIE_START = "2026-11-01";
+/** A Mollie payout's reference as ING writes it in a line's description. */
+export const PAYOUT_REFERENCE = /\b\d{7,8}\.\d{4}\.\d{2}\b/;
 
 /** Where a money account's lines come from. 1000 follows the kassa and 1030 Mollie; a bank is a file or Enable Banking. */
 export type MoneySource = "file" | "enable_banking" | "kassa" | "mollie";
@@ -88,7 +94,7 @@ export type BankLine = {
   inClosedYear: boolean;
 };
 
-/** `known`: lines that were already there. `beforeStart`: lines before LEDGER_START, not kept. */
+/** `known`: lines that were already there. `beforeStart`: lines before OVERSTAP, not kept. */
 export type ImportResult = { added: number; known: number; beforeStart: number; autoBooked: number };
 
 /** Where the consent for ING (Enable Banking) stands. `daysLeft` is whole days until `validUntil` (0 on the last day); below 0 once the consent has ended, also when it ended early (`validUntil` is then the day it was noticed). */

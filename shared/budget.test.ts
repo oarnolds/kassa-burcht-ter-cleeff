@@ -114,9 +114,9 @@ describe("proposeRule", () => {
 
 describe("budgetYears", () => {
   it("runs from the first year of the books to the year after this one", () => {
-    expect(budgetYears("2026-11-24")).toEqual([2027, 2028]);
-    expect(budgetYears("2027-06-01")).toEqual([2027, 2028]);
-    expect(budgetYears("2030-01-01")).toEqual([2027, 2028, 2029, 2030, 2031]);
+    expect(budgetYears("2026-11-24")).toEqual([2026, 2027]);
+    expect(budgetYears("2027-06-01")).toEqual([2026, 2027, 2028]);
+    expect(budgetYears("2030-01-01")).toEqual([2026, 2027, 2028, 2029, 2030, 2031]);
   });
 });
 

@@ -23,11 +23,11 @@ it("shows the old numbers next to the comparison figures", async () => {
   mockLoggedIn();
   mockApi({
     [`${base}/accounts`]: accounts,
-    [`${base}/comparison`]: { year: 2026, figures: [{ accountCode: "4302", amountCents: 123456 }] },
-    [`PUT ${base}/comparison`]: { year: 2026, figures: [] },
+    [`${base}/comparison`]: { year: 2025, figures: [{ accountCode: "4302", amountCents: 123456 }] },
+    [`PUT ${base}/comparison`]: { year: 2025, figures: [] },
   });
   renderAt("/beheer/boekhouding/vergelijking");
-  expect(await screen.findByRole("heading", { name: "Cijfers 2026" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Cijfers 2025" })).toBeInTheDocument();
   expect(await screen.findByText("was 4302 en 4303")).toBeInTheDocument();
   expect(screen.getByText("was 8000, 8001, 8002 en 8003")).toBeInTheDocument();
   expect(screen.queryByText(/was 4507/)).not.toBeInTheDocument();
@@ -37,7 +37,7 @@ it("shows the old numbers next to the comparison figures", async () => {
   await user().type(screen.getByLabelText("Contributie particulier"), "50");
   await tap("Opslaan");
   await waitFor(() => {
-    const put = calls("PUT").find((c) => c.url === `${base}/comparison?year=2026`);
+    const put = calls("PUT").find((c) => c.url === `${base}/comparison?year=2025`);
     expect(put?.body).toEqual({
       figures: [
         { accountCode: "4302", amountCents: 123456 },
@@ -50,7 +50,7 @@ it("shows the old numbers next to the comparison figures", async () => {
 
 it("refuses to save an amount that cannot be read", async () => {
   mockLoggedIn();
-  mockApi({ [`${base}/accounts`]: accounts, [`${base}/comparison`]: { year: 2026, figures: [] } });
+  mockApi({ [`${base}/accounts`]: accounts, [`${base}/comparison`]: { year: 2025, figures: [] } });
   renderAt("/beheer/boekhouding/vergelijking");
   await user().type(await screen.findByLabelText("Kantoorkosten"), "12,3x");
   expect(screen.getByText("Dit bedrag kan ik niet lezen.")).toBeInTheDocument();
@@ -62,7 +62,7 @@ it("shows no 'was' for an account without old numbers", async () => {
   mockLoggedIn();
   mockApi({
     [`${base}/accounts`]: [account("4600", "Nieuw", "expense", []), account("4507", "Kantoorkosten", "expense")],
-    [`${base}/comparison`]: { year: 2026, figures: [] },
+    [`${base}/comparison`]: { year: 2025, figures: [] },
   });
   renderAt("/beheer/boekhouding/vergelijking");
   await screen.findByLabelText("Nieuw");
@@ -73,22 +73,22 @@ it("takes the year from the address", async () => {
   mockLoggedIn();
   mockApi({
     [`${base}/accounts`]: accounts,
-    [`${base}/comparison`]: { year: 2025, figures: [{ accountCode: "4302", amountCents: 483948 }] },
-    [`PUT ${base}/comparison`]: { year: 2025, figures: [] },
+    [`${base}/comparison`]: { year: 2024, figures: [{ accountCode: "4302", amountCents: 483948 }] },
+    [`PUT ${base}/comparison`]: { year: 2024, figures: [] },
   });
-  renderAt("/beheer/boekhouding/vergelijking?jaar=2025");
-  expect(await screen.findByRole("heading", { name: "Cijfers 2025" })).toBeInTheDocument();
-  expect(screen.getByText("Wat e-Boekhouden over 2025 laat zien, per rekening. Laat leeg wat nul is.")).toBeInTheDocument();
+  renderAt("/beheer/boekhouding/vergelijking?jaar=2024");
+  expect(await screen.findByRole("heading", { name: "Cijfers 2024" })).toBeInTheDocument();
+  expect(screen.getByText("Wat e-Boekhouden over 2024 laat zien, per rekening. Laat leeg wat nul is.")).toBeInTheDocument();
   expect(await screen.findByLabelText("Gebouw en inventaris")).toHaveValue("4839,48");
-  expect(calls("GET").some((c) => c.url === `${base}/comparison?year=2025`)).toBe(true);
+  expect(calls("GET").some((c) => c.url === `${base}/comparison?year=2024`)).toBe(true);
   await tap("Opslaan");
-  await waitFor(() => expect(calls("PUT").map((c) => c.url)).toEqual([`${base}/comparison?year=2025`]));
+  await waitFor(() => expect(calls("PUT").map((c) => c.url)).toEqual([`${base}/comparison?year=2024`]));
 });
 
-it("says from 2027 on the figures are in the books themselves", async () => {
+it("says from 2026 on the figures are in the books themselves", async () => {
   mockLoggedIn();
-  mockApi({ [`${base}/accounts`]: accounts, [`${base}/comparison`]: { year: 2027, figures: [] } });
-  renderAt("/beheer/boekhouding/vergelijking?jaar=2027");
-  expect(await screen.findByText("Vanaf 2027 staan de cijfers in de boekhouding zelf.")).toBeInTheDocument();
+  mockApi({ [`${base}/accounts`]: accounts, [`${base}/comparison`]: { year: 2026, figures: [] } });
+  renderAt("/beheer/boekhouding/vergelijking?jaar=2026");
+  expect(await screen.findByText("Vanaf 2026 staan de cijfers in de boekhouding zelf.")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Opslaan" })).not.toBeInTheDocument();
 });

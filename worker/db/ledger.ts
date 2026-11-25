@@ -329,7 +329,7 @@ type Key = { where: string; values: unknown[] };
 const byId = (id: string): Key => ({ where: "id = ?", values: [id] });
 const bySource = (source: EntrySource, ref: string): Key => ({ where: "source = ? AND source_ref = ?", values: [source, ref] });
 
-/** A year from 2027 on gets its row, open, with its first entry. */
+/** A year from 2026 on gets its row, open, with its first entry. */
 const openYear = (db: D1Database, year: number) => db.prepare("INSERT OR IGNORE INTO ledger_years (year, status) VALUES (?, 'open')").bind(year);
 
 /** The number is taken inside the insert, so two writers never share one. */

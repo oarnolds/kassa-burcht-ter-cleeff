@@ -10,3 +10,6 @@ playwright-report
 
 # Private keys (e.g. the Enable Banking .pem) never go into git.
 *.pem
+
+# e-Boekhouden auditfiles hold personal data
+*.xaf

@@ -7,7 +7,7 @@
 // nothing it says goes into a log line.
 
 import type { CamtLine } from "../../shared/camt";
-import { type AccountKind, LEDGER_START, type MollieMonth, type MollieRule } from "../../shared/ledger-types";
+import { type AccountKind, MOLLIE_START, type MollieMonth, type MollieRule } from "../../shared/ledger-types";
 import { businessDate, localTime, monthRange, shiftDate } from "../../shared/time";
 import type { Env } from "../env";
 import { describeFailure, type MollieChargebackRow, type MolliePaymentRow, mollieReadFor, type MollieRefundRow, type PaymentGap } from "../lib/mollie-read";
@@ -34,10 +34,10 @@ const RESUME_KEY = "mollie_payments_resume";
 /** A run reads the payouts from this long before the newest one settled that it has, to catch a late change. */
 const PAYOUT_LOOK_BACK_MS = 7 * 86_400_000;
 /**
- * The first read of the payouts starts here: a payout settled in late December 2026 lands on ING in January, and
+ * The first read of the payouts starts here: the payout of 2 November 2026 lands on ING after the overstap, and
  * its line is told apart from the ledger's own payouts only when the payout is known.
  */
-const FIRST_PAYOUT_DATE = "2026-12-01";
+const FIRST_PAYOUT_DATE = "2026-10-01";
 
 type Kind = "kassa" | "rule" | "line";
 type Paid = MolliePaymentRow & { paidAt: string; paidDate: string };
@@ -75,7 +75,7 @@ const kassaPayments = (db: D1Database, ids: string) =>
 
 /**
  * Nightly: Mollie's paid payments, refunds and chargebacks since a few days before the newest payment kept (or since
- * LEDGER_START), then Mollie's balance as that of 1030 at the end of yesterday (by day: of today, so far). All three
+ * MOLLIE_START), then Mollie's balance as that of 1030 at the end of yesterday (by day: of today, so far). All three
  * lists are read before anything is stored, so a failure keeps nothing and the next run reads the same window. A
  * failure of Mollie gives its name ("unauthorized", "refused", "not_found", "unreachable"), a list of reversals cut
  * short by the page cap "mollie_list_cut_short", a refusal of the ledger its code.
@@ -96,8 +96,8 @@ export async function syncMolliePayments(env: Env, now: Date): Promise<"ok" | "s
       db.prepare("SELECT DISTINCT paid_date AS date FROM mollie_payments WHERE booked = 0 ORDER BY paid_date LIMIT ?1").bind(MAX_DAYS),
     ]);
     const newest = (newestRows!.results[0] as { date: string | null } | undefined)?.date ?? null;
-    const back = newest ? shiftDate(newest, -LOOK_BACK_DAYS) : LEDGER_START;
-    const from = startOfDay(back < LEDGER_START ? LEDGER_START : back);
+    const back = newest ? shiftDate(newest, -LOOK_BACK_DAYS) : MOLLIE_START;
+    const from = startOfDay(back < MOLLIE_START ? MOLLIE_START : back);
     // A stretch an earlier run left unread is read first; the newest follow once it is done.
     const kept = gapOf((noteRows!.results[0] as { value: string } | undefined)?.value);
     const open = (openRows!.results as { date: string }[]).map((row) => row.date);
@@ -142,7 +142,7 @@ export async function syncMolliePayments(env: Env, now: Date): Promise<"ok" | "s
 async function storePayments(db: D1Database, rows: MolliePaymentRow[], open: string[], now: Date, note: D1PreparedStatement | null): Promise<void> {
   const paid: Paid[] = rows
     .flatMap((row) => (row.status === "paid" && row.paidAt !== null ? [{ ...row, paidAt: row.paidAt, paidDate: businessDate(row.paidAt) }] : []))
-    .filter((row) => row.paidDate >= LEDGER_START)
+    .filter((row) => row.paidDate >= MOLLIE_START)
     .sort((a, b) => byMoment({ at: a.paidAt, id: a.id }, { at: b.paidAt, id: b.id }));
   if (paid.length === 0 && open.length === 0) {
     await note?.run();
@@ -329,7 +329,7 @@ async function storeReversals(
     ...chargebacks.map((chargeback) => ({ ...chargeback, word: "Terugboeking" })),
   ]
     .map((item) => ({ ...item, date: businessDate(item.createdAt) }))
-    .filter((item) => item.date >= LEDGER_START)
+    .filter((item) => item.date >= MOLLIE_START)
     .sort((a, b) => byMoment({ at: a.createdAt, id: a.id }, { at: b.createdAt, id: b.id }));
   if (items.length === 0) return;
   const ids = JSON.stringify([...new Set(items.map((item) => item.paymentId))]);

@@ -11,8 +11,8 @@ import { getOpening, setOpening } from "../worker/db/opening";
 import { dayReport } from "../worker/db/reports";
 import { meteredDb, resetData } from "./helpers";
 
-// The kassa routes stamp sales with today's date (2026), before the ledger starts. These tests set up the
-// kassa's rows for 2027 and later directly, as the kassa itself would have written them.
+// The kassa routes stamp sales with today's date. These tests set up the kassa's rows for chosen dates
+// directly, as the kassa itself would have written them.
 
 const IN_USE = "2026-11-21T09:00:00.000Z";
 
@@ -293,7 +293,7 @@ it("leaves a day for the next run when its year is closed while the run writes",
   ]);
 });
 
-it("books nothing before the ingebruikname or before 2027", async () => {
+it("books nothing before the ingebruikname or before 2026", async () => {
   // Not in use yet: nothing at all.
   await setInUse(null);
   await sale({ date: "2027-01-04", lines: [[AARDBEITJE, 1]] });
@@ -301,14 +301,15 @@ it("books nothing before the ingebruikname or before 2027", async () => {
   expect(await syncKassa(env.DB, new Date("2027-01-06T12:00:00.000Z"))).toEqual(NOTHING);
   expect(await count("ledger_entries")).toBe(0);
 
-  // In use since 21 November 2026: what was sold or counted in 2026 stays in e-Boekhouden, the opening count too.
+  // In use since 21 November 2026: what was sold the day before and the opening count stay out; the rest of 2026 is in.
   await setInUse(IN_USE);
   await handover({ kind: "opening", countedAt: IN_USE, left: 5000 });
+  await sale({ date: "2026-11-20", lines: [[KOFFIE, 1]] });
   await sale({ date: "2026-12-31", lines: [[KOFFIE, 1]] });
   await handover({ countedAt: "2026-12-31T16:00:00.000Z", expected: 5140, received: 140, left: 5000 });
-  expect(await syncKassa(env.DB, new Date("2027-01-06T12:00:00.000Z"))).toEqual({ days: 1, late: 0, handovers: 1, left: 0 });
-  expect(await refs("kassa_day")).toEqual(["2027-01-04"]);
-  expect(await count("ledger_entries")).toBe(2);
+  expect(await syncKassa(env.DB, new Date("2027-01-06T12:00:00.000Z"))).toEqual({ days: 2, late: 0, handovers: 2, left: 0 });
+  expect(await refs("kassa_day")).toEqual(["2026-12-31", "2027-01-04"]);
+  expect(await count("ledger_entries")).toBe(4);
 
   // Had the kassa come into use on 10 March 2027, the days and counts before it would stay out as well.
   await setInUse("2027-03-10T08:00:00.000Z");
@@ -317,8 +318,8 @@ it("books nothing before the ingebruikname or before 2027", async () => {
   await sale({ date: "2027-03-10", lines: [[KOFFIE, 2]], receivedAt: "2027-03-10T12:00:00.000Z" });
   await handover({ countedAt: "2027-03-09T16:00:00.000Z", expected: 140, received: 140 });
   expect(await syncKassa(env.DB, new Date("2027-03-11T12:00:00.000Z"))).toEqual({ days: 1, late: 0, handovers: 0, left: 0 });
-  expect(await refs("kassa_day")).toEqual(["2027-01-04", "2027-03-10"]);
-  expect(await count("ledger_entries")).toBe(3);
+  expect(await refs("kassa_day")).toEqual(["2026-12-31", "2027-01-04", "2027-03-10"]);
+  expect(await count("ledger_entries")).toBe(5);
 });
 
 it("books a handover with its difference", async () => {
@@ -369,30 +370,32 @@ it("books a handover dated in a closed year on 1 January of the open year", asyn
 });
 
 it("keeps Kas equal to what belongs in the kluisje", async () => {
-  // The kassa came into use with € 50 in the kluisje; a sale in December 2026 is still in e-Boekhouden.
+  // The kassa came into use in November 2025 with € 50 in the kluisje; a sale in December 2025 is before the books and still in e-Boekhouden.
+  const IN_USE = "2025-11-21T09:00:00.000Z";
+  await setInUse(IN_USE);
   await recordHandover(env.DB, { kind: "opening", countedAt: IN_USE, receivedCents: 0, leftCents: 5000, note: null }, new Date(IN_USE));
-  await sale({ date: "2026-12-20", lines: [[KOFFIE, 2]] });
-  const { expectedCashCents } = await getOpening(env.DB, 2027, new Date("2027-01-02T12:00:00.000Z"));
+  await sale({ date: "2025-12-20", lines: [[KOFFIE, 2]] });
+  const { expectedCashCents } = await getOpening(env.DB, 2026, new Date("2026-01-02T12:00:00.000Z"));
   expect(expectedCashCents).toBe(5280);
-  await setOpening(env.DB, 2027, { lines: [{ accountCode: "1000", amountCents: expectedCashCents }], eBoekhoudenEquityCents: null }, new Date("2027-01-02T12:00:00.000Z"));
+  await setOpening(env.DB, 2026, { lines: [{ accountCode: "1000", amountCents: expectedCashCents }], eBoekhoudenEquityCents: null }, new Date("2026-01-02T12:00:00.000Z"));
 
-  await sale({ date: "2027-01-10", lines: [[AARDBEITJE, 2]] });
-  await sale({ date: "2027-01-10", method: "pin", lines: [[ENTREE, 4]] });
-  const lemonade = await sale({ date: "2027-01-10", lines: [[LIMONADE, 2]] });
-  await reverse(lemonade, "2027-01-11");
+  await sale({ date: "2026-01-10", lines: [[AARDBEITJE, 2]] });
+  await sale({ date: "2026-01-10", method: "pin", lines: [[ENTREE, 4]] });
+  const lemonade = await sale({ date: "2026-01-10", lines: [[LIMONADE, 2]] });
+  await reverse(lemonade, "2026-01-11");
   await recordHandover(
     env.DB,
-    { kind: "handover", countedAt: "2027-01-12T16:00:00.000Z", receivedCents: 400, leftCents: 5000, note: "Tekort" },
-    new Date("2027-01-12T16:01:00.000Z"),
+    { kind: "handover", countedAt: "2026-01-12T16:00:00.000Z", receivedCents: 400, leftCents: 5000, note: "Tekort" },
+    new Date("2026-01-12T16:01:00.000Z"),
   );
-  await sale({ date: "2027-01-13", lines: [[KOFFIE, 1], [STATIEGELD, 1]] });
+  await sale({ date: "2026-01-13", lines: [[KOFFIE, 1], [STATIEGELD, 1]] });
 
-  expect(await syncKassa(env.DB, new Date("2027-01-14T12:00:00.000Z"))).toEqual({ days: 3, late: 0, handovers: 1, left: 0 });
-  const kas = (await balancesOn(env.DB, "2027-01-14")).get("1000");
+  expect(await syncKassa(env.DB, new Date("2026-01-14T12:00:00.000Z"))).toEqual({ days: 3, late: 0, handovers: 1, left: 0 });
+  const kas = (await balancesOn(env.DB, "2026-01-14")).get("1000");
   expect(kas).toBe((await getCashState(env.DB)).expectedCents);
   expect(kas).toBe(5000 + 155);
   // What was taken out is on its way to the bank.
-  expect((await balancesOn(env.DB, "2027-01-14")).get("1080")).toBe(400);
+  expect((await balancesOn(env.DB, "2026-01-14")).get("1080")).toBe(400);
 });
 
 it("writes one entry per day when two syncs run at once", async () => {
@@ -569,4 +572,16 @@ it("clears the marker when the mapping is saved, so the next sync looks at every
   expect(await marker()).not.toBeNull();
   await setCategoryAccounts(env.DB, [{ categoryId: "ijs", accountCode: "8012" }]);
   expect(await marker()).toBeNull();
+});
+
+it("books kassa days from the ingebruikname in 2026", async () => {
+  // The gate of the e-Boekhouden import (Task 2) is open.
+  await env.DB.prepare("INSERT INTO ledger_settings (key, value, updated_at) VALUES ('eboekhouden_imported_at', '2026-11-25T12:00:00.000Z', '2026-11-25T12:00:00.000Z')").run();
+  await sale({ date: "2026-11-21", lines: [[AARDBEITJE, 1]] });
+  await syncKassa(env.DB, new Date("2026-11-22T08:00:00.000Z"));
+  expect(amounts(await entry("kassa_day", "2026-11-21"))).toEqual([
+    ["1000", 110],
+    ["8011", -110],
+  ]);
+  expect((await entry("kassa_day", "2026-11-21"))?.description).toBe("Kassa 21-11-2026");
 });

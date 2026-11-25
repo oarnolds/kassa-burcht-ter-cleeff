@@ -176,7 +176,7 @@ it("starts at the earliest year whose depreciation is still to book, in February
   expect(await screen.findByRole("region", { name: "Afschrijving 2027" })).toBeInTheDocument();
   expect(calls("GET").find((call) => call.url.startsWith(`${base}/depreciation`))!.url).toBe(`${base}/depreciation`);
   expect(screen.getByLabelText("Jaar")).toHaveValue("2027");
-  expect(within(screen.getByLabelText("Jaar")).getAllByRole("option").map((option) => option.textContent)).toEqual(["2027", "2028"]);
+  expect(within(screen.getByLabelText("Jaar")).getAllByRole("option").map((option) => option.textContent)).toEqual(["2026", "2027", "2028"]);
 });
 
 it("says to book the year before first, and to undo a later year first", async () => {
