@@ -19,7 +19,7 @@ describe("parseXaf", () => {
     expect(file.year).toBe(2026);
     expect(file.createdOn).toBe("2026-11-25");
     expect(file.accounts).toContainEqual({ id: "4305", name: "Buitenmeubilair" });
-    expect(file.accounts).toHaveLength(24);
+    expect(file.accounts).toHaveLength(25);
 
     expect(file.opening).toHaveLength(15);
     expect(file.opening.slice(0, 5)).toEqual([
@@ -34,7 +34,7 @@ describe("parseXaf", () => {
     // The opening does not balance: that is the old difference, and allowed.
     expect(file.opening.reduce((sum, line) => sum + line.amountCents, 0)).toBe(-1123622);
 
-    expect(file.transactions).toHaveLength(13);
+    expect(file.transactions).toHaveLength(14);
     expect(file.transactions.find((t) => t.nr === "10006")).toEqual({
       journal: "1010",
       nr: "10006",
@@ -47,11 +47,24 @@ describe("parseXaf", () => {
       ],
     });
     expect(file.transactions.find((t) => t.nr === "10004")?.lines.map((l) => l.amountCents)).toEqual([12340, -12340]);
+    // A correction with negative amounts: "-9.99" D is a credit, "-9.99" C a debit.
+    expect(file.transactions.find((t) => t.nr === "10013")?.lines).toEqual([
+      { accountId: "4513", amountCents: -999, description: "Correctie website" },
+      { accountId: "4514", amountCents: 999, description: "Naar diversen" },
+    ]);
   });
 
   it("reads amounts without rounding errors", () => {
     const xml = buildXaf({ bookings: [booking("1010", "10001", "2026-02-01", "Rente", debit("1020", "0.29"), debit("1020", "1.15"), credit("8030", "1.44"))] });
     expect(parseXaf(xml).transactions[0]!.lines.map((l) => l.amountCents)).toEqual([29, 115, -144]);
+  });
+
+  it("reads a negative amount", () => {
+    const amounts = (...lines: ReturnType<typeof debit>[]) =>
+      parseXaf(buildXaf({ bookings: [booking("MEMO", "10001", "2026-02-01", "Correctie", ...lines)] })).transactions[0]!.lines.map((l) => l.amountCents);
+    expect(amounts(debit("4513", "-12.5"), credit("4514", "-12.5"))).toEqual([-1250, 1250]);
+    const zero = amounts(debit("4513", "-0"), credit("4514", "-0.00"), debit("4514", "-0.0"));
+    expect(zero.every((cents) => Object.is(cents, 0))).toBe(true);
   });
 
   it("leaves the customers and suppliers out", () => {
@@ -66,8 +79,10 @@ describe("parseXaf", () => {
     expect(codeOf(() => parseXaf(camtXml))).toBe("not_auditfile");
     expect(codeOf(() => parseXaf("<auditfile><oops"))).toBe("not_auditfile");
     expect(codeOf(() => parseXaf(XAF_2026.replace("XmlauditfileXAF_4.0", "XmlauditfileXAF_3.2")))).toBe("not_auditfile");
-    const comma = buildXaf({ extraBookings: [booking("1010", "10020", "2026-08-01", "Komma", debit("1010", "12,50"), credit("8000", "12,50"))] });
-    expect(codeOf(() => parseXaf(comma))).toBe("not_auditfile");
+    for (const amount of ["12,50", "--5", "+5", "1.234", "1.2.3", "", "-", "5-"]) {
+      const xml = buildXaf({ extraBookings: [booking("1010", "10020", "2026-08-01", "Vreemd bedrag", debit("1010", amount), credit("8000", amount))] });
+      expect(codeOf(() => parseXaf(xml)), amount).toBe("not_auditfile");
+    }
   });
 
   it("refuses a booking that does not balance", () => {

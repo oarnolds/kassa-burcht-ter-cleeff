@@ -54,13 +54,17 @@ function required(el: El | null, pattern = /\S/): string {
 const DATE = /^\d{4}-\d{2}-\d{2}/;
 const date = (el: El | null) => required(el, DATE).slice(0, 10);
 
-/** `amnt` with `amntTp`: "185938.91" D is 18593891, C is -18593891. No floating point. */
+/**
+ * `amnt` with `amntTp`: "185938.91" D is 18593891, C is -18593891. e-Boekhouden sometimes writes a negative amount
+ * ("-9.99" D is -999, "-9.99" C is 999). No floating point, and "-0" is 0, not -0.
+ */
 function signedCents(line: El): number {
-  const m = /^(\d+)(?:\.(\d{1,2}))?$/.exec(text(path(line, "amnt")));
+  const m = /^(-?)(\d+)(?:\.(\d{1,2}))?$/.exec(text(path(line, "amnt")));
   const type = text(path(line, "amntTp"));
   if (!m || (type !== "D" && type !== "C")) throw new XafError("not_auditfile");
-  const cents = Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0"));
-  return type === "D" ? cents : 0 - cents;
+  const cents = Number(m[2]) * 100 + Number((m[3] ?? "").padEnd(2, "0"));
+  const written = m[1] === "-" ? 0 - cents : cents;
+  return type === "D" ? written : 0 - written;
 }
 
 function transactionOf(journal: string, el: El): XafTransaction {

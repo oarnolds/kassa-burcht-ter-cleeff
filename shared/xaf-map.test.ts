@@ -30,6 +30,7 @@ describe("mapXaf", () => {
       ["1890", "1700"],
       ["4305", "4304"],
       ["4513", "4513"],
+      ["4514", "4514"],
       ["8010", "8010"],
       ["8011", "8011"],
       ["8012", "8012"],
@@ -59,6 +60,10 @@ describe("mapXaf", () => {
       { accountCode: "1010", amountCents: 65000, note: null },
       { accountCode: "8010", amountCents: -50000, note: "Zaalhuur" },
       { accountCode: "8012", amountCents: -15000, note: "Entree groep" },
+    ]);
+    expect(entry(base, "MEMO:10013")?.lines).toEqual([
+      { accountCode: "4513", amountCents: -999, note: null },
+      { accountCode: "4514", amountCents: 999, note: "Naar diversen" },
     ]);
     const lines = [debit("4304", "10", "Hout"), debit("4305", "5", "Hout"), debit("4305", "2", "Schroeven"), credit("1010", "17")];
     const merged = withBookings(booking("1010", "10020", "2026-08-01", "Bouwmarkt", ...lines));
@@ -123,6 +128,7 @@ describe("mapXaf", () => {
       "1012:10010",
       "1010:10011",
       "1000:10012",
+      "MEMO:10013",
     ]);
 
     const sameDay = withBookings(

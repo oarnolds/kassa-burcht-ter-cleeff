@@ -46,6 +46,7 @@ const LEDGER: { id: string; name: string }[] = [
   { id: "4304", name: "Terrein" },
   { id: "4305", name: "Buitenmeubilair" },
   { id: "4513", name: "Website" },
+  { id: "4514", name: "Diversen" },
   { id: "8000", name: "Contributie" },
   { id: "8010", name: "Verhuur" },
   { id: "8011", name: "Kiosk" },
@@ -84,7 +85,8 @@ const OPENING: { account: string; amount: string; type: "D" | "C" }[] = [
 
 /**
  * The bookings of 2026, numbered in date order. The file lists them per journal (1000, 1010, 1012, MEMO), so not in
- * date order. 10001 and 10002 merge two old accounts into one new one; 10005 and 10008 fall away; 10013 is from the
+ * date order. 10001 and 10002 merge two old accounts into one new one; 10005 and 10008 fall away; 10013 corrects with
+ * negative amounts, as e-Boekhouden sometimes writes them (-9.99 D is a credit, -9.99 C a debit); 10014 is from the
  * overstap on.
  */
 export const XAF_BOOKINGS: XafBooking[] = [
@@ -116,18 +118,22 @@ export const XAF_BOOKINGS: XafBooking[] = [
   booking("1012", "10010", "2026-07-09", "Webhosting", debit("4513", "114.2"), credit("1012", "114.2")),
   booking("1010", "10011", "2026-11-02", "Mollie uitbetaling 05665564.2611.01", debit("1010", "412.35"), credit("8011", "412.35")),
   booking("1000", "10012", "2026-11-22", "Entree zaterdag", debit("1000", "37.5"), credit("8012", "37.5")),
-  booking("1010", "10013", "2026-11-25", "Mollie uitbetaling 05665564.2611.02", debit("1010", "98.5"), credit("8011", "98.5")),
+  booking("MEMO", "10013", "2026-11-23", "Correctie website", debit("4513", "-9.99"), credit("4514", "-9.99", "Naar diversen")),
+  booking("1010", "10014", "2026-11-25", "Mollie uitbetaling 05665564.2611.02", debit("1010", "98.5"), credit("8011", "98.5")),
 ];
 
 const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const el = (name: string, value: string | number) => `<${name}>${escape(String(value))}</${name}>`;
 
+/** Signed by the amount's own minus only; the totals add the D and the C amounts each as written. */
 const centsOf = (amount: string) => {
-  const [whole, part = ""] = amount.split(".");
-  return Number(whole) * 100 + Number(part.padEnd(2, "0"));
+  const [whole, part = ""] = amount.replace(/^-/, "").split(".");
+  const cents = Number(whole) * 100 + Number(part.padEnd(2, "0"));
+  return amount.startsWith("-") ? 0 - cents : cents;
 };
 /** As the file writes a total: without trailing zeros in the decimals. */
-const amountText = (cents: number) => {
+const amountText = (cents: number): string => {
+  if (cents < 0) return `-${amountText(0 - cents)}`;
   const rest = String(cents % 100).padStart(2, "0").replace(/0+$/, "");
   return rest ? `${Math.floor(cents / 100)}.${rest}` : String(Math.floor(cents / 100));
 };
