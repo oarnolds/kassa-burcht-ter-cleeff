@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ACCOUNTS } from "./accounts";
+import { PAYOUT_REFERENCE } from "./ledger-types";
 import { booking, buildXaf, credit, debit, XAF_2026 } from "./fixtures/xaf-2026";
 import { parseXaf, type XafFile } from "./xaf";
 import { mapXaf } from "./xaf-map";
@@ -200,6 +201,15 @@ describe("mapXaf", () => {
       booking("1010", "10023", "2026-11-04", "Factuur 105665564.2611.03 en 05665564.2611.041", debit("1010", "2"), credit("8040", "2")),
     );
     expect(plan(file).payouts).toEqual(["05665564.2603.01", "05665564.2611.01"]);
+  });
+
+  it("finds two references side by side, with a pattern older Safari can read", () => {
+    // A lookbehind is a syntax error before Safari 16.4, for the whole chunk that holds it.
+    expect(PAYOUT_REFERENCE.source).not.toContain("(?<");
+    const file = withBookings(
+      booking("1010", "10020", "2026-03-02", "05665564.2603.01 05665564.2603.02", debit("1010", "50"), credit("8011", "50")),
+    );
+    expect(plan(file).payouts).toEqual(["05665564.2603.01", "05665564.2603.02", "05665564.2611.01"]);
   });
 
   it("gives e-Boekhouden's equity and the balances at the switch", () => {

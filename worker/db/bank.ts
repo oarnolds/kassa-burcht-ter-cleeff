@@ -540,7 +540,7 @@ type Work = { statements: D1PreparedStatement[]; books: boolean };
 
 /** The reference of a payout of Mollie on a credit of ING betaal, or null. */
 const payoutReference = (row: OpenRow): string | null =>
-  row.account_code === PAYOUT_ACCOUNT && row.amount_cents > 0 ? (PAYOUT_REFERENCE.exec(row.description)?.[0] ?? null) : null;
+  row.account_code === PAYOUT_ACCOUNT && row.amount_cents > 0 ? (PAYOUT_REFERENCE.exec(row.description)?.[1] ?? null) : null;
 
 /**
  * Lines that book themselves. A payout of Mollie on ING betaal, by the reference in its description: known with the

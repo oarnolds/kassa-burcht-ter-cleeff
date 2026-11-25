@@ -51,7 +51,7 @@ const byDateJournalNr = (a: XafTransaction, b: XafTransaction) =>
 
 function payoutReferences(t: XafTransaction): string[] {
   const all = new RegExp(PAYOUT_REFERENCE.source, "g");
-  return [t.description, ...t.lines.map((l) => l.description)].flatMap((text) => [...text.matchAll(all)].map((m) => m[0]));
+  return [t.description, ...t.lines.map((l) => l.description)].flatMap((text) => [...text.matchAll(all)].map((m) => m[1]!));
 }
 
 export function mapXaf(file: XafFile, accounts: LedgerAccount[], options: { kassaSince: string | null; choices: Record<string, string> }): XafPlan {

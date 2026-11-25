@@ -56,10 +56,11 @@ export const OVERSTAP = "2026-11-25";
 /** The first day of Mollie payments, refunds and chargebacks in the app; earlier ones are in payouts e-Boekhouden booked. */
 export const MOLLIE_START = "2026-11-01";
 /**
- * A Mollie payout's reference as ING writes it in a line's description. Bounded by digits, not words: ING may glue a
- * letter to it ("T05665564.2611.01"), and a longer run of digits is no reference.
+ * A Mollie payout's reference as ING writes it in a line's description; the reference is capture group 1. Bounded by
+ * digits, not words: ING may glue a letter to it ("T05665564.2611.01"), and a longer run of digits is no reference.
+ * No lookbehind for the digit before it: Safari before 16.4 cannot parse one.
  */
-export const PAYOUT_REFERENCE = /(?<!\d)\d{7,8}\.\d{4}\.\d{2}(?!\d)/;
+export const PAYOUT_REFERENCE = /(?:^|\D)(\d{7,8}\.\d{4}\.\d{2})(?!\d)/;
 
 /** Where a money account's lines come from. 1000 follows the kassa and 1030 Mollie; a bank is a file or Enable Banking. */
 export type MoneySource = "file" | "enable_banking" | "kassa" | "mollie";
