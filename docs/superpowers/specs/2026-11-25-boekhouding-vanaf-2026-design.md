@@ -1,7 +1,7 @@
 # Ontwerp: de boekhouding begint op 1 januari 2026
 
 Datum: 25 november 2026
-Status: concept, nog niet goedgekeurd
+Status: goedgekeurd door de penningmeester op 25 november 2026, met één wijziging: de Revolut-rekening komt niet in de app (§7.1)
 
 Dit ontwerp wijzigt `2026-11-23-boekhouding-design.md` (hierna: het ontwerp van 23-11). Dat ontwerp is gebouwd en staat live vanaf `main` (`a6f0856`), inclusief Eerdere jaren en de begroting. Waar dit ontwerp niets zegt, blijft het ontwerp van 23-11 gelden.
 
@@ -126,7 +126,7 @@ Volgens de lijst `formerly` van het rekeningschema (ontwerp van 23-11, §8), met
 | 0130, 0135, 4601 | 0130, 0135, 4601 | In de beginbalans niet uit het bestand, maar uit de toestellenlijst (§8). In 2026 staat er tot en met 24-11 geen boeking op, behalve de overboeking van 0800 hieronder. Staat er in een later bestand toch een, dan kan "Overnemen" niet (§7.2). |
 | 0800 Reservering vervanging speeltoestellen | 0135 | De enige boeking (20-05-2026: 0800 naar 0135, € 73,70) valt daardoor weg. De beginbalans van 0800 gaat op in het eigen vermogen. |
 | 1000, 1010, 1011, 1020, 1021, 1080, 1300 | dezelfde | |
-| 1012 Revolut | 1012 Revolut (nieuw, zie onder) | |
+| 1012 Revolut | 1080 Kruisposten | Revolut komt niet in de app (zie onder). |
 | 1590 | 1300 | |
 | 1890 | 1700 | |
 | 1400 | 1400 | In de beginbalans rekent de app hem uit (§9). |
@@ -134,7 +134,7 @@ Volgens de lijst `formerly` van het rekeningschema (ontwerp van 23-11, §8), met
 | 4305 → 4304, 4307 → 4306, 4790 → 4514, 4810 → 4502 | | samengevoegd |
 | overige kosten en opbrengsten | hetzelfde nummer | |
 
-**1012 Revolut** heeft in 2026 zeven boekingen (wat kleine ontvangsten en betalingen voor de website); het saldo is aan het begin en eind nul. Het komt als eigen rekening "Revolut" in het rekeningschema, op de balans, zonder bankkoppeling. Zo blijft voor de kascommissie zichtbaar waar die betalingen liepen. (Keuze van de ontwerper; zie §14.)
+**1012 Revolut** heeft in 2026 zeven boekingen: wat kleine ontvangsten (8012, samen € 4,20), betalingen voor de website (4513, samen € 114,20) en één overboeking van € 110 vanaf ING via 1080. Het saldo is aan het begin en eind nul. De penningmeester wil Revolut niet in de app: "we hebben daarmee getest maar willen deze niet meer gebruiken" (25 november 2026). Er komt dus geen rekening 1012. De regels op 1012 gaan naar 1080 Kruisposten. Zo blijven de opbrengst en de kosten in 2026 staan, valt de overboeking weg (beide kanten op 1080), en staat 1080 op 24-11 gewoon op nul. Het overzicht noemt bij 1012: "Revolut: niet in de app, via 1080".
 
 ### 7.2 Wat niet past
 
@@ -212,7 +212,7 @@ Een uitbetaling die vóór 25-11 door Mollie is verstuurd maar pas vanaf 25-11 o
 ## 14. Keuzes
 
 **Gemaakt door de ontwerper** (de penningmeester kan ze bij het lezen corrigeren):
-1. 1012 Revolut wordt een eigen balansrekening zonder bankkoppeling (§7.1). Het kan ook op 1080 Kruisposten, maar dan lijkt het geld onderweg.
+1. Revolut (1012) komt niet in de app, op verzoek van de penningmeester; de zeven boekingen van 2026 lopen via 1080 Kruisposten, zodat opbrengst en kosten blijven staan (§7.1). Weglaten kan niet: dan verdwijnen € 114,20 kosten en € 4,20 opbrengst, en blijft er € 110 op 1080 staan.
 2. 0800 gaat naar 0135; de beginbalans van 0800 (€ 73,70) en het verschil op 0130 en 0135 gaan op in het eigen vermogen (§7.1, §8).
 3. 8011 en 8012 houden hun nummer; het jaaroverzicht legt uit wat ze vóór 21-11 betekenden (§13). Verdelen kan niet: e-Boekhouden weet niet wat er verkocht is.
 4. Een verschil in de kas bij de start boekt de penningmeester zelf met een gewone boeking; de app toont het (§10).
@@ -226,7 +226,7 @@ Een uitbetaling die vóór 25-11 door Mollie is verstuurd maar pas vanaf 25-11 o
 - Hoe Mollie bepaalt welke betalingen al in e-Boekhouden zitten (§12).
 - Het formaat van de boekingen die de browser naar de Worker stuurt, en in hoeveel verzoeken (binnen 10 ms en 50 databaseaanroepen per verzoek; 312 boekingen).
 - Welke kolom van "Vaste activa 2026" de afschrijvingen tot 1 januari zijn (§8).
-- Of de nieuwe rekening 1012 en de bron `eboekhouden` een migratie vragen, en hoe die eruitziet.
+- Of de nieuwe bron `eboekhouden` een migratie vraagt, en hoe die eruitziet.
 - Hoe een live al bestaande beginbalans 2027, toestellenlijst of vergelijkingsjaar 2026 wordt opgevangen (§8, §9, §13). Live wordt alleen gelezen of veranderd met de ja van de penningmeester.
 
 ## 15. Live zetten
