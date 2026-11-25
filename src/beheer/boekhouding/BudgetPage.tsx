@@ -23,7 +23,7 @@ import { useAdminData } from "../useAdmin";
 import { BudgetEditor } from "./BudgetEditor";
 import { MONTH_NAMES, MONTH_SHORT, budgetGrid, joined, missingMonthsText, monthHead, ruleText, sourceText, sumOf, type GridRow } from "./budget-grid";
 import { saveFile } from "./download";
-import { FIRST_LEDGER_YEAR, explainWrite, ledgerPath, useLedgerWrites } from "./ledger-api";
+import { FIRST_BUDGET_YEAR, FIRST_LEDGER_YEAR, explainWrite, ledgerPath, useLedgerWrites } from "./ledger-api";
 import { useBusy } from "./useBusy";
 
 const DEPRECIATION = "4601";
@@ -727,7 +727,7 @@ function YearBudget({ year, chart, budget, onChanged }: { year: number; chart: L
  */
 export function BudgetPage() {
   const years = budgetYears(today());
-  const [year, setYear] = useState(() => Math.max(Number(today().slice(0, 4)), FIRST_LEDGER_YEAR));
+  const [year, setYear] = useState(() => Math.max(Number(today().slice(0, 4)), FIRST_BUDGET_YEAR));
   const accounts = useAdminData<LedgerAccount[]>(ledgerPath.accounts);
   const budget = useAdminData<Budget>(ledgerPath.budget(year));
   return (

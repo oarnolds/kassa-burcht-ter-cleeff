@@ -30,8 +30,6 @@ test("makes the budget from a Mutaties file, changes a line, and shows the grid 
   await page.getByRole("navigation", { name: "Beheer" }).getByRole("link", { name: "Boekhouding", exact: true }).click();
   await page.getByRole("navigation", { name: "Boekhouding" }).getByRole("link", { name: "Begroting", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Begroting", exact: true })).toBeVisible();
-  // The page opens on 2026, the first year of the books; the budget is made for 2027.
-  await page.getByRole("combobox", { name: "Jaar", exact: true }).selectOption("2027");
 
   // A made-up year of mutations, read in the browser.
   const make = page.getByRole("region", { name: "Begroting 2027 maken" });

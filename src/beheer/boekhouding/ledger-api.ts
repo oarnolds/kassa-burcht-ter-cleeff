@@ -69,6 +69,8 @@ export const comparisonRoute = (year: number): string => `/beheer/boekhouding/ve
 
 /** The first year the app keeps the books; the years before it are comparison figures only. */
 export const FIRST_LEDGER_YEAR = Number(LEDGER_START.slice(0, 4));
+/** The year the Begroting page opens on at the earliest: spec §13 says a budget for the first year of the books is not needed. */
+export const FIRST_BUDGET_YEAR = FIRST_LEDGER_YEAR + 1;
 /** Why a year from FIRST_LEDGER_YEAR on takes no comparison figures. */
 export const FROM_LEDGER = `Vanaf ${FIRST_LEDGER_YEAR} staan de cijfers in de boekhouding zelf.`;
 
