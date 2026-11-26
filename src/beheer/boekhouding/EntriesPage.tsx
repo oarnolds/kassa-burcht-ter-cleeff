@@ -120,7 +120,8 @@ export function EntriesPage() {
               <p className="px-2 text-lg text-ink/70 sm:px-3">Geen boekingen gevonden.</p>
             ) : (
               <ul>
-                {list.map((entry) => (
+                {/* The Worker sends them oldest first (the jaaroverzicht needs that order); here the newest is on top. */}
+                {[...list].reverse().map((entry) => (
                   <li key={entry.id} className="border-t border-sand first:border-t-0">
                     <Link to={entryRoute(entry.id)} className="flex min-h-11 flex-wrap items-baseline gap-x-4 gap-y-1 px-2 py-3 active:bg-sand sm:px-3">
                       <span className="w-10 font-semibold tabular-nums">{entry.number}</span>

@@ -19,6 +19,26 @@ it("lists the entries of a year with their amount and a mark when changed", asyn
   expect(calls("GET").some((c) => c.url.startsWith(`${base}/entries?year=2026`))).toBe(true);
 });
 
+it("shows the newest entry at the top", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-12-01T10:00:00.000Z") });
+  mockLoggedIn();
+  mockApi({
+    [`${base}/accounts`]: accounts,
+    // As the Worker sends them: by date and number, oldest first.
+    [`${base}/entries`]: [
+      entry({ id: "e1", number: 1, date: "2026-01-01", description: "Beginbalans" }),
+      entry({ id: "e2", number: 2, date: "2026-03-05", description: "Huur maart" }),
+      entry({ id: "e3", number: 3, date: "2026-03-05", description: "Huur april" }),
+      entry({ id: "e4", number: 4, date: "2026-11-26", description: "ING-kosten" }),
+    ],
+  });
+  renderAt("/beheer/boekhouding/boekingen");
+  const list = within(await screen.findByRole("region", { name: "Boekingen 2026" }));
+  await list.findByRole("link", { name: /ING-kosten/ });
+  const order = ["ING-kosten", "Huur april", "Huur maart", "Beginbalans"];
+  expect(list.getAllByRole("link").map((link) => order.find((name) => link.textContent?.includes(name)))).toEqual(order);
+});
+
 it("searches with the filters", async () => {
   mockLoggedIn();
   mockApi({ [`${base}/accounts`]: accounts, [`${base}/entries`]: [] });
