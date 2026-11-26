@@ -39,6 +39,24 @@ it("shows the newest entry at the top", async () => {
   expect(list.getAllByRole("link").map((link) => order.find((name) => link.textContent?.includes(name)))).toEqual(order);
 });
 
+it("marks an entry that has an attachment, with how many", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-12-01T10:00:00.000Z") });
+  mockLoggedIn();
+  const attachment = (id: string) => ({ id, filename: `${id}.pdf`, contentType: "application/pdf", sizeBytes: 100, uploadedAt: "2026-11-26T10:00:00.000Z" });
+  mockApi({
+    [`${base}/accounts`]: accounts,
+    [`${base}/entries`]: [
+      entry({ id: "e1", number: 1, description: "Zonder bon" }),
+      entry({ id: "e2", number: 2, description: "Met bon", attachments: [attachment("a1")] }),
+      entry({ id: "e3", number: 3, description: "Twee bonnen", attachments: [attachment("a2"), attachment("a3")] }),
+    ],
+  });
+  renderAt("/beheer/boekhouding/boekingen");
+  expect(within(await screen.findByRole("link", { name: /Met bon/ })).getByText("1 bijlage")).toBeInTheDocument();
+  expect(within(screen.getByRole("link", { name: /Twee bonnen/ })).getByText("2 bijlagen")).toBeInTheDocument();
+  expect(within(screen.getByRole("link", { name: /Zonder bon/ })).queryByText(/bijlage/)).toBeNull();
+});
+
 it("searches with the filters", async () => {
   mockLoggedIn();
   mockApi({ [`${base}/accounts`]: accounts, [`${base}/entries`]: [] });

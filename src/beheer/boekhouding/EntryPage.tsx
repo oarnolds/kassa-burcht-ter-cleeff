@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import type { Asset, Entry, EntryChange, EntryLine, LedgerAccount } from "../../../shared/ledger-types";
 import { formatEuro } from "../../../shared/money";
 import { businessDate, formatDateNl, localTime } from "../../../shared/time";
@@ -35,6 +35,7 @@ function changeText(change: EntryChange, names: Map<string, string>): string {
 
 function EntryView({ entry, accounts, history, reload }: { entry: Entry; accounts: LedgerAccount[]; history: EntryChange[]; reload(): void }) {
   const api = useLedgerWrites();
+  const navigate = useNavigate();
   const [busy, run] = useBusy();
   const [editing, setEditing] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -71,7 +72,11 @@ function EntryView({ entry, accounts, history, reload }: { entry: Entry; account
 
   return (
     <>
-      <PageTitle>{`Boeking ${entry.number}`}</PageTitle>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <PageTitle>{`Boeking ${entry.number}`}</PageTitle>
+        {/* Back to the overview, as the penningmeester asked: after adding a receipt he goes on with the next entry. */}
+        <Button onClick={() => navigate("/beheer/boekhouding/boekingen")}>Sluiten</Button>
+      </div>
       <p className="mt-2 text-lg text-ink/70">{`${formatDateNl(entry.date)} · ${entry.description}`}</p>
       {!entry.editable && <p className="mt-2 text-ink/70">Deze boeking kan niet worden aangepast.</p>}
       {entry.source === "eboekhouden" && (

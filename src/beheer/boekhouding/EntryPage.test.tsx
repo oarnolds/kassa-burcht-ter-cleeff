@@ -28,6 +28,15 @@ it("shows what an entry was before it was changed", async () => {
   expect(screen.getByText(/bijlage verborgen: bon.pdf/)).toBeInTheDocument();
 });
 
+it("closes with Sluiten to the list of Boekingen", async () => {
+  open(entry(), [], { [`${base}/entries`]: [entry()] });
+  renderAt(page);
+  expect(await screen.findByRole("heading", { name: /Boeking 7/ })).toBeInTheDocument();
+  await tap("Sluiten");
+  expect(await screen.findByRole("region", { name: /^Boekingen \d{4}$/ })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: /Boeking 7/ })).toBeNull();
+});
+
 it("offers Wijzigen and Leegmaken only for an editable entry", async () => {
   open(entry({ editable: false, source: "kassa_day" }));
   renderAt(page);

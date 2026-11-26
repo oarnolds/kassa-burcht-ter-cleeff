@@ -4,7 +4,7 @@ import { LEDGER_START, type Entry, type LedgerAccount } from "../../../shared/le
 import { formatEuro } from "../../../shared/money";
 import { formatDateNl } from "../../../shared/time";
 import { Button } from "../../ui/Button";
-import { Loaded, PageTitle, Section, field, today } from "../parts";
+import { Loaded, PageTitle, Section, count, field, today } from "../parts";
 import { useAdminData } from "../useAdmin";
 import { AmountField } from "./AmountField";
 import { EntryForm } from "./EntryForm";
@@ -127,6 +127,9 @@ export function EntriesPage() {
                       <span className="w-10 font-semibold tabular-nums">{entry.number}</span>
                       <span className="tabular-nums text-ink/70">{formatDateNl(entry.date)}</span>
                       <span className="min-w-0 flex-1 text-lg">{entry.description}</span>
+                      {entry.attachments.length > 0 && (
+                        <span className="rounded-full bg-sand px-3 py-1 text-sm font-semibold">{count(entry.attachments.length, "bijlage", "bijlagen")}</span>
+                      )}
                       {entry.changed && <span className="rounded-full bg-sand px-3 py-1 text-sm font-semibold">gewijzigd</span>}
                       <strong className="tabular-nums">{formatEuro(amountOf(entry))}</strong>
                     </Link>
