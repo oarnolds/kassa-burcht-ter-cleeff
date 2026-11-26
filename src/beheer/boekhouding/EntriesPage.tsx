@@ -126,7 +126,9 @@ export function EntriesPage() {
                 {/* The Worker sends them oldest first (the jaaroverzicht needs that order); here the newest is on top. */}
                 {[...list].reverse().map((entry) => (
                   <li key={entry.id} className="border-t border-sand first:border-t-0">
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-2 sm:px-3">
+                    {/* Three fixed columns from tablet width on: the entry, the button for its attachment, the amount. Every button
+                        is as wide as the next, so they stand under one another, and the amounts end at one edge. */}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-2 sm:grid sm:grid-cols-[minmax(0,1fr)_11rem_8rem] sm:px-3">
                       <Link to={entryRoute(entry.id)} className="flex min-h-11 min-w-0 flex-1 flex-wrap items-baseline gap-x-4 gap-y-1 py-3 active:bg-sand">
                         <span className="w-10 font-semibold tabular-nums">{entry.number}</span>
                         <span className="tabular-nums text-ink/70">{formatDateNl(entry.date)}</span>
@@ -135,19 +137,19 @@ export function EntriesPage() {
                       </Link>
                       {/* Directly left of the amount, as the penningmeester asked: the file, or the way to find it. */}
                       {entry.attachments.length === 1 ? (
-                        <a className={pillLink} href={ledgerPath.attachment(entry.attachments[0]!.id)} target="_blank" rel="noopener">
+                        <a className={`${pillLink} sm:w-full`} href={ledgerPath.attachment(entry.attachments[0]!.id)} target="_blank" rel="noopener">
                           Bijlage
                         </a>
                       ) : entry.attachments.length > 1 ? (
-                        <Link className={pillLink} to={entryRoute(entry.id)}>
+                        <Link className={`${pillLink} sm:w-full`} to={entryRoute(entry.id)}>
                           {count(entry.attachments.length, "bijlage", "bijlagen")}
                         </Link>
                       ) : (
-                        <Button aria-expanded={searching === entry.id} onClick={() => setSearching(searching === entry.id ? null : entry.id)}>
+                        <Button className="sm:w-full" aria-expanded={searching === entry.id} onClick={() => setSearching(searching === entry.id ? null : entry.id)}>
                           Zoek bijlage
                         </Button>
                       )}
-                      <strong className="tabular-nums">{formatEuro(amountOf(entry))}</strong>
+                      <strong className="tabular-nums sm:text-right">{formatEuro(amountOf(entry))}</strong>
                     </div>
                     {searching === entry.id && (
                       <GmailSearch
