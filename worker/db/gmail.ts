@@ -172,6 +172,33 @@ export function nameWords(description: string): string[] {
   return words;
 }
 
+/** After these words an invoice number usually follows: "Factuur 2026-1234", "Factuurnr. 1000778", "Invoice #A1B2C3". */
+const AFTER_WORD = /\b(?:factuur(?:nr|nummer)?|fact|nota|invoice|inv)\b\.?\s*(?:(?:nr|no|nummer|number)\b\.?)?\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9./-]*[A-Za-z0-9])/gi;
+const DATE = /^(?:\d{1,2}-\d{1,2}-\d{2,4}|\d{4}-\d{2}-\d{2})$/;
+const IBAN = /^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/;
+/** A payment code such as Mollie's: long hex. */
+const HEX = /^[0-9a-f]{16,}$/i;
+const digitsIn = (text: string) => (text.match(/\d/g) ?? []).length;
+const looksLikeNumber = (token: string) =>
+  token.length <= 25 && digitsIn(token) >= 3 && !DATE.test(token) && !IBAN.test(token) && !HEX.test(token) && !/,\d{2}$/.test(token);
+
+/**
+ * Up to two invoice numbers from the description: what follows "Factuur", "Factuurnr", "Nota" or "Invoice", and any word
+ * of letters and digits such as "INV-2026-0042". Not a date, an IBAN, an amount or a long payment code.
+ */
+export function invoiceNumbers(description: string): string[] {
+  const found: string[] = [];
+  const keep = (token: string) => {
+    if (looksLikeNumber(token) && !found.includes(token)) found.push(token);
+  };
+  for (const match of description.matchAll(AFTER_WORD)) keep(match[1]!);
+  for (const raw of description.split(/[\s,;:()]+/)) {
+    const token = raw.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
+    if (/[A-Za-z]/.test(token) && /^[A-Za-z0-9][A-Za-z0-9/-]*$/.test(token)) keep(token);
+  }
+  return found.slice(0, 2);
+}
+
 /** The entry's amount (its debit side) as an invoice writes it: `1.234,56`, and `1234.56` for one in English. */
 function amountForms(entry: Entry): string[] {
   const cents = entry.lines.reduce((total, line) => total + Math.max(line.amountCents, 0), 0);
@@ -182,14 +209,17 @@ function amountForms(entry: Entry): string[] {
 
 const gmailDay = (date: string) => date.replaceAll("-", "/");
 
-/** The searches, most precise first: the amount, then all the name's words, then any of them. All with a file, around the date. */
-export function searchQueries(entry: Entry): string[] {
+type Search = { q: string; kind: "number" | "amount" | "name" };
+
+/** The searches, most precise first: the invoice number, the amount, all the name's words, any of them. All with a file, around the date. */
+export function searchQueries(entry: Entry): Search[] {
   const around = `has:attachment after:${gmailDay(shiftDate(entry.date, -DAYS_BEFORE))} before:${gmailDay(shiftDate(entry.date, DAYS_AFTER + 1))}`;
   const words = nameWords(entry.description);
-  const queries = [`${around} "${amountForms(entry)[0]}"`];
-  if (words.length > 0) queries.push(`${around} ${words.join(" ")}`);
-  if (words.length > 1) queries.push(`${around} {${words.join(" ")}}`);
-  return queries;
+  const searches: Search[] = invoiceNumbers(entry.description).map((number) => ({ q: `${around} "${number}"`, kind: "number" }));
+  searches.push({ q: `${around} "${amountForms(entry)[0]}"`, kind: "amount" });
+  if (words.length > 0) searches.push({ q: `${around} ${words.join(" ")}`, kind: "name" });
+  if (words.length > 1) searches.push({ q: `${around} {${words.join(" ")}}`, kind: "name" });
+  return searches;
 }
 
 /** A file the boekhouding keeps: PDF, JPEG or PNG. Gmail often calls a PDF `application/octet-stream`; then the name decides. */
@@ -205,22 +235,27 @@ function typeOf(part: GmailPart): string | null {
   return null;
 }
 
-/** The files in Gmail that may belong with an entry: the mail with the amount first, then PDFs, then the name, then the closest date. */
+/** The files in Gmail that may belong with an entry: the invoice number first, then the amount, PDFs, the name, the closest date. */
 export async function findFiles(env: Env, entryId: string): Promise<GmailCandidate[]> {
   const entry = await getEntry(env.DB, entryId);
   if (!entry) throw new LedgerError("not_found", 404);
   const access = await accessFor(env);
   const words = nameWords(entry.description).map((word) => word.toLowerCase());
   const amounts = amountForms(entry);
+  const numbers = invoiceNumbers(entry.description).map((number) => number.toLowerCase());
   try {
     const ids: string[] = [];
-    // Gmail also searches the text inside a PDF: what the first search (the amount) finds has the amount, wherever it is.
-    let withAmount: string[] = [];
-    for (const [index, q] of searchQueries(entry).entries()) {
+    // Gmail also searches the text inside a PDF: what the number or the amount search finds has it, wherever it is.
+    const withNumber = new Set<string>();
+    const withAmount = new Set<string>();
+    for (const search of searchQueries(entry)) {
       if (ids.length >= MAX_MESSAGES) break;
-      const hits = await searchMessages(access, q, MAX_MESSAGES);
-      if (index === 0) withAmount = hits;
-      for (const id of hits) if (!ids.includes(id)) ids.push(id);
+      const hits = await searchMessages(access, search.q, MAX_MESSAGES);
+      for (const id of hits) {
+        if (search.kind === "number") withNumber.add(id);
+        if (search.kind === "amount") withAmount.add(id);
+        if (!ids.includes(id)) ids.push(id);
+      }
     }
     // One mail that cannot be read (gone since the search) does not spoil the others; a refusal of the link does.
     const reads = await Promise.allSettled(ids.slice(0, MAX_MESSAGES).map((id) => getMessage(access, id)));
@@ -237,10 +272,12 @@ export async function findFiles(env: Env, entryId: string): Promise<GmailCandida
         const sizeBytes = part.body?.size ?? 0;
         if (!contentType || !part.partId || sizeBytes > MAX_ATTACHMENT_BYTES) return [];
         const filename = part.filename!;
-        const amountFound = withAmount.includes(message.id) || amounts.some((amount) => `${message.snippet ?? ""} ${subject} ${filename}`.includes(amount));
+        const text = `${message.snippet ?? ""} ${subject} ${filename}`;
+        const amountFound = withAmount.has(message.id) || amounts.some((amount) => text.includes(amount));
+        const numberFound = withNumber.has(message.id) || numbers.some((number) => text.toLowerCase().includes(number));
         const named = words.filter((word) => `${from} ${subject} ${filename}`.toLowerCase().includes(word)).length;
         const distance = Math.abs(Date.parse(date) - Date.parse(entry.date)) / DAY_MS;
-        const candidate: GmailCandidate = { messageId: message.id, partId: part.partId, date, from, subject, filename, contentType, sizeBytes, amountFound };
+        const candidate: GmailCandidate = { messageId: message.id, partId: part.partId, date, from, subject, filename, contentType, sizeBytes, amountFound, numberFound };
         return [{ candidate, named, distance }];
       });
     });
@@ -248,7 +285,11 @@ export async function findFiles(env: Env, entryId: string): Promise<GmailCandida
     const pdf = (one: GmailCandidate) => Number(one.contentType === "application/pdf");
     found.sort(
       (a, b) =>
-        Number(b.candidate.amountFound) - Number(a.candidate.amountFound) || pdf(b.candidate) - pdf(a.candidate) || b.named - a.named || a.distance - b.distance,
+        Number(b.candidate.numberFound) - Number(a.candidate.numberFound) ||
+        Number(b.candidate.amountFound) - Number(a.candidate.amountFound) ||
+        pdf(b.candidate) - pdf(a.candidate) ||
+        b.named - a.named ||
+        a.distance - b.distance,
     );
     return found.slice(0, MAX_CANDIDATES).map((one) => one.candidate);
   } catch (error) {

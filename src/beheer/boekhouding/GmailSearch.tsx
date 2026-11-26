@@ -59,6 +59,7 @@ export function GmailSearch({ entryId, onAdded, onClose }: { entryId: string; on
                 <p className="font-semibold break-all">{candidate.filename}</p>
                 <p className="text-sm text-ink/70">{`${formatDateNl(candidate.date)} · ${candidate.from} · ${candidate.subject}`}</p>
               </div>
+              {candidate.numberFound && <span className="rounded-full bg-sand px-3 py-1 text-sm font-semibold">factuurnummer gevonden</span>}
               {candidate.amountFound && <span className="rounded-full bg-sand px-3 py-1 text-sm font-semibold">bedrag gevonden</span>}
               <Button variant="primary" disabled={adding} onClick={() => void add(candidate)}>
                 Toevoegen

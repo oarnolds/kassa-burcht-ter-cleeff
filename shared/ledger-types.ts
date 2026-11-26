@@ -296,7 +296,10 @@ export const YEAR_PAGE = 500;
 /** The Gmail link for "Zoek bijlage". `not_configured`: the Google keys are not set as Worker secrets yet. */
 export type GmailState = { status: "not_configured" | "none" | "active" | "expired"; email: string | null };
 
-/** A file found in Gmail for an entry: the mail it came with, and the file itself. `amountFound`: the entry's amount is in the mail. */
+/**
+ * A file found in Gmail for an entry: the mail it came with, and the file itself. `numberFound`: the invoice number from
+ * the entry's description is in the mail or its PDF; `amountFound`: the entry's amount is.
+ */
 export type GmailCandidate = {
   messageId: string;
   partId: string;
@@ -307,4 +310,5 @@ export type GmailCandidate = {
   contentType: string;
   sizeBytes: number;
   amountFound: boolean;
+  numberFound: boolean;
 };

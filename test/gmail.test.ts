@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { GmailCandidate, GmailState } from "../shared/ledger-types";
 import { exportAll } from "../worker/db/maintenance";
-import { finishLink, nameWords, startLink } from "../worker/db/gmail";
+import { finishLink, invoiceNumbers, nameWords, startLink } from "../worker/db/gmail";
 import type { Env } from "../worker/env";
 import { createFakeGoogle, FAKE_GOOGLE_CLIENT_ID, FAKE_GOOGLE_CLIENT_SECRET, FAKE_REFRESH_TOKEN, type FakeGoogle } from "./fake-google";
 import { api, asAdmin, openGate, resetData } from "./helpers";
@@ -126,6 +126,7 @@ it("finds the files around the entry's date, with the name from the bank line, a
       contentType: "application/pdf",
       sizeBytes: PDF.byteLength,
       amountFound: true,
+      numberFound: true,
     },
     {
       messageId: "m-news",
@@ -137,6 +138,7 @@ it("finds the files around the entry's date, with the name from the bank line, a
       contentType: "application/pdf",
       sizeBytes: FOLDER.byteLength,
       amountFound: false,
+      numberFound: false,
     },
   ]);
   const searches = google.requests.filter((r) => r.path.endsWith("/messages")).map((r) => r.query.q!);
@@ -148,6 +150,28 @@ it("finds the files around the entry's date, with the name from the bank line, a
   }
   expect(searches.some((q) => q.includes("TalentPro"))).toBe(true);
   expect(searches.some((q) => q.includes('"412,80"'))).toBe(true);
+  expect(searches[0]).toContain('"2026-1234"');
+});
+
+it("puts the mail Gmail found the invoice number in first, even before the amount", async () => {
+  await link();
+  // The newsletter's PDF happens to be the invoice; the other mail has the amount in its text only.
+  google.messages = [
+    { ...google.messages[0]!, id: "m-pdf", subject: "Uw documenten" },
+    {
+      ...google.messages[1]!,
+      id: "m-amount",
+      subject: "Betaalbevestiging",
+      snippet: "U betaalde € 412,80",
+      files: [{ ...google.messages[1]!.files[0]!, filename: "bevestiging.pdf" }],
+    },
+  ];
+  google.find = (q) => (q.includes('"2026-1234"') ? ["m-pdf"] : q.includes('"412,80"') ? ["m-amount"] : ["m-amount", "m-pdf"]);
+  const { candidates } = await (await api(`${base}/entries/g1/gmail`, { cookie, env: keys })).json<{ candidates: GmailCandidate[] }>();
+  expect(candidates.map((c) => [c.messageId, c.numberFound, c.amountFound])).toEqual([
+    ["m-pdf", true, false],
+    ["m-amount", false, true],
+  ]);
 });
 
 it("puts a PDF before a picture, so logos do not crowd out the invoice", async () => {
@@ -231,6 +255,28 @@ it("unlinks: the token is revoked at Google and gone from the Worker", async () 
   expect(google.revoked).toEqual([FAKE_REFRESH_TOKEN]);
   const left = await env.DB.prepare("SELECT COUNT(*) AS n FROM gmail_links WHERE refresh_token IS NOT NULL").first<{ n: number }>();
   expect(left!.n).toBe(0);
+});
+
+it("finds an invoice number after Factuur, Factuurnr, Nota or Invoice, or one with letters and digits", () => {
+  expect(invoiceNumbers("TalentPro B.V. – Naam: TalentPro B.V. Omschrijving: Factuur 2026-1234 IBAN: NL91ABNA0417164300")).toEqual(["2026-1234"]);
+  expect(invoiceNumbers("Kosten Zakelijk Betalingsverkeer Factuurnr. 10007786829 Betreft IBAN: NL23INGB0007453959 Periode: 01-10-2026 / 31-10-2026")).toEqual([
+    "10007786829",
+  ]);
+  expect(invoiceNumbers("Factuur nr. F-1234 van Goodoo")).toEqual(["F-1234"]);
+  expect(invoiceNumbers("Invoice #A1B2C3 webshop")).toEqual(["A1B2C3"]);
+  expect(invoiceNumbers("Betaling INV-2026-0042 webshop")).toEqual(["INV-2026-0042"]);
+  expect(invoiceNumbers("Nota 4711, terrein")).toEqual(["4711"]);
+});
+
+it("does not take a date, an IBAN, an amount or a payment code for an invoice number", () => {
+  expect(invoiceNumbers("Huur maart 2026")).toEqual([]);
+  expect(invoiceNumbers("Factuur van 12-11-2026, € 1.234,56")).toEqual([]);
+  expect(invoiceNumbers("Overboeking naar NL91ABNA0417164300")).toEqual([]);
+  expect(
+    invoiceNumbers(
+      "Mollie B.V. via Stichting Mollie Payments – Naam: Mollie B.V. Omschrijving: ff891b17abe0b0114e9d8b082fa71556 8152744102002364 Order 1 x Tap Terminal Kenmerk: 25-11-2026 13:47 8152744102002364",
+    ),
+  ).toEqual([]);
 });
 
 it("takes the name from a bank line's Naam, else the first words that are not numbers or filler", () => {

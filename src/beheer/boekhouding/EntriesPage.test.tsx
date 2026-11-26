@@ -72,8 +72,8 @@ it("finds files in Gmail, keeps the one picked with the entry, and then shows Bi
     [`${base}/entries`]: () => [entry({ id: "e1", number: 1, description: "TalentPro", attachments: added ? [attachment("a9")] : [] })],
     [`${base}/entries/e1/gmail`]: {
       candidates: [
-        { messageId: "m1", partId: "1", date: "2026-11-02", from: "TalentPro <facturen@talentpro.nl>", subject: "Factuur 2026-1234", filename: "factuur-2026-1234.pdf", contentType: "application/pdf", sizeBytes: 2048, amountFound: true },
-        { messageId: "m2", partId: "2", date: "2026-11-15", from: "TalentPro <nieuws@talentpro.nl>", subject: "Nieuwsbrief", filename: "folder.pdf", contentType: "application/pdf", sizeBytes: 4096, amountFound: false },
+        { messageId: "m1", partId: "1", date: "2026-11-02", from: "TalentPro <facturen@talentpro.nl>", subject: "Factuur 2026-1234", filename: "factuur-2026-1234.pdf", contentType: "application/pdf", sizeBytes: 2048, amountFound: true, numberFound: true },
+        { messageId: "m2", partId: "2", date: "2026-11-15", from: "TalentPro <nieuws@talentpro.nl>", subject: "Nieuwsbrief", filename: "folder.pdf", contentType: "application/pdf", sizeBytes: 4096, amountFound: false, numberFound: false },
       ],
     },
     [`POST ${base}/entries/e1/gmail`]: () => {
@@ -88,6 +88,7 @@ it("finds files in Gmail, keeps the one picked with the entry, and then shows Bi
   const found = within(await screen.findByRole("region", { name: "Gevonden in Gmail" }));
   expect(found.getByText("factuur-2026-1234.pdf")).toBeInTheDocument();
   expect(found.getByText("bedrag gevonden")).toBeInTheDocument();
+  expect(found.getAllByText("factuurnummer gevonden")).toHaveLength(1);
   expect(found.getByText(/Factuur 2026-1234/)).toBeInTheDocument();
   expect(found.getByText("folder.pdf")).toBeInTheDocument();
 
