@@ -289,6 +289,35 @@ Daarna haalt de app elke nacht de nieuwe regels en het saldo van ING betaal op. 
 - **Verlopen.** Staat er "ING haalt geen regels meer op: toestemming verlopen.", dan gaat er niets mis, maar komen er geen nieuwe regels bij. Vernieuw de toestemming, of lees een bankbestand van ING betaal in bij **Te boeken**. Dat kan altijd, ook om een gat te vullen: een regel die er al was, telt één keer.
 - **Terug naar bestanden.** Stopt Enable Banking, of wil je het niet meer, zet ING betaal dan bij **Instellingen** op **Bankbestand uploaden of met de hand** en lees elke maand een bestand in. Verder verandert er niets.
 
+### Bijlage zoeken in Gmail
+
+Bij **Boekingen** staat naast het bedrag van elke boeking zonder bijlage de knop **Zoek bijlage**. De app zoekt dan in het Gmail-adres van de speeltuin naar de factuur. Hij kijkt naar mails met een bijlage van 60 dagen vóór tot 15 dagen na de datum van de boeking, met de naam uit de omschrijving (bij een bankregel: de naam van wie betaald is) en met het bedrag. Mails waarin het bedrag staat, staan bovenaan, met "bedrag gevonden". Tik bij de juiste op **Toevoegen**; die bijlage komt bij de boeking en de knop heet dan **Bijlage**, die opent het bestand. Staat er niets goeds tussen, zet de bijlage er dan zelf bij via de boeking (**Bijlage toevoegen**).
+
+De app heeft alleen leesrecht. Hij verstuurt, verplaatst of wist niets in je mail, en hij haalt alleen het bestand op dat jij kiest. De sleutel die Google geeft, staat alleen op de server: niet in je browser, niet in de weekkopie en niet in **Alles downloaden**.
+
+**Eenmalig instellen bij Google (de penningmeester zelf, ongeveer een kwartier).**
+
+1. Ga naar console.cloud.google.com en log in met het Gmail-adres van de speeltuin. Maak een nieuw project, bijvoorbeeld "Kassa Burcht ter Cleeff".
+2. Zet de Gmail API aan: zoek bovenin "Gmail API" en tik op **Inschakelen** (Enable).
+3. Ga naar **Google Auth Platform** (het toestemmingsscherm, OAuth consent screen) en tik op **Aan de slag**. Vul als naam "Kassa Burcht ter Cleeff" in, kies je eigen Gmail-adres als contact, kies bij Doelgroep **Extern** (External) en maak het aan.
+4. Bij **Doelgroep** (Audience): tik op **App publiceren** (Publish app), zodat de status **In productie** wordt. In de stand Testen stopt Google de koppeling na 7 dagen.
+5. Bij **Gegevenstoegang** (Data access): voeg het bereik `https://www.googleapis.com/auth/gmail.readonly` toe en sla op.
+6. Bij **Clients**: maak een client aan, soort **Webapplicatie**. Zet bij Geautoriseerde omleidings-URI's het adres van de kassa met `/beheer/gmail` erachter, dus hetzelfde adres als beheer maar met `/beheer/gmail`. Je krijgt een client-id en een clientgeheim; bewaar het geheim in je wachtwoordmanager.
+7. Zet ze als geheim bij de kassa. Typ of plak ze alleen in het venster van de opdracht, nooit in een bericht of chat:
+
+```bash
+npx wrangler secret put GOOGLE_CLIENT_ID --name kassa-burcht-ter-cleeff
+```
+
+```bash
+npx wrangler secret put GOOGLE_CLIENT_SECRET --name kassa-burcht-ter-cleeff
+```
+
+8. Tik in beheer bij **Boekhouding → Instellingen → Gmail (Zoek bijlage)** op **Gmail koppelen** en kies het Gmail-adres. Google meldt dan "Google heeft deze app niet geverifieerd": dat klopt, het is je eigen app. Tik op **Geavanceerd**, dan op **Ga naar Kassa Burcht ter Cleeff** en sta het lezen van je mail toe. Je komt terug in beheer met "Gmail is gekoppeld met …".
+
+- **Ontkoppelen** bij Instellingen haalt de toegang weg, ook bij Google. Je kunt het ook doen in je Google-account, bij Beveiliging → Apps en services van derden.
+- **Verlopen.** Accepteert Google de koppeling niet meer, bijvoorbeeld na het intrekken van de toegang, dan staat er bij Instellingen "Verlopen: koppel … opnieuw". Tik op **Opnieuw koppelen** en doe stap 8 opnieuw.
+
 ### Mollie
 
 Mollie begint in de app in november 2026. e-Boekhouden boekte elke uitbetaling van Mollie als omzet op ING, de laatste op 2 november 2026; de betalingen daarin staan dus al in de boeken. De app boekt de betalingen die in geen van die uitbetalingen zitten (in de praktijk die vanaf 1 november 2026), en elke uitbetaling die vanaf 25 november op ING binnenkomt. De pagina **Mollie** begint bij november 2026.
@@ -486,7 +515,7 @@ Dat is op 23 november 2026 gedaan. **De boeken vanaf 2026** vragen twee migratie
 
 **Het auditbestand** van e-Boekhouden (`.xaf`) bevat namen en e-mailadressen van leden en leveranciers. Het komt nooit in git (`*.xaf` staat in `.gitignore`), in een test of in een fixture; de tests gebruiken het verzonnen bestand in `shared/fixtures/xaf-2026.ts`.
 
-**De drie geheimen.** Typ of plak ze alleen in het venster van de opdracht; nooit in een bericht, een mail, de code of een chat. Ook de bouwer hoeft ze niet te zien.
+**De geheimen van de boekhouding.** Typ of plak ze alleen in het venster van de opdracht; nooit in een bericht, een mail, de code of een chat. Ook de bouwer hoeft ze niet te zien.
 
 - `ENABLE_BANKING_APP_ID`: het id van de applicatie in het Control Panel van Enable Banking.
 - `ENABLE_BANKING_PRIVATE_KEY`: de privésleutel van die applicatie, het `.pem`-bestand dat het Control Panel gaf bij het aanmaken. Het moet PKCS#8 zijn: de eerste regel is `-----BEGIN PRIVATE KEY-----`. De opdracht leest het bestand zelf in, dus de sleutel komt nergens in beeld.
@@ -503,6 +532,8 @@ npx wrangler secret put ENABLE_BANKING_PRIVATE_KEY --name kassa-burcht-ter-cleef
 ```bash
 npx wrangler secret put MOLLIE_ORG_TOKEN --name kassa-burcht-ter-cleeff
 ```
+
+Voor **Zoek bijlage** komen daar `GOOGLE_CLIENT_ID` en `GOOGLE_CLIENT_SECRET` bij: de OAuth-client (webapplicatie) uit Google Cloud, met als omleidings-URI het adres van de kassa plus `/beheer/gmail`, het bereik `gmail.readonly` en de publicatiestatus In productie (zie "Bijlage zoeken in Gmail"). Zonder die twee zegt beheer dat Gmail nog niet is ingesteld. Het vernieuwingstoken van Google staat in de tabel `gmail_links` (migratie 0014); die tabel staat bewust niet in `LEDGER_TABLES` en komt dus niet in de kopie. Ontkoppelen leegt het token en trekt het in bij Google; opnieuw koppelen trekt het oude niet in, omdat dat bij Google ook de nieuwe toegang kan beëindigen.
 
 Een verkeerde sleutel of een verkeerd id van de applicatie geeft bij ING het antwoord "unauthorized". De app kan dat niet onderscheiden van een ingetrokken toestemming: de toestemming staat daarna op verlopen, ook als de sleutel weer goed is, tot ING opnieuw is gekoppeld (**Instellingen → ING automatisch → Vernieuwen**). Zonder de twee geheimen van Enable Banking zegt beheer bij **ING koppelen** dat de koppeling nog niet is ingesteld; zonder `MOLLIE_ORG_TOKEN` slaat de nachtelijke taak Mollie over. ING stuurt de penningmeester terug naar `/beheer/bank`; dat adres van de echte kassa staat ingesteld bij de applicatie in Enable Banking.
 

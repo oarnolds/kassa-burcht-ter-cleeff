@@ -21,6 +21,7 @@ type LedgerPages = typeof import("./beheer/boekhouding/pages");
 const ledgerPage = (name: keyof LedgerPages) => lazy(() => import("./beheer/boekhouding/pages").then((pages) => ({ default: pages[name] as ComponentType })));
 const AssetsPage = ledgerPage("AssetsPage");
 const BankReturnPage = ledgerPage("BankReturnPage");
+const GmailReturnPage = ledgerPage("GmailReturnPage");
 const BudgetPage = ledgerPage("BudgetPage");
 const ComparisonPage = ledgerPage("ComparisonPage");
 const EarlierYearsPage = ledgerPage("EarlierYearsPage");
@@ -82,6 +83,14 @@ export function AppRoutes() {
           element={
             <Suspense fallback={<PageLoading />}>
               <BankReturnPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="gmail"
+          element={
+            <Suspense fallback={<PageLoading />}>
+              <GmailReturnPage />
             </Suspense>
           }
         />

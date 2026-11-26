@@ -292,3 +292,19 @@ export type YearChange = EntryChange & { id: number; entryId: string; number: nu
 
 /** At most this many entries or changes in one page of the jaaroverzicht, so one request stays within the CPU limit. */
 export const YEAR_PAGE = 500;
+
+/** The Gmail link for "Zoek bijlage". `not_configured`: the Google keys are not set as Worker secrets yet. */
+export type GmailState = { status: "not_configured" | "none" | "active" | "expired"; email: string | null };
+
+/** A file found in Gmail for an entry: the mail it came with, and the file itself. `amountFound`: the entry's amount is in the mail. */
+export type GmailCandidate = {
+  messageId: string;
+  partId: string;
+  date: string;
+  from: string;
+  subject: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  amountFound: boolean;
+};

@@ -16,6 +16,9 @@ export type Env = {
   ENABLE_BANKING_APP_ID?: string;
   ENABLE_BANKING_PRIVATE_KEY?: string;
   ENABLE_BANKING_API_BASE?: string;
+  // Google (Gmail, read only, for "Zoek bijlage"): the OAuth client id and secret are Worker secrets the penningmeester sets.
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
 };
 
 export type AppEnv = { Bindings: Env; Variables: { deviceId: string } };

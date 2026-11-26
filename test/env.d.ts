@@ -10,6 +10,8 @@ declare namespace Cloudflare {
     ENABLE_BANKING_APP_ID?: string;
     ENABLE_BANKING_PRIVATE_KEY?: string;
     ENABLE_BANKING_API_BASE?: string;
+    GOOGLE_CLIENT_ID?: string;
+    GOOGLE_CLIENT_SECRET?: string;
     TEST_MIGRATIONS: import("cloudflare:test").D1Migration[];
   }
 }

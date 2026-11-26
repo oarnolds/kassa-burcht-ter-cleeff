@@ -44,6 +44,7 @@ const open = async (extra: Record<string, unknown> = {}) => {
     [`${base}/accounts`]: accounts,
     [`${base}/money-accounts`]: moneyAccounts,
     [`${base}/bank/ing`]: { status: "none", validUntil: null, daysLeft: null },
+    [`${base}/gmail`]: { status: "none", email: null },
     [`${base}/category-accounts`]: [
       { categoryId: "ijs", categoryName: "IJs", accountCode: "8011" },
       { categoryId: "entree", categoryName: "Entree", accountCode: "8011" },
@@ -151,6 +152,34 @@ it("links to reading 2026 in, the opening balance, the earlier years and the 202
   expect(screen.getByRole("link", { name: "Eerdere jaren" })).toHaveAttribute("href", "/beheer/boekhouding/eerdere-jaren");
   expect(screen.getByRole("link", { name: "Vergelijkingscijfers 2025" })).toHaveAttribute("href", "/beheer/boekhouding/vergelijking");
   void tap;
+});
+
+const gmail = () => screen.getByRole("region", { name: "Gmail (Zoek bijlage)" });
+
+it("says Gmail is not set up while the Google keys are missing", async () => {
+  await open({ [`${base}/gmail`]: { status: "not_configured", email: null } });
+  await waitFor(() => expect(within(gmail()).getByText("Nog niet ingesteld: de sleutels van Google ontbreken. Zie de handleiding.")).toBeInTheDocument());
+  expect(within(gmail()).queryByRole("button")).toBeNull();
+});
+
+it("sends the browser to Google to link Gmail", async () => {
+  await open({ [`POST ${base}/gmail/connect`]: { url: "https://accounts.google.com/o/oauth2/v2/auth?x=1" } });
+  await waitFor(() => expect(within(gmail()).getByText("Niet gekoppeld")).toBeInTheDocument());
+  await user().click(within(gmail()).getByRole("button", { name: "Gmail koppelen" }));
+  await waitFor(() => expect(leavePage).toHaveBeenCalledWith("https://accounts.google.com/o/oauth2/v2/auth?x=1"));
+});
+
+it("shows the linked address, and unlinks", async () => {
+  await open({ [`${base}/gmail`]: { status: "active", email: "speeltuin@gmail.com" }, [`POST ${base}/gmail/disconnect`]: { status: "none", email: null } });
+  await waitFor(() => expect(within(gmail()).getByText("Gekoppeld met speeltuin@gmail.com")).toBeInTheDocument());
+  await user().click(within(gmail()).getByRole("button", { name: "Ontkoppelen" }));
+  await waitFor(() => expect(calls("POST").some((c) => c.url === `${base}/gmail/disconnect`)).toBe(true));
+});
+
+it("asks to link Gmail again once Google stopped accepting it", async () => {
+  await open({ [`${base}/gmail`]: { status: "expired", email: "speeltuin@gmail.com" } });
+  await waitFor(() => expect(within(gmail()).getByText("Verlopen: koppel speeltuin@gmail.com opnieuw")).toBeInTheDocument());
+  expect(within(gmail()).getByRole("button", { name: "Opnieuw koppelen" })).toBeInTheDocument();
 });
 
 const ing = () => screen.getByRole("region", { name: "ING automatisch" });

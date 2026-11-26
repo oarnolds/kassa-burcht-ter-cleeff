@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router";
-import type { AccountKind, ConsentState, LedgerAccount, MollieRule, MoneyAccount, MoneySource } from "../../../shared/ledger-types";
+import type { AccountKind, ConsentState, GmailState, LedgerAccount, MollieRule, MoneyAccount, MoneySource } from "../../../shared/ledger-types";
 import { businessDate, formatDateNl } from "../../../shared/time";
 import { leavePage } from "../../lib/leave";
 import { Button } from "../../ui/Button";
@@ -243,6 +243,70 @@ function IngBlock() {
   );
 }
 
+function gmailText(state: GmailState): string {
+  if (state.status === "not_configured") return "Nog niet ingesteld: de sleutels van Google ontbreken. Zie de handleiding.";
+  if (state.status === "active") return `Gekoppeld met ${state.email ?? "Gmail"}`;
+  if (state.status === "expired") return `Verlopen: koppel ${state.email ?? "Gmail"} opnieuw`;
+  return "Niet gekoppeld";
+}
+
+/** The Gmail link for "Zoek bijlage": read only, made once at Google, and ended here. */
+function GmailBlock() {
+  const api = useLedgerWrites();
+  const gmail = useAdminData<GmailState>(ledgerPath.gmail);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const connect = async () => {
+    setBusy(true);
+    setProblem(null);
+    const answer = await api.connectGmail();
+    if (!answer.ok) {
+      setBusy(false);
+      return setProblem(explainWrite(answer.status, answer.error));
+    }
+    leavePage(answer.data.url);
+  };
+
+  const disconnect = async () => {
+    setBusy(true);
+    setProblem(null);
+    const answer = await api.disconnectGmail();
+    setBusy(false);
+    if (!answer.ok) return setProblem(explainWrite(answer.status, answer.error));
+    gmail.reload();
+  };
+
+  return (
+    <Section
+      title="Gmail (Zoek bijlage)"
+      note="Met alleen leesrecht zoekt de app bij Boekingen in Gmail naar de factuur bij een boeking. Jij kiest welke bijlage erbij komt."
+    >
+      <Loaded from={gmail}>
+        {(state) => (
+          <div className="flex flex-col items-start gap-3 px-2 sm:px-3">
+            <p className="text-lg font-semibold">{gmailText(state)}</p>
+            {state.status !== "not_configured" && (
+              <div className="flex flex-wrap gap-3">
+                {state.status === "active" ? (
+                  <Button disabled={busy} onClick={() => void disconnect()}>
+                    Ontkoppelen
+                  </Button>
+                ) : (
+                  <Button variant="primary" disabled={busy} onClick={() => void connect()}>
+                    {state.status === "expired" ? "Opnieuw koppelen" : "Gmail koppelen"}
+                  </Button>
+                )}
+              </div>
+            )}
+            {problem && <Problem>{problem}</Problem>}
+          </div>
+        )}
+      </Loaded>
+    </Section>
+  );
+}
+
 function CategoryForm({ categories, accounts }: { categories: CategoryAccount[]; accounts: LedgerAccount[] }) {
   const api = useLedgerWrites();
   const toast = useToast();
@@ -381,6 +445,7 @@ export function SettingsLedgerPage() {
         </Loaded>
       </Section>
       <IngBlock />
+      <GmailBlock />
       <Section title="Omzet van de kassa" note="Op welke opbrengstrekening de omzet van elke kassa-categorie komt.">
         <Loaded from={categories}>
           {(list) => (accounts.data ? <CategoryForm categories={list} accounts={accounts.data} /> : null)}

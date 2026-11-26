@@ -3,6 +3,10 @@ import { expect, it, vi } from "vitest";
 import { calls, mockApi, mockLoggedIn, renderAt, tap, user } from "../../test-utils";
 import { accounts, base, entry } from "./ledger-test-data";
 
+/** The row of the entry whose link matches `name`: the link, the button for its attachment and the amount. */
+const row = (name: RegExp) => within(screen.getByRole("link", { name }).closest("li")!);
+const attachment = (id: string) => ({ id, filename: `${id}.pdf`, contentType: "application/pdf", sizeBytes: 100, uploadedAt: "2026-11-26T10:00:00.000Z" });
+
 it("lists the entries of a year with their amount and a mark when changed", async () => {
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-12-01T10:00:00.000Z") });
   mockLoggedIn();
@@ -11,11 +15,12 @@ it("lists the entries of a year with their amount and a mark when changed", asyn
     [`${base}/entries`]: [entry(), entry({ id: "e2", number: 8, description: "Gecorrigeerd", changed: true })],
   });
   renderAt("/beheer/boekhouding/boekingen");
-  const first = within(await screen.findByRole("link", { name: /Factuur Goodoo/ }));
+  await screen.findByRole("link", { name: /Factuur Goodoo/ });
+  const first = row(/Factuur Goodoo/);
   expect(first.getByText("7")).toBeInTheDocument();
   expect(first.getByText("04-01-2027")).toBeInTheDocument();
   expect(first.getByText("€ 412,80")).toBeInTheDocument();
-  expect(within(screen.getByRole("link", { name: /Gecorrigeerd/ })).getByText("gewijzigd")).toBeInTheDocument();
+  expect(row(/Gecorrigeerd/).getByText("gewijzigd")).toBeInTheDocument();
   expect(calls("GET").some((c) => c.url.startsWith(`${base}/entries?year=2026`))).toBe(true);
 });
 
@@ -39,10 +44,9 @@ it("shows the newest entry at the top", async () => {
   expect(list.getAllByRole("link").map((link) => order.find((name) => link.textContent?.includes(name)))).toEqual(order);
 });
 
-it("marks an entry that has an attachment, with how many", async () => {
+it("opens the attachment from the list, the entry when there are more, and offers Zoek bijlage without one", async () => {
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-12-01T10:00:00.000Z") });
   mockLoggedIn();
-  const attachment = (id: string) => ({ id, filename: `${id}.pdf`, contentType: "application/pdf", sizeBytes: 100, uploadedAt: "2026-11-26T10:00:00.000Z" });
   mockApi({
     [`${base}/accounts`]: accounts,
     [`${base}/entries`]: [
@@ -52,9 +56,63 @@ it("marks an entry that has an attachment, with how many", async () => {
     ],
   });
   renderAt("/beheer/boekhouding/boekingen");
-  expect(within(await screen.findByRole("link", { name: /Met bon/ })).getByText("1 bijlage")).toBeInTheDocument();
-  expect(within(screen.getByRole("link", { name: /Twee bonnen/ })).getByText("2 bijlagen")).toBeInTheDocument();
-  expect(within(screen.getByRole("link", { name: /Zonder bon/ })).queryByText(/bijlage/)).toBeNull();
+  await screen.findByRole("link", { name: /Met bon/ });
+  expect(row(/Met bon/).getByRole("link", { name: "Bijlage" })).toHaveAttribute("href", `${base}/attachments/a1`);
+  expect(row(/Twee bonnen/).getByRole("link", { name: "2 bijlagen" })).toHaveAttribute("href", "/beheer/boekhouding/boekingen/e3");
+  expect(row(/Zonder bon/).getByRole("button", { name: "Zoek bijlage" })).toBeInTheDocument();
+  expect(row(/Met bon/).queryByRole("button", { name: "Zoek bijlage" })).toBeNull();
+});
+
+it("finds files in Gmail, keeps the one picked with the entry, and then shows Bijlage", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-12-01T10:00:00.000Z") });
+  mockLoggedIn();
+  let added = false;
+  mockApi({
+    [`${base}/accounts`]: accounts,
+    [`${base}/entries`]: () => [entry({ id: "e1", number: 1, description: "TalentPro", attachments: added ? [attachment("a9")] : [] })],
+    [`${base}/entries/e1/gmail`]: {
+      candidates: [
+        { messageId: "m1", partId: "1", date: "2026-11-02", from: "TalentPro <facturen@talentpro.nl>", subject: "Factuur 2026-1234", filename: "factuur-2026-1234.pdf", contentType: "application/pdf", sizeBytes: 2048, amountFound: true },
+        { messageId: "m2", partId: "2", date: "2026-11-15", from: "TalentPro <nieuws@talentpro.nl>", subject: "Nieuwsbrief", filename: "folder.pdf", contentType: "application/pdf", sizeBytes: 4096, amountFound: false },
+      ],
+    },
+    [`POST ${base}/entries/e1/gmail`]: () => {
+      added = true;
+      return [201, attachment("a9")];
+    },
+  });
+  renderAt("/beheer/boekhouding/boekingen");
+  await screen.findByRole("link", { name: /TalentPro/ });
+  await user().click(row(/TalentPro/).getByRole("button", { name: "Zoek bijlage" }));
+
+  const found = within(await screen.findByRole("region", { name: "Gevonden in Gmail" }));
+  expect(found.getByText("factuur-2026-1234.pdf")).toBeInTheDocument();
+  expect(found.getByText("bedrag gevonden")).toBeInTheDocument();
+  expect(found.getByText(/Factuur 2026-1234/)).toBeInTheDocument();
+  expect(found.getByText("folder.pdf")).toBeInTheDocument();
+
+  await user().click(found.getAllByRole("button", { name: "Toevoegen" })[0]!);
+  await waitFor(() => expect(calls("POST").filter((c) => c.url === `${base}/entries/e1/gmail`)).toHaveLength(1));
+  expect(calls("POST").find((c) => c.url === `${base}/entries/e1/gmail`)!.body).toEqual({ messageId: "m1", partId: "1" });
+  expect(await screen.findByRole("link", { name: "Bijlage" })).toHaveAttribute("href", `${base}/attachments/a9`);
+  expect(screen.queryByRole("region", { name: "Gevonden in Gmail" })).toBeNull();
+});
+
+it("says when Gmail found nothing, and explains a refusal", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-12-01T10:00:00.000Z") });
+  mockLoggedIn();
+  mockApi({
+    [`${base}/accounts`]: accounts,
+    [`${base}/entries`]: [entry({ id: "e1", number: 1, description: "Huur" }), entry({ id: "e2", number: 2, description: "Water" })],
+    [`${base}/entries/e1/gmail`]: { candidates: [] },
+    [`${base}/entries/e2/gmail`]: [409, { error: "gmail_not_linked" }],
+  });
+  renderAt("/beheer/boekhouding/boekingen");
+  await screen.findByRole("link", { name: /Huur/ });
+  await user().click(row(/Huur/).getByRole("button", { name: "Zoek bijlage" }));
+  expect(await screen.findByText("Niets gevonden in Gmail rond deze datum.")).toBeInTheDocument();
+  await user().click(row(/Water/).getByRole("button", { name: "Zoek bijlage" }));
+  expect(await screen.findByText("Koppel eerst Gmail, bij Boekhouding → Instellingen.")).toBeInTheDocument();
 });
 
 it("searches with the filters", async () => {

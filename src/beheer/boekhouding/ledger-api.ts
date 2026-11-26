@@ -14,6 +14,8 @@ import type {
   ConsentState,
   EbSummary,
   Entry,
+  GmailCandidate,
+  GmailState,
   ImportResult,
   LedgerAccount,
   MoneyAccount,
@@ -95,6 +97,8 @@ export const ledgerPath = {
   accounts: `${LEDGER}/accounts`,
   moneyAccounts: `${LEDGER}/money-accounts`,
   ingConsent: `${LEDGER}/bank/ing`,
+  /** Where the Gmail link for "Zoek bijlage" stands. */
+  gmail: `${LEDGER}/gmail`,
   categoryAccounts: `${LEDGER}/category-accounts`,
   mollieRules: `${LEDGER}/mollie/rules`,
   mollieMonth: (month: string) => `${LEDGER}/mollie/month?month=${month}`,
@@ -154,6 +158,10 @@ export function explainWrite(status: number, error: string): string {
     not_found: "Dit bestaat niet meer. Ververs de pagina.",
     enable_banking_off: "De koppeling met Enable Banking is nog niet ingesteld (de sleutel ontbreekt).",
     identifier_missing: "Vul eerst het kenmerk (IBAN) van ING betaal in.",
+    gmail_off: "De koppeling met Gmail is nog niet ingesteld (de sleutels van Google ontbreken).",
+    gmail_not_linked: "Koppel eerst Gmail, bij Boekhouding → Instellingen.",
+    gmail_expired: "Google accepteert de koppeling niet meer. Koppel Gmail opnieuw bij Boekhouding → Instellingen.",
+    gmail_failed: "Gmail gaf geen antwoord. Probeer het straks opnieuw.",
     invalid: "Controleer de invoer en probeer het opnieuw.",
     not_comparison_year: FROM_LEDGER,
     depreciation_booked: "De afschrijving is al geboekt. De lijst uit e-Boekhouden kan niet meer worden vervangen.",
@@ -223,6 +231,17 @@ export function useLedgerWrites() {
       connectIng: (): Promise<ApiResult<{ url: string }>> => write(`${LEDGER}/bank/ing/connect`, "POST"),
       /** The bank sent the browser back: trades the code for a connection. The state may be used once. */
       finishIng: (body: { code: string; state: string }): Promise<ApiResult<ConsentState>> => write(`${LEDGER}/bank/ing/callback`, "POST", body),
+      /** Asks Google for read-only access to Gmail: the answer holds Google's page to send the browser to. */
+      connectGmail: (): Promise<ApiResult<{ url: string }>> => write(`${LEDGER}/gmail/connect`, "POST"),
+      /** Google sent the browser back: trades the code for the link. The state may be used once. */
+      finishGmail: (body: { code: string; state: string }): Promise<ApiResult<GmailState>> => write(`${LEDGER}/gmail/callback`, "POST", body),
+      disconnectGmail: (): Promise<ApiResult<GmailState>> => write(`${LEDGER}/gmail/disconnect`, "POST"),
+      /** "Zoek bijlage": the files in Gmail that may belong with the entry. Several calls to Google, so a longer wait. */
+      findInGmail: (entryId: string): Promise<ApiResult<{ candidates: GmailCandidate[] }>> =>
+        write(`${LEDGER}/entries/${entryId}/gmail`, "GET", undefined, { timeoutMs: 30_000 }),
+      /** Keeps the picked file from Gmail with the entry. */
+      attachFromGmail: (entryId: string, pick: { messageId: string; partId: string }): Promise<ApiResult<Attachment>> =>
+        write(`${LEDGER}/entries/${entryId}/gmail`, "POST", pick, { timeoutMs: 30_000 }),
       importStatement: (accountCode: string, statement: CamtStatement): Promise<ApiResult<ImportResult>> =>
         write(`${LEDGER}/bank/import`, "POST", { accountCode, statement }),
       addBankLine: (body: {

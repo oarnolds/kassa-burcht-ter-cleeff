@@ -9,6 +9,7 @@ import { adminDevices } from "./routes/admin-devices";
 import { adminLedger } from "./routes/admin-ledger";
 import { adminLedgerAssets } from "./routes/admin-ledger-assets";
 import { adminLedgerBank } from "./routes/admin-ledger-bank";
+import { adminLedgerGmail } from "./routes/admin-ledger-gmail";
 import { adminLedgerBudget } from "./routes/admin-ledger-budget";
 import { adminLedgerEboekhouden } from "./routes/admin-ledger-eboekhouden";
 import { adminLedgerMollie } from "./routes/admin-ledger-mollie";
@@ -65,6 +66,7 @@ app.route("/api/admin/boekhouding", adminLedgerAssets);
 app.route("/api/admin/boekhouding", adminLedgerYear);
 app.route("/api/admin/boekhouding", adminLedgerBudget);
 app.route("/api/admin/boekhouding", adminLedgerEboekhouden);
+app.route("/api/admin/boekhouding", adminLedgerGmail);
 app.route("/api/admin/boekhouding", adminLedger);
 
 app.notFound((c) => c.json({ error: "not_found" }, 404));

@@ -123,6 +123,7 @@ const TABLES = [
   "mollie_settlements",
   "mollie_rules",
   "bank_consents",
+  "gmail_links",
   "category_accounts",
   "comparison_figures",
   "bank_lines",
