@@ -106,7 +106,7 @@ export function KassaScreen({ catalog, onSale, tileNote, header, footer, pin, on
     if (!pin || running.current) return;
     const receipt: PinReceipt = { id: crypto.randomUUID(), soldAt: new Date().toISOString(), totalCents: of.totalCents, lines: of.lines.map((line) => ({ ...line })) };
     const forCart = cart;
-    setPinning({ receipt, view: { step: "waiting", sent: false, testUrl: null, cancelFailed: false } });
+    setPinning({ receipt, view: { step: "waiting", sent: false, testUrl: null } });
     const run = pin.start(receipt, (progress) =>
       // Only the payment on the screen has something to say.
       setPinning((now) => (now?.receipt.id === receipt.id && now.view.step === "waiting" ? { receipt, view: { step: "waiting", ...progress } } : now)),

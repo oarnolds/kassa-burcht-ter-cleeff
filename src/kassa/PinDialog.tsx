@@ -6,9 +6,9 @@ import { pinDetail, pinTitle } from "./pin-text";
 
 /** Where a pin payment stands, as the beheerder sees it. */
 export type PinView =
-  | { step: "waiting"; sent: boolean; testUrl: string | null; cancelFailed: boolean }
+  | { step: "waiting"; sent: boolean; testUrl: string | null }
   | { step: "failed"; outcome: Exclude<PinOutcome, "paid">; reason: string | null }
-  | { step: "unknown"; why: "lost" | "unsent" | "slow" };
+  | { step: "unknown"; why: "lost" | "unsent" | "slow" | "refused" };
 
 type Props = {
   /** null: no pin payment is going on. */
@@ -42,7 +42,6 @@ export function PinDialog({ view, totalCents, onCancel, onRetry, onCash, onBack,
           <>
             {amount}
             <p className="mt-4 text-xl font-semibold">{view.sent ? "Houd pas of telefoon tegen de betaalterminal" : "Betaling wordt gestart…"}</p>
-            {view.cancelFailed && <p className="mt-3 text-lg font-semibold text-redbrown">Annuleren lukte niet. Kijk op de betaalterminal.</p>}
             {view.testUrl && (
               <a className="mt-4 text-lg font-semibold text-green-dark underline" href={view.testUrl} target="_blank" rel="noreferrer">
                 Test: kies de uitkomst bij Mollie
@@ -84,7 +83,9 @@ export function PinDialog({ view, totalCents, onCancel, onRetry, onCash, onBack,
                 <p className="text-lg">
                   {view.why === "unsent"
                     ? "Mollie reageert niet. Kijk op de betaalterminal of de betaling is gelukt."
-                    : "De betaalterminal heeft na 2 minuten nog geen uitkomst. Kijk op de betaalterminal of de betaling is gelukt."}
+                    : view.why === "refused"
+                      ? "Mollie kon de betaling niet afbreken. Breek hem af op de betaalterminal, of kijk daar of hij toch gelukt is."
+                      : "De betaalterminal heeft na 2 minuten nog geen uitkomst. Kijk op de betaalterminal of de betaling is gelukt."}
                 </p>
                 <p className="mt-4 text-lg">{`De bon van ${formatEuro(totalCents)} is geparkeerd. De kassa haalt de uitkomst vanzelf op.`}</p>
               </>

@@ -68,10 +68,10 @@ it("follows a payment to paid and forgets the receipt", async () => {
   await pass(POLL_MS / 2);
   // While it runs the receipt is on the iPad, so that a kassa that is closed now can find it again.
   expect(await stored()).toEqual([{ ...r, parked: false, failed: false, cashTaken: false }]);
-  expect(progress).toHaveBeenCalledWith({ sent: true, testUrl: "https://mollie.test/kies", cancelFailed: false });
+  expect(progress).toHaveBeenCalledWith({ sent: true, testUrl: "https://mollie.test/kies" });
   await pass(3 * POLL_MS);
   expect(await run.done).toEqual({ kind: "paid" });
-  expect(progress).toHaveBeenLastCalledWith({ sent: true, testUrl: null, cancelFailed: false });
+  expect(progress).toHaveBeenLastCalledWith({ sent: true, testUrl: null });
   expect(calls("POST")).toHaveLength(1);
   expect(calls("POST")[0]).toMatchObject({ url: "/api/kassa/pin", body: r });
   expect(calls("GET").map((call) => call.url)).toEqual([statusUrl(r), statusUrl(r), statusUrl(r)]);
@@ -85,7 +85,7 @@ it("ends with Mollie's reason when the payment did not go through", async () => 
   const run = runPin(r, progress);
   await pass(POLL_MS);
   expect(await run.done).toEqual({ kind: "failed", outcome: "declined", reason: "insufficient_funds" });
-  expect(progress.mock.calls).toEqual([[{ sent: false, testUrl: null, cancelFailed: false }]]);
+  expect(progress.mock.calls).toEqual([[{ sent: false, testUrl: null }]]);
   expect(await stored()).toEqual([]);
 });
 
@@ -195,24 +195,19 @@ it("keeps following a payment that reached the terminal late", async () => {
   expect(await listParked()).toEqual([]);
 });
 
-it("asks the server to cancel, and keeps following when that is refused", async () => {
+it("asks the server to cancel, and parks the receipt at once when Mollie refuses", async () => {
+  // With Mollie Tap a cancel on the phone reaches Mollie only after some minutes, and Mollie refuses a cancel from the
+  // kassa while the terminal waits: the kassa must be free at once, and keeps following the payment as a parked receipt.
   const r = receipt();
-  let paid = false;
-  mockApi({ "POST /api/kassa/pin": status(r), [statusUrl(r)]: () => status(r, paid ? { outcome: "paid" } : {}), [`POST ${cancelUrl(r)}`]: status(r) });
+  mockApi({ "POST /api/kassa/pin": status(r), [statusUrl(r)]: status(r), [`POST ${cancelUrl(r)}`]: status(r) });
   const progress = vi.fn();
   const run = runPin(r, progress);
   await pass(POLL_MS / 2);
   run.cancel();
   await pass(POLL_MS / 2);
   expect(cancels()).toHaveLength(1);
-  expect(progress).toHaveBeenLastCalledWith({ sent: true, testUrl: null, cancelFailed: true });
-  run.cancel(); // tapped again: the answer was already no
-  await pass(2 * POLL_MS);
-  expect(cancels()).toHaveLength(1);
-  expect(progress).toHaveBeenLastCalledWith({ sent: true, testUrl: null, cancelFailed: true });
-  paid = true;
-  await pass(2 * POLL_MS);
-  expect(await run.done).toEqual({ kind: "paid" });
+  expect(await run.done).toEqual({ kind: "unknown", why: "refused" });
+  expect((await listParked()).map((row) => [row.id, row.parked])).toEqual([[r.id, true]]);
 });
 
 it("ends as cancelled when the server says so", async () => {

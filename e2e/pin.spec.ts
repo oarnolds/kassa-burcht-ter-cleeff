@@ -122,16 +122,18 @@ test("a payment cancelled on the terminal, and one that expired", async ({ page,
   expect((await dayOf(beheer)).pinAttempts.map((attempt) => attempt.outcome).sort()).toEqual(["canceled", "expired"]);
 });
 
-test("cancelling that Mollie refuses keeps waiting, and the payment that follows is booked", async ({ page, request }) => {
+test("cancelling that Mollie refuses frees the kassa at once, and the payment that follows is booked", async ({ page, request }) => {
   const beheer = await open(page, request);
-  // The customer is already paying: the terminal no longer lets go.
+  // The customer is already paying, or the terminal (Mollie Tap) has not told Mollie yet: Mollie will not let go.
   expect((await request.post(`${MOLLIE}/control/cancelable`, { data: { value: false } })).ok()).toBe(true);
   await pinACoffee(page);
   await tap(page, "Annuleren");
-  const dialog = pinDialog(page, "Pin, te betalen");
-  await expect(dialog.getByText("Annuleren lukte niet. Kijk op de betaalterminal.")).toBeVisible();
-  await expect(receipt(page).getByText("Koffie")).toBeVisible();
-  await Promise.all([expect(page.getByText("Pin betaald")).toBeVisible(), atTerminal(request, "paid")]);
+  const unknown = pinDialog(page, "Uitkomst onbekend");
+  await expect(unknown.getByText("Mollie kon de betaling niet afbreken. Breek hem af op de betaalterminal, of kijk daar of hij toch gelukt is.")).toBeVisible({ timeout: 5000 });
+  await tap(page, "Volgende klant");
+  await expect(receipt(page).getByText("Tik op een product om te beginnen.")).toBeVisible();
+  // The customer did pay after all: the parked receipt is told and booked.
+  await Promise.all([expect(page.getByText("Pinbetaling van € 1,40 is gelukt")).toBeVisible({ timeout: 15000 }), atTerminal(request, "paid")]);
   await expectToday(beheer, { pinCents: 140, cashCents: 0, saleCount: 1 });
 });
 

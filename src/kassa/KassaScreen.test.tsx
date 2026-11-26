@@ -171,7 +171,7 @@ function fakePin(blocked: string | null = null) {
     const cancel = vi.fn();
     runs.push({
       receipt,
-      progress: (p) => act(() => onProgress({ sent: true, testUrl: null, cancelFailed: false, ...p })),
+      progress: (p) => act(() => onProgress({ sent: true, testUrl: null, ...p })),
       end: (e) => act(async () => end(e)),
       cancel,
     });
@@ -295,8 +295,8 @@ it("tries again with a new payment for the same receipt", async () => {
   const dialog = within(screen.getByRole("dialog", { name: "Pin, te betalen" }));
   expect(dialog.getByText("Betaling wordt gestart…")).toBeInTheDocument();
   // What the first payment still has to say no longer counts.
-  runs[0]!.progress({ cancelFailed: true });
-  expect(dialog.queryByText("Annuleren lukte niet. Kijk op de betaalterminal.")).not.toBeInTheDocument();
+  runs[0]!.progress({ testUrl: "https://www.mollie.com/checkout/test-mode?old" });
+  expect(dialog.queryByText("Test: kies de uitkomst bij Mollie")).not.toBeInTheDocument();
   await runs[1]!.end({ kind: "paid" });
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   expect(onPinPaid).toHaveBeenCalledWith(runs[1]!.receipt);
@@ -401,18 +401,17 @@ it("rings up the parked receipt as cash when the beheerder chooses that", async 
   expect(total()).toHaveTextContent("€ 0,00");
 });
 
-it("asks to cancel and keeps waiting for the real outcome", async () => {
+it("asks to cancel, and frees the kassa at once when Mollie refuses", async () => {
   const { runs } = await pinningKoffie();
   runs[0]!.progress({});
   await tap("Annuleren");
   expect(runs[0]!.cancel).toHaveBeenCalledTimes(1);
-  const dialog = within(screen.getByRole("dialog", { name: "Pin, te betalen" }));
-  expect(dialog.queryByText("Annuleren lukte niet. Kijk op de betaalterminal.")).not.toBeInTheDocument();
-  runs[0]!.progress({ cancelFailed: true });
-  expect(dialog.getByText("Annuleren lukte niet. Kijk op de betaalterminal.")).toBeInTheDocument();
-  expect(total()).toHaveTextContent("€ 1,40");
-  await runs[0]!.end({ kind: "failed", outcome: "canceled", reason: null });
-  expect(await screen.findByRole("dialog", { name: "Betaling geannuleerd" })).toBeInTheDocument();
+  await runs[0]!.end({ kind: "unknown", why: "refused" });
+  const dialog = within(await screen.findByRole("dialog", { name: "Uitkomst onbekend" }));
+  expect(dialog.getByText("Mollie kon de betaling niet afbreken. Breek hem af op de betaalterminal, of kijk daar of hij toch gelukt is.")).toBeInTheDocument();
+  expect(dialog.getByText("De bon van € 1,40 is geparkeerd. De kassa haalt de uitkomst vanzelf op.")).toBeInTheDocument();
+  expect(dialog.getByRole("button", { name: "Volgende klant" })).toBeInTheDocument();
+  expect(dialog.getByRole("button", { name: "Toch contant" })).toBeInTheDocument();
 });
 
 it("shows Mollie's test link only when there is one", async () => {

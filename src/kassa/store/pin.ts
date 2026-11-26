@@ -27,10 +27,10 @@ export type PinEnd =
   | { kind: "paid" }
   | { kind: "failed"; outcome: Exclude<PinOutcome, "paid">; reason: string | null }
   // lost: no answer from the server for a while. unsent: the server answers, but its start does not reach Mollie.
-  // slow: the payment is on the terminal, but has no outcome yet.
-  | { kind: "unknown"; why: "lost" | "unsent" | "slow" };
+  // slow: the payment is on the terminal, but has no outcome yet. refused: the beheerder cancelled, Mollie would not.
+  | { kind: "unknown"; why: "lost" | "unsent" | "slow" | "refused" };
 
-export type PinProgress = { sent: boolean; testUrl: string | null; cancelFailed: boolean };
+export type PinProgress = { sent: boolean; testUrl: string | null };
 export type PinRun = { done: Promise<PinEnd>; cancel(): void };
 
 const STORE = "pin";
@@ -56,10 +56,9 @@ export function runPin(receipt: PinReceipt, onProgress: (progress: PinProgress) 
   const statusPath = `/api/kassa/pin/${encodeURIComponent(receipt.id)}`;
   let answered = false; // the server has answered the start: from now on it knows this sale
   let cancelWanted = false;
-  let cancelAnswered = false;
   let wake: (() => void) | null = null;
 
-  const cancelPending = () => answered && cancelWanted && !cancelAnswered;
+  const cancelPending = () => answered && cancelWanted;
 
   /** Waits a second, or less when the beheerder cancels in the meantime. */
   const pause = () =>
@@ -86,7 +85,6 @@ export function runPin(receipt: PinReceipt, onProgress: (progress: PinProgress) 
 
     const started = Date.now();
     let lastAnswer = started;
-    let cancelFailed = false;
     let everSent = false;
     for (;;) {
       const cancelling = cancelPending();
@@ -104,12 +102,11 @@ export function runPin(receipt: PinReceipt, onProgress: (progress: PinProgress) 
         if (sent) everSent = true;
         if (outcome === "paid") return { kind: "paid" };
         if (outcome !== null) return { kind: "failed", outcome, reason };
-        if (cancelling) {
-          // The server asked Mollie, and the payment is still running: it could not be cancelled any more.
-          cancelAnswered = true;
-          cancelFailed = true;
-        }
-        onProgress({ sent, testUrl, cancelFailed });
+        // The server asked Mollie, and the payment is still running: Mollie would not cancel it. With Mollie Tap a cancel
+        // on the phone can take minutes to reach Mollie, so the receipt is parked at once: the kassa is free, and it keeps
+        // asking about the payment like any parked one.
+        if (cancelling) return { kind: "unknown", why: "refused" };
+        onProgress({ sent, testUrl });
       } else if (!answered && answer.status >= 400 && answer.status < 500) {
         // The server refused the start: nothing was started.
         return { kind: "failed", outcome: "start_failed", reason: answer.error };
