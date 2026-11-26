@@ -72,7 +72,7 @@ it("shows what it read from a paste and what it skipped, and takes it over", asy
   const read = screen.getByRole("region", { name: "Plakken uit e-Boekhouden" });
   expect(within(read).getByText("2 toestellen gelezen")).toBeInTheDocument();
   expect(rowIn("Plakken uit e-Boekhouden", "Dome - Kopan").getByText("€ 28.606,42")).toBeInTheDocument();
-  expect(within(read).getByText("3 regels overgeslagen")).toBeInTheDocument();
+  expect(within(read).getByText("24 regels overgeslagen")).toBeInTheDocument();
   expect(within(read).getByText("Speeltoestellen")).toBeInTheDocument();
   expect(calls("POST")).toHaveLength(0);
 

@@ -5,12 +5,15 @@ import { parseEuro } from "./money";
 
 export type PastedAsset = { name: string; purchaseDate: string; costCents: number; writtenOffCents: number; lifeYears: number };
 
-/** The columns read, counted from 0: name, purchase date, cost on 1 January, written off up to 1 January, years. The columns of 31-12 are not read: the app books the year itself. */
+/**
+ * The columns read, counted from 0 once the empty cells are gone: name, purchase date, cost on 1 January, written off
+ * up to 1 January. The years are the last cell. The columns of 31-12 are not read: the app books the year itself.
+ * e-Boekhouden puts an empty column after "Aanschafwaarde per 31-12"; counted with it, every row was read one off.
+ */
 const NAME = 0;
 const PURCHASED = 1;
 const COST = 2;
 const WRITTEN_OFF = 5;
-const YEARS = 11;
 
 /** The life in years the app accepts, as for a toestel made in beheer. */
 export const MAX_LIFE_YEARS = 50;
@@ -41,8 +44,9 @@ export function readLifeYears(text: string): number | null {
   return years >= 1 && years <= MAX_LIFE_YEARS ? years : null;
 }
 
-/** Tabs between the columns, as e-Boekhouden copies them; without a tab, two or more spaces. */
-const cellsOf = (line: string): string[] => (line.includes("\t") ? line.split("\t") : line.trim().split(/[ \u00a0]{2,}/)).map((cell) => cell.trim());
+/** Tabs between the columns, as e-Boekhouden copies them; without a tab, two or more spaces. Empty cells are left out. */
+const cellsOf = (line: string): string[] =>
+  (line.includes("\t") ? line.split("\t") : line.trim().split(/[ \u00a0]{2,}/)).map((cell) => cell.trim()).filter((cell) => cell !== "");
 
 function readRow(line: string): PastedAsset | null {
   const cells = cellsOf(line);
@@ -50,7 +54,7 @@ function readRow(line: string): PastedAsset | null {
   const purchaseDate = readDate(cells[PURCHASED] ?? "");
   const costCents = readAmount(cells[COST] ?? "");
   const writtenOff = readAmount(cells[WRITTEN_OFF] ?? "");
-  const lifeYears = readLifeYears(cells[YEARS] ?? "");
+  const lifeYears = readLifeYears(cells.at(-1) ?? "");
   if (name === "" || purchaseDate === null || costCents === null || costCents < 0 || writtenOff === null || lifeYears === null) return null;
   // e-Boekhouden may show what was written off as a minus; it is always the part of the cost that is gone.
   return { name, purchaseDate, costCents, writtenOffCents: Math.abs(writtenOff), lifeYears };

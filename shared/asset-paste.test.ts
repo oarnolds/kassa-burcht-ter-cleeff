@@ -11,18 +11,43 @@ describe("parseAssetPaste", () => {
     ]);
   });
 
+  it("reads the overview as e-Boekhouden copies it: the header one word per line and an empty column after 31-12", () => {
+    // The layout of the penningmeester's paste of 23 November 2026, rows as they came; the totals carry an empty date.
+    const text = [
+      "Vaste activa 2026",
+      "Activa",
+      "Aanschafdatum",
+      "Aanschafwaarde",
+      "per 01-01-2026",
+      "Afschrijven",
+      "in (jaren)",
+      ["Speeltoestellen", "", "", "", "", "", "", "", "", "", "", ""].join("\t"),
+      ["Fietsjes", "01-04-2018", "1.397,00", "0,00", "1.397,00", "", "1.353,50", "43,50", "0,00", "1.397,00", "0,00", "8"].join("\t"),
+      ["Dome - Kopan", "10-07-2012", "44.457,21", "0,00", "44.457,21", "", "28.606,42", "2.122,86", "0,00", "30.729,28", "13.727,93", "20"].join("\t"),
+      ["Totaal Speeltoestellen", "", "45.854,21", "0,00", "45.854,21", "", "29.959,92", "2.166,36", "0,00", "32.126,28", "13.727,93", ""].join("\t"),
+      ["45.854,21", "0,00", "45.854,21", "", "29.959,92", "2.166,36", "0,00", "32.126,28", "13.727,93"].join("\t"),
+    ].join("\n");
+    const { assets, skipped } = parseAssetPaste(text);
+    expect(assets).toEqual([
+      { name: "Fietsjes", purchaseDate: "2018-04-01", costCents: 139700, writtenOffCents: 135350, lifeYears: 8 },
+      { name: "Dome - Kopan", purchaseDate: "2012-07-10", costCents: 4445721, writtenOffCents: 2860642, lifeYears: 20 },
+    ]);
+    expect(skipped).toHaveLength(10);
+  });
+
   it("reads the cost and what was written off on 1 January", () => {
-    // Column 2 is the cost on 1-1 and column 5 what was written off up to 1-1; the columns of 31-12 are not read.
+    // Without the empty column: column 2 is the cost on 1-1 and column 5 what was written off up to 1-1; 31-12 is not read.
     const [straaljager] = parseAssetPaste(VASTE_ACTIVA_2026).assets;
     expect(straaljager).toMatchObject({ costCents: 949600, writtenOffCents: 854640 });
   });
 
-  it("skips the header, the group row and the totals", () => {
+  it("skips the header lines, the group row and the totals", () => {
     const { skipped } = parseAssetPaste(VASTE_ACTIVA_2026);
-    expect(skipped).toHaveLength(3);
-    expect(skipped[0]).toMatch(/^Omschrijving\tAanschafdatum/);
-    expect(skipped[1]).toBe("Speeltoestellen");
-    expect(skipped[2]).toMatch(/^Totaal Speeltoestellen\t/);
+    expect(skipped).toHaveLength(24);
+    expect(skipped[0]).toBe("Vaste activa 2026");
+    expect(skipped).toContain("Speeltoestellen");
+    expect(skipped.at(-2)).toMatch(/^Totaal Speeltoestellen\t/);
+    expect(skipped.at(-1)).toMatch(/^53\.953,21\t/);
   });
 
   it("reads columns split by two or more spaces, a euro sign and a minus", () => {
