@@ -18,6 +18,8 @@ export type FakeGoogle = {
   expire(): void;
   /** Tokens revoked so far. */
   revoked: string[];
+  /** From now on Gmail answers 403, as when the Gmail API is not switched on in Google Cloud. */
+  forbid(): void;
 };
 
 export const FAKE_GOOGLE_CLIENT_ID = "client-id-fake.apps.googleusercontent.com";
@@ -34,6 +36,7 @@ function toBase64Url(bytes: Uint8Array): string {
 
 export function createFakeGoogle(): FakeGoogle {
   let expired = false;
+  let forbidden = false;
   let nextAttachment = 0;
   // attachment id → message and part, for every id handed out so far.
   const handedOut = new Map<string, { messageId: string; partId: string }>();
@@ -45,6 +48,9 @@ export function createFakeGoogle(): FakeGoogle {
     revoked: [],
     expire: () => {
       expired = true;
+    },
+    forbid: () => {
+      forbidden = true;
     },
     async handle(request) {
       const url = new URL(request.url);
@@ -59,7 +65,8 @@ export function createFakeGoogle(): FakeGoogle {
       if (url.host === "oauth2.googleapis.com" && url.pathname === "/token") {
         if (form?.get("client_id") !== FAKE_GOOGLE_CLIENT_ID || form?.get("client_secret") !== FAKE_GOOGLE_CLIENT_SECRET) return json({ error: "invalid_client" }, 401);
         if (form.get("grant_type") === "authorization_code") {
-          if (form.get("code") !== "code-1" || !form.get("redirect_uri")) return json({ error: "invalid_grant" }, 400);
+          // Google refuses a code traded with another redirect_uri than the one the page was asked with.
+          if (form.get("code") !== "code-1" || !/^https?:\/\/[^/]+\/beheer\/gmail$/.test(form.get("redirect_uri") ?? "")) return json({ error: "invalid_grant" }, 400);
           return json({ access_token: "access-1", refresh_token: FAKE_REFRESH_TOKEN, expires_in: 3599, token_type: "Bearer", scope: "https://www.googleapis.com/auth/gmail.readonly" });
         }
         if (form.get("grant_type") === "refresh_token") {
@@ -70,6 +77,7 @@ export function createFakeGoogle(): FakeGoogle {
       }
       if (url.host !== "gmail.googleapis.com") throw new Error(`fake Google: unexpected host ${url.host}`);
       if (!bearer?.startsWith("access-")) return json({ error: { code: 401, status: "UNAUTHENTICATED" } }, 401);
+      if (forbidden) return json({ error: { code: 403, status: "PERMISSION_DENIED" } }, 403);
 
       const path = url.pathname.replace("/gmail/v1/users/me", "");
       if (path === "/profile") return json({ emailAddress: fake.email, messagesTotal: fake.messages.length });

@@ -154,7 +154,8 @@ export function EntriesPage() {
                         entryId={entry.id}
                         onClose={() => setSearching(null)}
                         onAdded={() => {
-                          setSearching(null);
+                          // Only this entry's panel closes: another may have been opened while the file was added.
+                          setSearching((open) => (open === entry.id ? null : open));
                           entries.reload();
                         }}
                       />

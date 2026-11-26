@@ -11,7 +11,8 @@ const base = "/api/admin/boekhouding";
 const NOW = new Date("2026-11-26T12:00:00.000Z");
 const ORIGIN = "https://beheer.example";
 const keys: Partial<Env> = { GOOGLE_CLIENT_ID: FAKE_GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET: FAKE_GOOGLE_CLIENT_SECRET };
-const PDF = new TextEncoder().encode("%PDF-1.4 factuur 2026-1234");
+// 0xfb and 0xff come out as "-" and "_" in base64url, so the decoding of Gmail's alphabet is exercised.
+const PDF = new Uint8Array([...new TextEncoder().encode("%PDF-1.4 factuur "), 0xfb, 0xff, 0xfe, 0x3e, 0x3f]);
 const FOLDER = new TextEncoder().encode("%PDF-1.4 folder");
 
 let google: FakeGoogle;
@@ -42,10 +43,11 @@ beforeEach(async () => {
       from: "TalentPro <facturen@talentpro.nl>",
       subject: "Factuur 2026-1234",
       date: "2026-11-02T09:00:00.000Z",
-      snippet: "In de bijlage vindt u factuur 2026-1234 van € 412,80",
+      snippet: "In de bijlage vindt u onze factuur",
       files: [{ partId: "1", filename: "factuur-2026-1234.pdf", mimeType: "application/pdf", data: PDF }],
     },
   ];
+  google.find = (q) => (q.includes('"412,80"') ? ["m-invoice"] : q.includes("TalentPro") ? ["m-news", "m-invoice"] : []);
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO ledger_entries (id, year, number, date, description, source, source_ref, created_at, updated_at)
@@ -67,9 +69,10 @@ async function link(): Promise<GmailState> {
 }
 
 it("says Gmail is not set up while the Google keys are missing", async () => {
-  const answer = await api(`${base}/gmail`, { cookie });
+  const none = { GOOGLE_CLIENT_ID: undefined, GOOGLE_CLIENT_SECRET: undefined };
+  const answer = await api(`${base}/gmail`, { cookie, env: none });
   expect(await answer.json()).toEqual({ status: "not_configured", email: null });
-  const connect = await api(`${base}/gmail/connect`, { method: "POST", cookie });
+  const connect = await api(`${base}/gmail/connect`, { method: "POST", cookie, env: none });
   expect(connect.status).toBe(409);
   expect(await connect.json()).toEqual({ error: "gmail_off" });
 });
@@ -107,7 +110,7 @@ it("refuses a state that has gone stale", async () => {
   await expect(finishLink(gEnv, { code: "code-1", state: await stateOf() }, ORIGIN, later)).rejects.toMatchObject({ code: "state_invalid" });
 });
 
-it("finds the files around the entry's date, with the name from the bank line, the amount first", async () => {
+it("finds the files around the entry's date, with the name from the bank line, and puts the mail Gmail found the amount in first", async () => {
   await link();
   const answer = await api(`${base}/entries/g1/gmail`, { cookie, env: keys });
   expect(answer.status).toBe(200);
@@ -145,6 +148,46 @@ it("finds the files around the entry's date, with the name from the bank line, t
   }
   expect(searches.some((q) => q.includes("TalentPro"))).toBe(true);
   expect(searches.some((q) => q.includes('"412,80"'))).toBe(true);
+});
+
+it("puts a PDF before a picture, so logos do not crowd out the invoice", async () => {
+  await link();
+  google.messages.push({
+    id: "m-logo",
+    from: "TalentPro <info@talentpro.nl>",
+    subject: "Welkom",
+    date: "2026-11-19T09:00:00.000Z",
+    snippet: "Welkom",
+    files: [{ partId: "1", filename: "logo.png", mimeType: "image/png", data: new Uint8Array([1]) }],
+  });
+  google.find = () => ["m-logo", "m-news"];
+  const { candidates } = await (await api(`${base}/entries/g1/gmail`, { cookie, env: keys })).json<{ candidates: GmailCandidate[] }>();
+  expect(candidates.map((c) => c.filename)).toEqual(["folder.pdf", "logo.png"]);
+});
+
+it("still shows what it could read when one mail cannot be read", async () => {
+  await link();
+  google.find = () => ["m-gone", "m-invoice"];
+  const answer = await api(`${base}/entries/g1/gmail`, { cookie, env: keys });
+  expect(answer.status).toBe(200);
+  expect((await answer.json<{ candidates: GmailCandidate[] }>()).candidates.map((c) => c.messageId)).toEqual(["m-invoice"]);
+});
+
+it("says so when Google refuses because the Gmail API is not switched on", async () => {
+  await link();
+  google.forbid();
+  const answer = await api(`${base}/entries/g1/gmail`, { cookie, env: keys });
+  expect(answer.status).toBe(502);
+  expect(await answer.json()).toEqual({ error: "gmail_forbidden" });
+});
+
+it("revokes the earlier link when another address is linked, but not when the same one is linked again", async () => {
+  await link();
+  await link();
+  expect(google.revoked).toEqual([]);
+  google.email = "ander@gmail.com";
+  await link();
+  expect(google.revoked).toEqual([FAKE_REFRESH_TOKEN]);
 });
 
 it("adds the chosen file to the entry, found again by its part, with Gmail's name and type", async () => {

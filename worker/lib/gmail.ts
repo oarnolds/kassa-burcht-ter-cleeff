@@ -9,8 +9,11 @@ const REVOKE_URL = "https://oauth2.googleapis.com/revoke";
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
 const TIMEOUT_MS = 15_000;
 
-/** `expired`: Google no longer accepts the link (revoked, or unused too long); `failed`: anything else. */
-export type GmailFailure = "expired" | "failed";
+/**
+ * `expired`: Google no longer accepts the link (revoked, or unused too long); `forbidden`: Google refuses the call, as when
+ * the Gmail API is not switched on in Google Cloud; `failed`: anything else.
+ */
+export type GmailFailure = "expired" | "forbidden" | "failed";
 
 export class GmailError extends Error {
   constructor(public failure: GmailFailure) {
@@ -74,6 +77,7 @@ export async function revoke(refreshToken: string): Promise<void> {
 async function get<T>(access: string, path: string): Promise<T> {
   const response = await call(`${API}${path}`, { headers: { Authorization: `Bearer ${access}` } });
   if (response.status === 401) throw new GmailError("expired");
+  if (response.status === 403) throw new GmailError("forbidden");
   if (!response.ok) throw new GmailError("failed");
   return (await response.json()) as T;
 }
@@ -108,16 +112,15 @@ export async function searchMessages(access: string, q: string, max: number): Pr
 export const getMessage = (access: string, id: string): Promise<GmailMessage> =>
   get<GmailMessage>(access, `/messages/${encodeURIComponent(id)}?${new URLSearchParams({ format: "full", fields: MESSAGE_FIELDS })}`);
 
-function fromBase64Url(text: string): Uint8Array {
-  const base64 = text.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(text.length / 4) * 4, "=");
-  return Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-}
+// The runtime's own decoder: a scanned invoice of some MB decoded character by character in JavaScript would cost more
+// CPU than the free plan gives one request. TypeScript's library does not know it yet, hence the cast.
+const decoder = Uint8Array as unknown as { fromBase64(text: string, options: { alphabet: "base64url" }): Uint8Array };
 
 /** The bytes of one file of a message. Gmail gives a new attachment id each time a message is read: use the latest. */
 export async function getAttachment(access: string, messageId: string, attachmentId: string): Promise<Uint8Array> {
   const body = await get<{ data?: unknown }>(access, `/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`);
   if (typeof body.data !== "string") throw new GmailError("failed");
-  return fromBase64Url(body.data);
+  return decoder.fromBase64(body.data, { alphabet: "base64url" });
 }
 
 /** The parts of a message that are a file with a name, at any depth. */

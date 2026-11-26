@@ -21,7 +21,7 @@ import {
   searchMessages,
 } from "../lib/gmail";
 import { addAttachment, ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES } from "./attachments";
-import { getEntry, LedgerError } from "./ledger";
+import { getEntry, LedgerError, yearStatus } from "./ledger";
 
 /** Where Google sends the browser back to; the same address must be listed with the OAuth client at Google. */
 export const GMAIL_RETURN_PATH = "/beheer/gmail";
@@ -45,7 +45,10 @@ function needKeys(env: Env): GmailKeys {
 }
 
 function asLedger(error: unknown): never {
-  if (error instanceof GmailError) throw error.failure === "expired" ? new LedgerError("gmail_expired", 409) : new LedgerError("gmail_failed", 502);
+  if (error instanceof GmailError) {
+    if (error.failure === "expired") throw new LedgerError("gmail_expired", 409);
+    throw new LedgerError(error.failure === "forbidden" ? "gmail_forbidden" : "gmail_failed", 502);
+  }
   throw error;
 }
 
@@ -70,7 +73,7 @@ export async function startLink(env: Env, origin: string, now: Date): Promise<{ 
 
 /**
  * Google sent the browser back with a code. The state is spent first, in one conditional update, so a code is used
- * once. An earlier link is forgotten here but not revoked: revoking it at Google could end the new link as well.
+ * once. An earlier link of the same address is forgotten but not revoked; one of another address is revoked.
  */
 export async function finishLink(env: Env, input: { code: string; state: string }, origin: string, now: Date): Promise<GmailState> {
   const keys = needKeys(env);
@@ -90,10 +93,15 @@ export async function finishLink(env: Env, input: { code: string; state: string 
   } catch (error) {
     return asLedger(error);
   }
+  const earlier = await env.DB.prepare("SELECT email, refresh_token FROM gmail_links WHERE refresh_token IS NOT NULL AND id <> ?1")
+    .bind(spent.id)
+    .all<{ email: string | null; refresh_token: string }>();
   await env.DB.batch([
     env.DB.prepare("UPDATE gmail_links SET status = 'replaced', refresh_token = NULL WHERE status IN ('active', 'expired') AND id <> ?1").bind(spent.id),
     env.DB.prepare("UPDATE gmail_links SET status = 'active', email = ?2, refresh_token = ?3 WHERE id = ?1").bind(spent.id, email, refreshToken),
   ]);
+  // Another address: its access at Google ends too. The same address keeps it: revoking would end the new link as well.
+  for (const row of earlier.results) if (row.email !== email) await revoke(row.refresh_token);
   return { status: "active", email };
 }
 
@@ -197,7 +205,7 @@ function typeOf(part: GmailPart): string | null {
   return null;
 }
 
-/** The files in Gmail that may belong with an entry: the mail with the amount first, then the name, then the closest date. */
+/** The files in Gmail that may belong with an entry: the mail with the amount first, then PDFs, then the name, then the closest date. */
 export async function findFiles(env: Env, entryId: string): Promise<GmailCandidate[]> {
   const entry = await getEntry(env.DB, entryId);
   if (!entry) throw new LedgerError("not_found", 404);
@@ -206,11 +214,20 @@ export async function findFiles(env: Env, entryId: string): Promise<GmailCandida
   const amounts = amountForms(entry);
   try {
     const ids: string[] = [];
-    for (const q of searchQueries(entry)) {
+    // Gmail also searches the text inside a PDF: what the first search (the amount) finds has the amount, wherever it is.
+    let withAmount: string[] = [];
+    for (const [index, q] of searchQueries(entry).entries()) {
       if (ids.length >= MAX_MESSAGES) break;
-      for (const id of await searchMessages(access, q, MAX_MESSAGES)) if (!ids.includes(id)) ids.push(id);
+      const hits = await searchMessages(access, q, MAX_MESSAGES);
+      if (index === 0) withAmount = hits;
+      for (const id of hits) if (!ids.includes(id)) ids.push(id);
     }
-    const messages = await Promise.all(ids.slice(0, MAX_MESSAGES).map((id) => getMessage(access, id)));
+    // One mail that cannot be read (gone since the search) does not spoil the others; a refusal of the link does.
+    const reads = await Promise.allSettled(ids.slice(0, MAX_MESSAGES).map((id) => getMessage(access, id)));
+    const refused = reads.find((read) => read.status === "rejected" && !(read.reason instanceof GmailError && read.reason.failure === "failed"));
+    if (refused?.status === "rejected") throw refused.reason;
+    const messages = reads.flatMap((read) => (read.status === "fulfilled" ? [read.value] : []));
+    if (messages.length === 0 && reads.length > 0) throw new GmailError("failed");
     const found = messages.flatMap((message) => {
       const date = message.internalDate ? businessDate(new Date(Number(message.internalDate)).toISOString()) : entry.date;
       const from = header(message, "From");
@@ -220,15 +237,18 @@ export async function findFiles(env: Env, entryId: string): Promise<GmailCandida
         const sizeBytes = part.body?.size ?? 0;
         if (!contentType || !part.partId || sizeBytes > MAX_ATTACHMENT_BYTES) return [];
         const filename = part.filename!;
-        const amountFound = amounts.some((amount) => `${message.snippet ?? ""} ${subject} ${filename}`.includes(amount));
+        const amountFound = withAmount.includes(message.id) || amounts.some((amount) => `${message.snippet ?? ""} ${subject} ${filename}`.includes(amount));
         const named = words.filter((word) => `${from} ${subject} ${filename}`.toLowerCase().includes(word)).length;
         const distance = Math.abs(Date.parse(date) - Date.parse(entry.date)) / DAY_MS;
         const candidate: GmailCandidate = { messageId: message.id, partId: part.partId, date, from, subject, filename, contentType, sizeBytes, amountFound };
         return [{ candidate, named, distance }];
       });
     });
+    // An invoice is nearly always a PDF; a picture is often a logo in the mail's signature.
+    const pdf = (one: GmailCandidate) => Number(one.contentType === "application/pdf");
     found.sort(
-      (a, b) => Number(b.candidate.amountFound) - Number(a.candidate.amountFound) || b.named - a.named || a.distance - b.distance,
+      (a, b) =>
+        Number(b.candidate.amountFound) - Number(a.candidate.amountFound) || pdf(b.candidate) - pdf(a.candidate) || b.named - a.named || a.distance - b.distance,
     );
     return found.slice(0, MAX_CANDIDATES).map((one) => one.candidate);
   } catch (error) {
@@ -238,7 +258,9 @@ export async function findFiles(env: Env, entryId: string): Promise<GmailCandida
 
 /** Fetches the file the penningmeester picked, found again by its part (Gmail's attachment ids change), and keeps it with the entry. */
 export async function attachFromGmail(env: Env, entryId: string, pick: { messageId: string; partId: string }, now: Date): Promise<Attachment> {
-  if (!(await getEntry(env.DB, entryId))) throw new LedgerError("not_found", 404);
+  const entry = await getEntry(env.DB, entryId);
+  if (!entry) throw new LedgerError("not_found", 404);
+  if ((await yearStatus(env.DB, entry.year)) === "closed") throw new LedgerError("year_closed", 409);
   const access = await accessFor(env);
   let file: { filename: string; contentType: string; bytes: Uint8Array };
   try {
@@ -253,6 +275,6 @@ export async function attachFromGmail(env: Env, entryId: string, pick: { message
     if (error instanceof LedgerError) throw error;
     return asLedger(error);
   }
-  const body = file.bytes.slice().buffer as ArrayBuffer;
-  return addAttachment(env, entryId, { filename: file.filename, contentType: file.contentType, body, sizeBytes: body.byteLength }, now);
+  const body = file.bytes.buffer as ArrayBuffer;
+  return addAttachment(env, entryId, { filename: file.filename, contentType: file.contentType, body, sizeBytes: file.bytes.byteLength }, now);
 }

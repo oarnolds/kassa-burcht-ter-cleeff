@@ -113,6 +113,9 @@ it("says when Gmail found nothing, and explains a refusal", async () => {
   expect(await screen.findByText("Niets gevonden in Gmail rond deze datum.")).toBeInTheDocument();
   await user().click(row(/Water/).getByRole("button", { name: "Zoek bijlage" }));
   expect(await screen.findByText("Koppel eerst Gmail, bij Boekhouding → Instellingen.")).toBeInTheDocument();
+  // One panel at a time: opening Water's closed Huur's.
+  expect(screen.queryByText("Niets gevonden in Gmail rond deze datum.")).toBeNull();
+  expect(screen.getAllByRole("region", { name: "Gevonden in Gmail" })).toHaveLength(1);
 });
 
 it("searches with the filters", async () => {

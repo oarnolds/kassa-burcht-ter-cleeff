@@ -162,6 +162,7 @@ export function explainWrite(status: number, error: string): string {
     gmail_not_linked: "Koppel eerst Gmail, bij Boekhouding → Instellingen.",
     gmail_expired: "Google accepteert de koppeling niet meer. Koppel Gmail opnieuw bij Boekhouding → Instellingen.",
     gmail_failed: "Gmail gaf geen antwoord. Probeer het straks opnieuw.",
+    gmail_forbidden: "Google weigert de toegang. Staat de Gmail API aan in Google Cloud? Zie de handleiding.",
     invalid: "Controleer de invoer en probeer het opnieuw.",
     not_comparison_year: FROM_LEDGER,
     depreciation_booked: "De afschrijving is al geboekt. De lijst uit e-Boekhouden kan niet meer worden vervangen.",
